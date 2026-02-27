@@ -1,0 +1,141 @@
+[
+  {
+    "bug_key": "AP-9",
+    "bug_summary": "güncellenen bug hata raporu",
+    "bug_priority": "Medium",
+    "alan": "Hata Raporlama ve İzleme Sistemi",
+    "test_senaryosu": "Dashboard Üzerinden Hata Raporu Oluşturma ve Yenileme",
+    "test_adimlari": [
+      "1. Dashboard sayfasına giriş yapılır.",
+      "2. Hata raporlama bölümüne ulaşılır ve yeni bir hata raporu oluşturulur.",
+      "3. Oluşturulan hata raporunun başarılı bir şekilde kaydedilip kaydedilmediği kontrol edilir.",
+      "4. Hata raporu güncellenir (örneğin, yeni bilgiler eklenir veya mevcut bilgiler değiştirilir).",
+      "5. Güncellenen hata raporunun doğru bir şekilde yenilendiği ve güncellenmiş bilgilerinin görüntülendiği doğrulanır."
+    ],
+    "beklenen_sonuc": "Test başarılı olduğunda, hata raporu başarılı bir şekilde oluşturulmalı, güncellenmeli ve yenilenmeli. Güncellenen bilgiler doğru bir şekilde görüntülenmelidir.",
+    "risk_alani": "Evet, bu alanda gelecekte hata çıkma ihtimali yüksektir. Çünkü hata raporlama ve izleme sistemi, yazılımın veya uygulamanın doğru çalışması için kritik bir bileşendir. Bu sistemdeki hatalar, sorunların doğru bir şekilde tanımlanmasını ve çözülmesini engelleyebilir, bu da genel sistem performansını ve kullanıcı deneyimini olumsuz etkileyebilir."
+  },
+  {
+    "bug_key": "AP-8",
+    "bug_summary": "Yıkım mermileri (projectile) blokların tam merkezinden hasar vermeden (Raycast hatası) geçiyor.",
+    "bug_priority": "Highest",
+    "alan": "Fizik Motoru / Çarpışma Sistemi",
+    "test_senaryosu": "Yıkım Mermileri Blok Hasarı Testi",
+    "test_adimlari": [
+      "Oyun alanında bir köprü bloğu yerleştir.",
+      "Yıkım takımı olarak bloğun tam merkezine (nişangah ortalanmış şekilde) atış yap.",
+      "Patlama efektinin oynatılmasını ve bloğun hasar almasını veya parçalanmasını gözlemle."
+    ],
+    "beklenen_sonuc": "Bloğun hasar alması veya parçalanması beklenmektedir. Patlama efektinin oynatılması yeterli olmayıp, bloğun \"Health\" (Can) değerinin düşmesi veya bloğun parçalanması gerekli sonuçtur.",
+    "risk_alani": "Evet, bu alanda gelecekte hata çıkma ihtimali yüksek. Çarpışma sistemi ve fizik motoru gibi kompleks sistemlerin birleşimi, hataların oluşmasına eğilimlidir. Özellikle farklı nesnelerin etkileşimlerinin doğru şekilde hesaplanması ve simüle edilmesi, bu tür sistemlerin güvenilirliğini etkileyen önemli bir faktördür."
+  },
+  {
+    "bug_key": "AP-7",
+    "bug_summary": "Ördek yapay zekası (Pathfinding) farklı materyal geçiş noktalarında kilitleniyor (Stuck).",
+    "bug_priority": "Low",
+    "alan": "Yapay Zeka / Pathfinding",
+    "test_senaryosu": "Ördek Materyal Geçiş Noktası Testi",
+    "test_adimlari": [
+      "Oyun alanında bir adet tahta blok yerleştir.",
+      "Tahta bloğun hemen ucuna bir adet taş blok yerleştir.",
+      "Ördeğin bu blokların üzerinden geçişini izle.",
+      "Farklı kombinasyonlarda (örneğin, taş-tahta, tahta-taş, farklı açılarda) blokları yerleştirerek testi tekrarla."
+    ],
+    "beklenen_sonuc": "Ördeğin yavaşlama veya takılma olmadan, hedefine doğru yürüyüşünü sürdürmesi.",
+    "risk_alani": "Evet, çünkü bu alanda NavMesh güncellemeleri ve farklı materyal geçiş noktaları gibi kompleks işlemler yer alıyor. Bu nedenle, gelecekte benzer hataların çıkma ihtimali yüksek."
+  },
+  {
+    "bug_key": "AP-6",
+    "bug_summary": "Yıkım takımı ile inşa takımı arasında köprü durumu senkronizasyon hatası",
+    "bug_priority": "Medium",
+    "alan": "Ağ ve Senkronizasyon",
+    "test_senaryosu": "Köprü Yıkımı Senkronizasyon Testi",
+    "test_adimlari": [
+      "İki farklı istemci (Client) oluşturulmalı ve her ikisi de 100ms ping ile sunucuya bağlanmalıdır.",
+      "İnşa takımı, köprü inşa etmelidir.",
+      "Yıkım takımı, inşa edilen köprünün ortasını patlatmalıdır.",
+      "Test, farklı ping değerleri (örneğin 50ms, 200ms) ile tekrarlanmalıdır.",
+      "Test, farklı köprü boyutları ve şekilleri ile tekrarlanmalıdır."
+    ],
+    "beklenen_sonuc": "Köprünün her iki oyuncuda da aynı anda yıkılması ve ördeğin düşmesi beklenmektedir. Köprü yıkıldığında, ördek hemen düşmelidir, 2 saniye boyunca boşlukta yürümemelidir.",
+    "risk_alani": "Evet, bu alanda gelecekte hata çıkma ihtimali yüksektir. Çünkü ağ ve senkronizasyon sorunları, özellikle çok oyunculu oyunlarda sıkça karşılaşılan sorunlardır ve bu tür sorunların çözülmesi zor olabilir. Ayrıca, bu alanda yapılan değişiklikler, başka yerlerde yeni sorunlara neden olabilir."
+  },
+  {
+    "bug_key": "AP-5",
+    "bug_summary": "Hızlı köprü inşasında çarpışma (collision) modelleri çakışıyor ve ördek harita dışına fırlıyor.",
+    "bug_priority": "High",
+    "alan": "İnşaat Sistemi ve Fizik Motoru",
+    "test_senaryosu": "Hızlı Köprü İnşasında Çarpışma Modeli Testi",
+    "test_adimlari": [
+      "Oyun içinde hızlı köprü inşası için saniyede 3'ten fazla tahta blok yerleştirme işlemini simüle edin.",
+      "Ördek karakterini bu hızlı inşa edilen köprü üzerine yönlendirin.",
+      "Ördek karakterinin hareketini ve köprü bloklarının davranışını izleyin."
+    ],
+    "beklenen_sonuc": "Test başarılı olsaydı, ördek karakteri köprü bloklarının üzerine geldiğinde fizik motoru tarafından harita dışına atılmamalı, karakterin hareketi ve köprü bloklarının davranışları doğru ve tutarlı olmalıdır.",
+    "risk_alani": "Evet, bu alanda gelecekte hata çıkma ihtimali yüksektir. Çünkü hızlı köprü inşası ve çarpışma modellerinin doğru çalışması, oyunun fizik motoru ve inşaat sisteminin doğru bir şekilde entegre edilmesine bağlıdır. Gelecekte bu sistemlerde yapılacak değişiklikler veya güncellemeler, benzer hataların ortaya çıkmasına neden olabilir."
+  },
+  {
+    "bug_key": "AP-4",
+    "bug_summary": "[Yıkım] Aynı anda 15'ten fazla yapı patlayıcı ile yok edildiğinde sunucu senkronizasyonu kopuyor.",
+    "bug_priority": "Medium",
+    "alan": "Yıkım Fiziği / Ağ (Network)",
+    "test_senaryosu": "Büyük Ölçekli Yıkım Senaryosu",
+    "test_adimlari": [
+      "Çok oyunculu bir sunucuya bağlan.",
+      "Yan yana en az 15 adet duvar ve zemin inşa et.",
+      "Tüm yapıların merkezine bir alan hasarı (AOE) vuran patlayıcı yerleştir.",
+      "Patlayıcıyı patlat.",
+      "Oyuncuların ekranında donma veya \"Connection Timeout\" hatası oluşup oluşmadığını gözlemle."
+    ],
+    "beklenen_sonuc": "Yapıların parçalanma animasyonlarının oynatılması ve oyunun fps düşüşü olmadan devam etmesi.",
+    "risk_alani": "Evet, bu alanda gelecekte hata çıkma ihtimali yüksek. Çünkü, yıkım fiziği ve ağ senkronizasyonu komplex bir sistemdir ve büyük ölçekli yıkım senaryolarında sunucu yükü artabilir, bu da hatalara neden olabilir."
+  },
+  {
+    "bug_key": "AP-3",
+    "bug_summary": "(Özet): [Eşya/Güçlendirme] Kova ile mağaradan toplanan sıvı içildiğinde kazanılan güçlendirme (buff), karakter öldükten sonra da aktif kalıyor.",
+    "bug_priority": "Medium",
+    "alan": "Eşya Kullanımı / Statü Yönetimi",
+    "test_senaryosu": "Kova ile Elde Edilen Güçlendirmenin Ölüm Sonrası Davranışının Test Edilmesi",
+    "test_adimlari": [
+      "Oyuncu karakterine bir kova ekleyin.",
+      "İlgili mağaraya gidin ve kovayı sıvı ile doldurun.",
+      "Kovadaki sıvıyı içerek güçlendirmeyi aktif edin.",
+      "Güçlendirme süresi bitmeden karakteri öldürün (örneğin, intihar ettirin veya rakibe ölün).",
+      "Yeniden doğuşu (respawn) bekleyin.",
+      "Karakter doğduktan sonra güçlendirmenin durumunu kontrol edin."
+    ],
+    "beklenen_sonuc": "Karakter öldüğünde tüm geçici güçlendirmelerin ve statü etkilerinin silinmesi ve karakter yeniden doğduğunda bu güçlendirmelerin etkisinin ortadan kalkması beklenmektedir.",
+    "risk_alani": "Evet, çünkü bu alanda oyun dengesini (balance) etkileyen mekaniklerin doğru çalışması kritiktir ve gelecekte benzer hatalar çıkma ihtimali yüksektir. Özellikle karakterin ölümünden sonra statü ve güçlendirmelerin doğru şekilde sıfırlanmaması, oyunun genel dengesini bozabilir ve haksız avantajlara yol açabilir."
+  },
+  {
+    "bug_key": "AP-2",
+    "bug_summary": " [Çevre/Biyom] Orman bölgesindeki osuruklu mantarların hasar alanı (hitbox), görsel efektin (VFX) çok daha dışına taşıyor.",
+    "bug_priority": "Medium",
+    "alan": "Çevre Tasarımı / Çarpışma (Hitbox)",
+    "test_senaryosu": "Orman Biyomunda Osuruklu Mantarların Hasar Alanı Testi",
+    "test_adimlari": [
+      "Oyuncu karakterini orman biyomuna götür.",
+      "Gaz çıkaran bir mantar bul ve salınım yapmasını bekle.",
+      "Görsel gaz bulutunun sınırından yaklaşık 2-3 birim uzağında dur ve karakterin durumunu izle.",
+      "Farklı açılardan ve mesafelerden testi tekrarla."
+    ],
+    "beklenen_sonuc": "Karakterin görsel gaz bulutunun dışında kaldığı için etkilenmemesi ve herhangi bir statü/can kaybı yaşamaması.",
+    "risk_alani": "Evet, çünkü bu bug çevre tasarımı ve çarpışma (hitbox) mekanikleriyle ilgili ve bu tür mekaniklerde hataların çıkması oldukça olasıdır. Ayrıca, bu tür hatalar oyuncuların deneyimini olumsuz etkileyebilir ve oyunun genel dengesini bozabilir."
+  },
+  {
+    "bug_key": "AP-1",
+    "bug_summary": "[İnşaat] Ördek takımı oyuncuları, Seviye 2 ahşap duvarların içinden (clipping) geçebiliyor.",
+    "bug_priority": "Medium",
+    "alan": "Fizik Motoru / İnşaat Sistemi",
+    "test_senaryosu": "Ördek Takımı Oyuncularının Ahşap Duvarlara Çarpışma Testi",
+    "test_adimlari": [
+      "Oyuna başla ve herhangi bir haritayı seç.",
+      "İnşaat menüsünü aç ve zemine 'Seviye 2 Ahşap Duvar' kur.",
+      "Duvara yaklaşık 10 metre mesafeden koşmaya başla.",
+      "Duvara tam temas etmeden hemen önce 'Atılma' (Dash) yeteneğini kullan.",
+      "Bu adımları farklı hızlarda ve farklı açılardan tekrarla."
+    ],
+    "beklenen_sonuc": "Karakterin duvara çarpıp durması veya atılma animasyonunun iptal olması. Oyuncu, duvarın içinden geçmemelidir.",
+    "risk_alani": "Evet, bu alanda gelecekte hata çıkma ihtimali yüksektir. Çünkü fizik motoru ve inşaat sistemi gibi kompleks sistemlerin birleştiği noktada, özellikle yüksek hızlarda ve farklı açılardan yapılan çarpışma hesaplamalarında hatalar çıkması muhtemeldir."
+  }
+]

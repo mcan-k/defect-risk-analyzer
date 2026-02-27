@@ -1,0 +1,15 @@
+﻿# Python
+.venv/
+__pycache__/
+*.pyc
+
+# Hassas veriler
+.env
+data/anon_map.json
+
+# ChromaDB (her ortamda yeniden olusturulur)
+data/chroma_db/
+
+# IDE
+.vscode/
+.idea/

@@ -1,0 +1,92 @@
+{
+  "Fizik Motoru / Çarpışma Sistemi": {
+    "bug_sayisi": 1,
+    "risk_skoru": 5,
+    "bug_keys": [
+      "AP-8"
+    ],
+    "oncelikler": [
+      "Highest"
+    ]
+  },
+  "İnşaat Sistemi ve Fizik Motoru": {
+    "bug_sayisi": 1,
+    "risk_skoru": 4,
+    "bug_keys": [
+      "AP-5"
+    ],
+    "oncelikler": [
+      "High"
+    ]
+  },
+  "Hata Raporlama ve İzleme Sistemi": {
+    "bug_sayisi": 1,
+    "risk_skoru": 3,
+    "bug_keys": [
+      "AP-9"
+    ],
+    "oncelikler": [
+      "Medium"
+    ]
+  },
+  "Ağ ve Senkronizasyon": {
+    "bug_sayisi": 1,
+    "risk_skoru": 3,
+    "bug_keys": [
+      "AP-6"
+    ],
+    "oncelikler": [
+      "Medium"
+    ]
+  },
+  "Yıkım Fiziği / Ağ (Network)": {
+    "bug_sayisi": 1,
+    "risk_skoru": 3,
+    "bug_keys": [
+      "AP-4"
+    ],
+    "oncelikler": [
+      "Medium"
+    ]
+  },
+  "Eşya Kullanımı / Statü Yönetimi": {
+    "bug_sayisi": 1,
+    "risk_skoru": 3,
+    "bug_keys": [
+      "AP-3"
+    ],
+    "oncelikler": [
+      "Medium"
+    ]
+  },
+  "Çevre Tasarımı / Çarpışma (Hitbox)": {
+    "bug_sayisi": 1,
+    "risk_skoru": 3,
+    "bug_keys": [
+      "AP-2"
+    ],
+    "oncelikler": [
+      "Medium"
+    ]
+  },
+  "Fizik Motoru / İnşaat Sistemi": {
+    "bug_sayisi": 1,
+    "risk_skoru": 3,
+    "bug_keys": [
+      "AP-1"
+    ],
+    "oncelikler": [
+      "Medium"
+    ]
+  },
+  "Yapay Zeka / Pathfinding": {
+    "bug_sayisi": 1,
+    "risk_skoru": 2,
+    "bug_keys": [
+      "AP-7"
+    ],
+    "oncelikler": [
+      "Low"
+    ]
+  }
+}
