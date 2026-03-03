@@ -283,12 +283,12 @@ def parse_analysis(text):
 def get_risk_emoji(score):
     """Risk skoruna gore emoji doner."""
     if score >= 80:
-        return "RED_CIRCLE"
+        return "red_circle"
     elif score >= 60:
-        return "ORANGE_CIRCLE"
+        return "orange_circle"
     elif score >= 40:
-        return "YELLOW_CIRCLE"
-    return "GREEN_CIRCLE"
+        return "yellow_circle"
+    return "green_circle"
 
 
 def format_pr_comment(parsed, similar_bugs, changed_files):
