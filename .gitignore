@@ -1,0 +1,30 @@
+# Environment & secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime data (user-specific, regenerated at runtime)
+data/bugs.json
+data/chroma_db/
+data/anon_map.json
+data/analysis_results.json
+data/defect_density.json
+data/webhook_results.json
+
+# Keep sample data for demo/mock mode
+!data/sample_bugs.json
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docker
+*.log

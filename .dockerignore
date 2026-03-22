@@ -1,0 +1,42 @@
+# Environment & secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime data (rebuilt inside container)
+data/bugs.json
+data/chroma_db/
+data/anon_map.json
+data/analysis_results.json
+data/defect_density.json
+data/webhook_results.json
+
+# Git
+.git/
+.github/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Docs (not needed in image)
+README.md
+LICENSE
+*.md
+
+# Docker (prevent recursive copy)
+Dockerfile
+docker-compose.yml
+
+# Logs
+*.log

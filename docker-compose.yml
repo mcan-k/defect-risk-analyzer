@@ -1,0 +1,48 @@
+# =============================================================================
+# Predictive Defect Analysis Engine — Docker Compose
+# =============================================================================
+# Usage:
+#   docker-compose up --build        Start both services
+#   docker-compose down              Stop and remove containers
+#   docker-compose logs -f backend   Follow backend logs
+# =============================================================================
+
+version: "3.9"
+
+services:
+  backend:
+    build: .
+    container_name: defect-risk-backend
+    command: uvicorn api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - .env
+    volumes:
+      - app-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
+  frontend:
+    build: .
+    container_name: defect-risk-frontend
+    command: streamlit run dashboard.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
+    ports:
+      - "${STREAMLIT_PORT:-8501}:8501"
+    env_file:
+      - .env
+    volumes:
+      - app-data:/app/data
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  app-data:
+    driver: local
