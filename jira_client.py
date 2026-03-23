@@ -175,25 +175,31 @@ class JiraClient:
         ]
 
         all_bugs: list[dict[str, Any]] = []
-        start_at = 0
+        next_page_token: str | None = None
+        page_count = 0
+        max_pages = 50  # Safety cap to prevent infinite pagination
 
-        while True:
+        while page_count < max_pages:
+            page_count += 1
+            body: dict[str, Any] = {
+                "jql": jql,
+                "maxResults": max_results,
+                "fields": fields,
+            }
+            if next_page_token:
+                body["nextPageToken"] = next_page_token
+
             try:
-                response = self._session.get(
-                    f"{self._url}/rest/api/3/search",
-                    params={
-                        "jql": jql,
-                        "startAt": start_at,
-                        "maxResults": max_results,
-                        "fields": ",".join(fields),
-                    },
+                response = self._session.post(
+                    f"{self._url}/rest/api/3/search/jql",
+                    json=body,
                     timeout=30,
                 )
                 response.raise_for_status()
                 data = response.json()
 
             except requests.RequestException as e:
-                logger.error("Jira API error at startAt=%d: %s", start_at, e)
+                logger.error("Jira API error on page %d: %s", page_count, e)
                 break
 
             issues = data.get("issues", [])
@@ -204,10 +210,13 @@ class JiraClient:
                 bug = self._normalize_issue(issue)
                 all_bugs.append(bug)
 
-            # Check if there are more pages
-            total = data.get("total", 0)
-            start_at += len(issues)
-            if start_at >= total:
+            # New pagination: use nextPageToken and isLast
+            is_last = data.get("isLast", True)
+            if is_last:
+                break
+
+            next_page_token = data.get("nextPageToken")
+            if not next_page_token:
                 break
 
         logger.info("Fetched %d bugs from Jira project %s.", len(all_bugs), self._project_key)
