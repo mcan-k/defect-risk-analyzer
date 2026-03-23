@@ -795,11 +795,34 @@ def page_settings():
         help="Aktifken Jira yerine örnek veriler kullanılır",
     )
 
+    st.markdown("---")
+
+    # --- Data Anonymization ---
+    st.subheader("🔒 Veri Anonimleştirme")
+    st.markdown(
+        "Aktifken, bug verileri LLM'e gönderilmeden önce kişisel bilgiler maskelenir. "
+        "Gerçek müşteri verileriyle çalışırken **açık tutmanız** önerilir."
+    )
+    st.markdown(
+        "**Maskelenen veriler:** E-posta adresleri (`ahmet@firma.com` → `[EMAIL_001]`), "
+        "IP adresleri (`192.168.1.50` → `[IP_001]`), "
+        "URL'ler (`https://site.com/api` → `[URL_001]`), "
+        "Telefon numaraları (`+90 532 123 4567` → `[PHONE_001]`)"
+    )
+    st.caption("Not: Düz metin olarak yazılmış kişi isimleri (ör. 'Ahmet Yılmaz') yapısal bir formata uymadığı için maskelenmez.")
+
+    anonymize = st.toggle(
+        "Veri Anonimleştirme",
+        value=config.ANONYMIZE_DATA,
+        help="LLM'e gönderilen verilerde PII maskeleme",
+    )
+
     if st.button("💾 Uygulama Ayarlarını Kaydet", use_container_width=True):
         save_multiple_env({
             "MAX_DAILY_REQUESTS": str(max_daily),
             "GROQ_SLEEP": str(groq_sleep),
             "USE_MOCK_DATA": str(mock_mode),
+            "ANONYMIZE_DATA": str(anonymize),
         })
         st.success("✅ Uygulama ayarları kaydedildi ve uygulandı!")
         time.sleep(1)

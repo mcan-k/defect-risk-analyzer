@@ -441,13 +441,18 @@ class RiskAnalyzer:
         # Step 3: Find similar bugs
         similar_bugs = self.find_similar_bugs(query, n_results=5)
 
-        # Step 4: Anonymize before LLM call
-        anon_query = self._anonymizer.anonymize_query(query)
-        anon_bug_data = None
-        if bug_data:
-            anon_bugs = self._anonymizer.anonymize_bugs([bug_data])
-            anon_bug_data = anon_bugs[0] if anon_bugs else None
-        anon_similar = self._anonymizer.anonymize_bugs(similar_bugs) if similar_bugs else []
+        # Step 4: Anonymize before LLM call (if enabled)
+        if config.ANONYMIZE_DATA:
+            anon_query = self._anonymizer.anonymize_query(query)
+            anon_bug_data = None
+            if bug_data:
+                anon_bugs = self._anonymizer.anonymize_bugs([bug_data])
+                anon_bug_data = anon_bugs[0] if anon_bugs else None
+            anon_similar = self._anonymizer.anonymize_bugs(similar_bugs) if similar_bugs else []
+        else:
+            anon_query = query
+            anon_bug_data = bug_data
+            anon_similar = similar_bugs
 
         # Step 5: Build prompt
         user_prompt = build_user_prompt(
@@ -469,10 +474,10 @@ class RiskAnalyzer:
         llm_response = llm.analyze(SYSTEM_PROMPT, user_prompt)
         self._daily_request_count += 1
 
-        # Step 7: De-anonymize LLM output
-        reasoning = self._anonymizer.deanonymize_text(
-            llm_response.get("reasoning", "")
-        )
+        # Step 7: De-anonymize LLM output (if anonymization was used)
+        reasoning = llm_response.get("reasoning", "")
+        if config.ANONYMIZE_DATA:
+            reasoning = self._anonymizer.deanonymize_text(reasoning)
 
         # Step 8: Build result
         result = {
@@ -512,9 +517,12 @@ class RiskAnalyzer:
         risk_score = self.calculate_risk_score(module, stats_for_module)
         risk_level = config.get_risk_level(risk_score)
 
-        # Anonymize
-        anon_bugs = self._anonymizer.anonymize_bugs([bug_data])
-        anon_bug_data = anon_bugs[0] if anon_bugs else bug_data
+        # Anonymize (if enabled)
+        if config.ANONYMIZE_DATA:
+            anon_bugs = self._anonymizer.anonymize_bugs([bug_data])
+            anon_bug_data = anon_bugs[0] if anon_bugs else bug_data
+        else:
+            anon_bug_data = bug_data
 
         # Build webhook prompt (no similar bugs for speed)
         user_prompt = build_webhook_prompt(
@@ -532,9 +540,9 @@ class RiskAnalyzer:
         llm_response = llm.analyze(SYSTEM_PROMPT, user_prompt)
         self._daily_request_count += 1
 
-        reasoning = self._anonymizer.deanonymize_text(
-            llm_response.get("reasoning", "")
-        )
+        reasoning = llm_response.get("reasoning", "")
+        if config.ANONYMIZE_DATA:
+            reasoning = self._anonymizer.deanonymize_text(reasoning)
 
         result = {
             "bug_key": bug_data.get("key"),

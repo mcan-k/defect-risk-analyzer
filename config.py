@@ -109,6 +109,9 @@ MAX_RETRIES: int = 2
 # Mock Data Mode
 USE_MOCK_DATA: bool = False
 
+# Data Anonymization
+ANONYMIZE_DATA: bool = True
+
 # Server
 API_HOST: str = "0.0.0.0"
 API_PORT: int = 8000
@@ -132,6 +135,7 @@ def reload() -> None:
     global API_KEY
     global MAX_DAILY_REQUESTS, GROQ_SLEEP, MAX_RETRIES
     global USE_MOCK_DATA
+    global ANONYMIZE_DATA
     global API_HOST, API_PORT, STREAMLIT_PORT, LOG_LEVEL
 
     # Re-read .env (override=True forces refresh)
@@ -154,6 +158,7 @@ def reload() -> None:
     MAX_RETRIES = _get_env_int("MAX_RETRIES", 2)
 
     USE_MOCK_DATA = _get_env_bool("USE_MOCK_DATA", False)
+    ANONYMIZE_DATA = _get_env_bool("ANONYMIZE_DATA", True)
 
     API_HOST = _get_env("API_HOST", "0.0.0.0")
     API_PORT = _get_env_int("API_PORT", 8000)
