@@ -8,6 +8,9 @@ Pages:
   4. Webhook      — Webhook analysis history
   5. Ayarlar      — Self-service configuration panel
 
+First-run experience: If no configuration exists, the app opens directly
+to a setup wizard that guides the user through entering credentials.
+
 All UI text is in Turkish.
 """
 
@@ -48,19 +51,85 @@ st.set_page_config(
 
 
 # ---------------------------------------------------------------------------
-# Helper Functions
+# .env Read/Write Helpers
+# ---------------------------------------------------------------------------
+
+def read_env_value(key: str) -> str:
+    """Read a value directly from .env file (not cached)."""
+    config.reload()
+    return getattr(config, key, "") or os.getenv(key, "")
+
+
+def save_env_value(key: str, value: str) -> None:
+    """Update a single value in .env file and reload config."""
+    env_path = config.ENV_FILE
+    lines = []
+
+    if env_path.exists():
+        with open(env_path, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+
+    found = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}="):
+            lines[i] = f"{key}={value}\n"
+            found = True
+            break
+
+    if not found:
+        lines.append(f"{key}={value}\n")
+
+    with open(env_path, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+    os.environ[key] = str(value)
+
+
+def save_multiple_env(values: dict[str, str]) -> None:
+    """Save multiple values to .env, reload dashboard config, and notify API backend."""
+    for key, value in values.items():
+        save_env_value(key, value)
+    config.reload()
+    # Notify API backend to reload its config too
+    _notify_api_reload()
+
+
+def _notify_api_reload() -> None:
+    """Tell the API backend to reload its configuration from .env."""
+    try:
+        config.reload()
+        response = requests.post(
+            f"http://localhost:{config.API_PORT}/reload-config",
+            headers={"X-API-Key": config.API_KEY},
+            timeout=5,
+        )
+        if response.status_code == 200:
+            return
+    except Exception:
+        pass  # API might not be running yet during first setup
+
+
+# ---------------------------------------------------------------------------
+# API Helpers
 # ---------------------------------------------------------------------------
 
 def api_request(method: str, endpoint: str, **kwargs) -> dict | list | None:
     """Make an authenticated API request."""
-    url = f"{API_BASE}{endpoint}"
+    config.reload()
+    url = f"http://localhost:{config.API_PORT}{endpoint}"
     headers = {"X-API-Key": config.API_KEY}
     try:
         response = requests.request(method, url, headers=headers, timeout=60, **kwargs)
         if response.status_code == 200:
             return response.json()
         else:
-            st.error(f"API Hatası ({response.status_code}): {response.json().get('detail', 'Bilinmeyen hata')}")
+            detail = "Bilinmeyen hata"
+            try:
+                detail = response.json().get("detail", detail)
+            except Exception:
+                pass
+            st.error(f"API Hatası ({response.status_code}): {detail}")
             return None
     except requests.ConnectionError:
         st.error("⚠️ API sunucusuna bağlanılamıyor. Backend çalıştığından emin olun.")
@@ -73,7 +142,7 @@ def api_request(method: str, endpoint: str, **kwargs) -> dict | list | None:
 def get_health() -> dict | None:
     """Get API health status (no auth required)."""
     try:
-        response = requests.get(f"{API_BASE}/health", timeout=5)
+        response = requests.get(f"http://localhost:{config.API_PORT}/health", timeout=5)
         if response.status_code == 200:
             return response.json()
     except Exception:
@@ -81,42 +150,19 @@ def get_health() -> dict | None:
     return None
 
 
-def save_env_value(key: str, value: str) -> None:
-    """Update a single value in the .env file."""
-    env_path = config.ENV_FILE
-    lines = []
-
-    if env_path.exists():
-        with open(env_path, "r", encoding="utf-8") as f:
-            lines = f.readlines()
-
-    # Find and replace or append
-    found = False
-    for i, line in enumerate(lines):
-        if line.strip().startswith(f"{key}="):
-            lines[i] = f"{key}={value}\n"
-            found = True
-            break
-
-    if not found:
-        lines.append(f"{key}={value}\n")
-
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.writelines(lines)
-
-    # Also update the running process environment
-    os.environ[key] = value
+def is_api_running() -> bool:
+    """Check if API backend is reachable."""
+    return get_health() is not None
 
 
 # ---------------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------------
 
-def render_sidebar():
+def render_sidebar() -> str:
     """Render sidebar with navigation and status."""
     st.sidebar.title("🔍 Defect Risk Analyzer")
 
-    # Navigation
     page = st.sidebar.radio(
         "Sayfa Seçin",
         ["📊 Dashboard", "🐛 Bug Listesi", "⚡ Canlı Analiz", "🔔 Webhook Sonuçları", "⚙️ Ayarlar"],
@@ -137,11 +183,26 @@ def render_sidebar():
             st.sidebar.info("🎭 Mock Data Modu Aktif")
     else:
         st.sidebar.error("❌ API Bağlantısı Yok")
+        st.sidebar.caption("Backend çalışmıyor. `scripts/start.bat` ile başlatın.")
+
+    st.sidebar.markdown("---")
+
+    # Connection status indicators
+    config.reload()
+    if config.is_jira_configured():
+        st.sidebar.success("✅ Jira: Bağlı")
+    else:
+        st.sidebar.warning("⚠️ Jira: Yapılandırılmamış")
+
+    if config.is_llm_configured():
+        st.sidebar.success(f"✅ LLM: {config.LLM_PROVIDER.capitalize()}")
+    else:
+        st.sidebar.warning("⚠️ LLM: API Key eksik")
 
     st.sidebar.markdown("---")
 
     # Refresh button
-    if st.sidebar.button("🔄 Jira'dan Senkronize Et", use_container_width=True):
+    if health and st.sidebar.button("🔄 Jira'dan Senkronize Et", use_container_width=True):
         with st.spinner("Veriler senkronize ediliyor..."):
             result = api_request("POST", "/refresh")
             if result:
@@ -149,6 +210,155 @@ def render_sidebar():
                 st.rerun()
 
     return page
+
+
+# =============================================================================
+# First Run Setup Wizard
+# =============================================================================
+
+def page_setup_wizard():
+    """First-run setup wizard for new users."""
+    st.title("🚀 Defect Risk Analyzer — İlk Kurulum")
+    st.markdown("Hoş geldiniz! Uygulamayı kullanmaya başlamak için aşağıdaki adımları tamamlayın.")
+    st.markdown("---")
+
+    # Step 1: Choose mode
+    st.subheader("Adım 1: Çalışma Modu")
+    st.markdown("Jira hesabınız var mı yoksa önce demo olarak denemek mi istiyorsunuz?")
+
+    mode = st.radio(
+        "Mod seçin:",
+        ["🎭 Demo Modu (Jira olmadan örnek verilerle dene)", "🔗 Canlı Mod (Gerçek Jira hesabımla kullanacağım)"],
+        index=0,
+        label_visibility="collapsed",
+    )
+
+    if "Demo" in mode:
+        st.info("Demo modunda 20 örnek bug ile uygulamayı deneyebilirsiniz. Jira veya LLM key gerekmez.")
+        if st.button("✅ Demo Modunu Aktifleştir ve Başla", type="primary", use_container_width=True):
+            save_multiple_env({"USE_MOCK_DATA": "True"})
+            st.success("Demo modu aktifleştirildi! Sayfa yenileniyor...")
+            time.sleep(1)
+            st.rerun()
+        return
+
+    # Step 2: LLM Provider
+    st.markdown("---")
+    st.subheader("Adım 2: LLM API Key")
+    st.markdown(
+        "Risk analizi için bir LLM sağlayıcı gerekiyor. "
+        "Groq ücretsiz API key sunuyor — [console.groq.com/keys](https://console.groq.com/keys) adresinden alabilirsiniz."
+    )
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        llm_provider = st.selectbox("Sağlayıcı", ["groq", "openai"], index=0)
+    with col2:
+        if llm_provider == "groq":
+            llm_key = st.text_input(
+                "Groq API Key",
+                type="password",
+                placeholder="gsk_...",
+                help="Groq Console'dan ücretsiz API key oluşturun",
+            )
+        else:
+            llm_key = st.text_input(
+                "OpenAI API Key",
+                type="password",
+                placeholder="sk-...",
+                help="OpenAI Platform'dan API key oluşturun",
+            )
+
+    # Step 3: Jira Connection
+    st.markdown("---")
+    st.subheader("Adım 3: Jira Bağlantısı")
+    st.markdown(
+        "Jira API token'ınızı [id.atlassian.com/manage-profile/security/api-tokens]"
+        "(https://id.atlassian.com/manage-profile/security/api-tokens) adresinden oluşturun."
+    )
+
+    col1, col2 = st.columns(2)
+    with col1:
+        jira_url = st.text_input(
+            "Jira URL",
+            placeholder="https://yourcompany.atlassian.net",
+            help="Jira Cloud veya Server URL'iniz",
+        )
+        jira_email = st.text_input(
+            "Jira E-posta",
+            placeholder="you@company.com",
+            help="Jira hesabınızın e-posta adresi",
+        )
+    with col2:
+        jira_token = st.text_input(
+            "Jira API Token",
+            type="password",
+            placeholder="ATATT3x...",
+            help="Jira'dan oluşturduğunuz API token",
+        )
+        jira_project = st.text_input(
+            "Proje Key",
+            placeholder="AP",
+            help="Bug key'lerinin başındaki harfler (örn: AP-101 → AP)",
+        )
+
+    # Save and start
+    st.markdown("---")
+    if st.button("🚀 Kaydet ve Başla", type="primary", use_container_width=True):
+        # Validate minimum requirements
+        if not llm_key:
+            st.error("LLM API Key zorunludur. Groq'tan ücretsiz key alabilirsiniz.")
+            return
+
+        if not all([jira_url, jira_email, jira_token, jira_project]):
+            st.error("Tüm Jira bilgileri zorunludur.")
+            return
+
+        # Save all values
+        env_values = {
+            "LLM_PROVIDER": llm_provider,
+            "USE_MOCK_DATA": "False",
+            "JIRA_URL": jira_url.rstrip("/"),
+            "JIRA_EMAIL": jira_email,
+            "JIRA_API_TOKEN": jira_token,
+            "JIRA_PROJECT_KEY": jira_project,
+        }
+
+        if llm_provider == "groq":
+            env_values["GROQ_API_KEY"] = llm_key
+        else:
+            env_values["OPENAI_API_KEY"] = llm_key
+
+        save_multiple_env(env_values)
+
+        # Test connections
+        st.info("Bağlantılar test ediliyor...")
+
+        # Test Jira
+        try:
+            from jira_client import JiraClient
+            client = JiraClient(jira_url, jira_email, jira_token, jira_project)
+            if client.test_connection():
+                st.success("✅ Jira bağlantısı başarılı!")
+            else:
+                st.warning("⚠️ Jira bağlantısı kurulamadı. Bilgileri kontrol edin. Yine de kaydedildi.")
+        except Exception as e:
+            st.warning(f"⚠️ Jira test hatası: {e}. Bilgiler kaydedildi, Ayarlar'dan düzeltebilirsiniz.")
+
+        # Test LLM
+        try:
+            from llm_provider import create_llm_provider
+            llm = create_llm_provider(llm_provider)
+            if llm.test_connection():
+                st.success(f"✅ {llm_provider.capitalize()} API bağlantısı başarılı!")
+            else:
+                st.warning(f"⚠️ {llm_provider.capitalize()} bağlantısı kurulamadı. Key'i kontrol edin.")
+        except Exception as e:
+            st.warning(f"⚠️ LLM test hatası: {e}. Bilgiler kaydedildi, Ayarlar'dan düzeltebilirsiniz.")
+
+        st.success("✅ Kurulum tamamlandı! Sayfa yenileniyor...")
+        time.sleep(2)
+        st.rerun()
 
 
 # =============================================================================
@@ -161,12 +371,12 @@ def page_dashboard():
 
     risks = api_request("GET", "/risks")
     if not risks:
-        st.info("Henüz analiz verisi yok. Önce Jira'dan veri senkronize edin veya mock modu aktifleştirin.")
+        st.info("Henüz analiz verisi yok. Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın.")
         return
 
     module_risks = risks.get("module_risks", {})
     if not module_risks:
-        st.info("Modül risk verisi bulunamadı. Önce veri yükleyin.")
+        st.info("Modül risk verisi bulunamadı. Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın.")
         return
 
     # Top metrics
@@ -188,7 +398,6 @@ def page_dashboard():
 
     st.markdown("---")
 
-    # Charts row
     col_left, col_right = st.columns(2)
 
     with col_left:
@@ -222,36 +431,24 @@ def page_dashboard():
             {"Modül": name, "Bug Sayısı": data.get("bug_count", 0)}
             for name, data in module_risks.items()
         ])
-        fig2 = px.pie(
-            df_bugs,
-            values="Bug Sayısı",
-            names="Modül",
-            hole=0.4,
-        )
+        fig2 = px.pie(df_bugs, values="Bug Sayısı", names="Modül", hole=0.4)
         fig2.update_layout(height=400)
         st.plotly_chart(fig2, use_container_width=True)
 
-    # Module risk ranking table
     st.markdown("---")
     st.subheader("Modül Risk Sıralaması")
 
     table_data = []
     for name, data in sorted(module_risks.items(), key=lambda x: x[1].get("score", 0), reverse=True):
-        level = data.get("level", "LOW")
-        color = RISK_COLORS.get(level, "#666")
         table_data.append({
             "Modül": name,
             "Risk Skoru": data.get("score", 0),
-            "Seviye": level,
+            "Seviye": data.get("level", "LOW"),
             "Toplam Bug": data.get("bug_count", 0),
             "Açık Bug": data.get("open_count", 0),
         })
 
-    st.dataframe(
-        pd.DataFrame(table_data),
-        use_container_width=True,
-        hide_index=True,
-    )
+    st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
 
 
 # =============================================================================
@@ -264,10 +461,9 @@ def page_bug_list():
 
     bugs = api_request("GET", "/bugs")
     if not bugs:
-        st.info("Henüz bug verisi yüklenmemiş.")
+        st.info("Henüz bug verisi yüklenmemiş. Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın.")
         return
 
-    # Filters
     col1, col2, col3 = st.columns(3)
 
     priorities = sorted(set(b.get("priority", "Medium") for b in bugs))
@@ -281,10 +477,8 @@ def page_bug_list():
     with col3:
         selected_component = st.multiselect("Modül Filtresi", components, default=components)
 
-    # Search
     search = st.text_input("🔍 Ara (bug key veya özet)", "")
 
-    # Filter bugs
     filtered = [
         b for b in bugs
         if b.get("priority") in selected_priority
@@ -295,7 +489,6 @@ def page_bug_list():
 
     st.markdown(f"**{len(filtered)}** / {len(bugs)} bug gösteriliyor")
 
-    # Display as dataframe
     if filtered:
         df = pd.DataFrame([
             {
@@ -321,9 +514,17 @@ def page_live_analysis():
     """Single and bulk analysis with progress and circuit breaker display."""
     st.title("⚡ Canlı Analiz")
 
+    # Check LLM is configured
+    config.reload()
+    if not config.is_llm_configured():
+        st.warning("⚠️ LLM API Key yapılandırılmamış. Ayarlar sayfasından API key girin.")
+        if st.button("⚙️ Ayarlar Sayfasına Git"):
+            st.session_state["force_page"] = "settings"
+            st.rerun()
+        return
+
     tab1, tab2 = st.tabs(["🔍 Tekli Analiz", "📦 Toplu Analiz"])
 
-    # --- Single Analysis ---
     with tab1:
         st.subheader("Tekli Bug / Alan Analizi")
 
@@ -340,7 +541,7 @@ def page_live_analysis():
             if not bug_key and not query:
                 st.warning("Lütfen bir Bug Key veya sorgu girin.")
             else:
-                with st.spinner("Analiz yapılıyor..."):
+                with st.spinner("Analiz yapılıyor... (LLM çağrısı 5-15 saniye sürebilir)"):
                     payload = {}
                     if bug_key:
                         payload["bug_key"] = bug_key
@@ -352,19 +553,14 @@ def page_live_analysis():
                 if result:
                     display_analysis_result(result)
 
-    # --- Bulk Analysis ---
     with tab2:
         st.subheader("Toplu Bug Analizi")
-        st.info("⚠️ Toplu analiz LLM API kotanızı kullanır. Rate limit aşılırsa circuit breaker devreye girer ve kalan buglar atlanır.")
+        st.info("⚠️ Toplu analiz LLM API kotanızı kullanır. Rate limit aşılırsa circuit breaker devreye girer.")
 
         bugs = api_request("GET", "/bugs")
         if bugs:
             bug_keys = [b.get("key", "") for b in bugs if b.get("key")]
-            selected_keys = st.multiselect(
-                "Analiz edilecek bugları seçin",
-                bug_keys,
-                default=[],
-            )
+            selected_keys = st.multiselect("Analiz edilecek bugları seçin", bug_keys, default=[])
 
             if st.button("🚀 Toplu Analiz Başlat", key="bulk_analyze"):
                 if not selected_keys:
@@ -376,7 +572,6 @@ def page_live_analysis():
                     if result:
                         st.markdown("---")
 
-                        # Summary metrics
                         col1, col2, col3 = st.columns(3)
                         col1.metric("Toplam", result.get("total", 0))
                         col2.metric("✅ Analiz Edilen", result.get("analyzed", 0))
@@ -389,12 +584,11 @@ def page_live_analysis():
                         if skipped:
                             st.warning(f"Atlanan buglar: {', '.join(skipped)}")
 
-                        # Show results
                         for r in result.get("results", []):
                             with st.expander(f"{r.get('bug_key', '?')} — Risk: {r.get('risk_score', 0)} ({r.get('risk_level', '?')})"):
                                 display_analysis_result(r)
         else:
-            st.info("Analiz edilecek bug verisi yok. Önce veri yükleyin.")
+            st.info("Analiz edilecek bug verisi yok. Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın.")
 
 
 def display_analysis_result(result: dict):
@@ -403,20 +597,17 @@ def display_analysis_result(result: dict):
     risk_score = result.get("risk_score", 0)
     color = RISK_COLORS.get(risk_level, "#666")
 
-    # Risk badge
     st.markdown(
         f"### Risk Skoru: <span style='color:{color}; font-size:1.5em;'>{risk_score}</span> "
         f"<span style='background-color:{color}; color:white; padding:2px 10px; border-radius:4px;'>{risk_level}</span>",
         unsafe_allow_html=True,
     )
 
-    # Reasoning
     reasoning = result.get("reasoning", "")
     if reasoning:
         st.markdown("**Analiz:**")
         st.markdown(reasoning)
 
-    # Modules, scenarios, actions in columns
     col1, col2 = st.columns(2)
 
     with col1:
@@ -439,7 +630,6 @@ def display_analysis_result(result: dict):
             for a in actions:
                 st.markdown(f"- {a}")
 
-    # Metadata
     st.caption(f"Kaynak: {result.get('source', '?')} | Tarih: {result.get('analyzed_at', '?')[:19]}")
 
 
@@ -453,10 +643,12 @@ def page_webhook_results():
 
     results = api_request("GET", "/results/webhook")
     if not results:
-        st.info("Henüz webhook analiz sonucu yok. Jira webhook yapılandırıldığında burada otomatik analiz sonuçları görünecek.")
+        st.info("Henüz webhook analiz sonucu yok.")
 
         st.markdown("---")
         st.subheader("Webhook Nasıl Kurulur?")
+
+        config.reload()
         st.markdown(f"""
         1. Jira'da **Settings → System → Webhooks** bölümüne gidin
         2. Yeni webhook oluşturun:
@@ -469,12 +661,12 @@ def page_webhook_results():
 
     st.markdown(f"**{len(results)}** webhook analiz sonucu")
 
-    for r in reversed(results):  # Most recent first
+    for r in reversed(results):
         level = r.get("risk_level", "LOW")
         color = RISK_COLORS.get(level, "#666")
+        emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(level, "⚪")
         with st.expander(
-            f"{'🔴' if level == 'CRITICAL' else '🟠' if level == 'HIGH' else '🟡' if level == 'MEDIUM' else '🟢'} "
-            f"{r.get('bug_key', '?')} — {r.get('query', '?')[:60]} — Risk: {r.get('risk_score', 0)}"
+            f"{emoji} {r.get('bug_key', '?')} — {r.get('query', '?')[:60]} — Risk: {r.get('risk_score', 0)}"
         ):
             display_analysis_result(r)
 
@@ -484,35 +676,40 @@ def page_webhook_results():
 # =============================================================================
 
 def page_settings():
-    """Self-service configuration panel."""
+    """Self-service configuration panel with live reload."""
     st.title("⚙️ Ayarlar")
+    st.caption("Değişiklikler kaydedildiğinde anında uygulanır — yeniden başlatma gerekmez.")
+
+    config.reload()
 
     # --- Jira Connection ---
     st.subheader("🔗 Jira Bağlantısı")
 
-    with st.form("jira_settings"):
-        jira_url = st.text_input("Jira URL", value=config.JIRA_URL, placeholder="https://yourcompany.atlassian.net")
-        jira_email = st.text_input("Jira E-posta", value=config.JIRA_EMAIL)
-        jira_token = st.text_input("Jira API Token", value=config.JIRA_API_TOKEN, type="password")
-        jira_project = st.text_input("Proje Key", value=config.JIRA_PROJECT_KEY, placeholder="AP")
+    jira_url = st.text_input("Jira URL", value=config.JIRA_URL, placeholder="https://yourcompany.atlassian.net")
+    jira_email = st.text_input("Jira E-posta", value=config.JIRA_EMAIL, placeholder="you@company.com")
+    jira_token = st.text_input("Jira API Token", value=config.JIRA_API_TOKEN, type="password",
+                               help="[Token oluştur →](https://id.atlassian.com/manage-profile/security/api-tokens)")
+    jira_project = st.text_input("Proje Key", value=config.JIRA_PROJECT_KEY, placeholder="AP",
+                                 help="Bug key'lerinin başındaki harfler (örn: AP-101 → AP)")
 
-        col1, col2 = st.columns(2)
-        save_jira = col1.form_submit_button("💾 Kaydet", use_container_width=True)
-        test_jira = col2.form_submit_button("🧪 Bağlantıyı Test Et", use_container_width=True)
+    col1, col2 = st.columns(2)
+    if col1.button("💾 Jira Ayarlarını Kaydet", use_container_width=True):
+        save_multiple_env({
+            "JIRA_URL": jira_url.rstrip("/"),
+            "JIRA_EMAIL": jira_email,
+            "JIRA_API_TOKEN": jira_token,
+            "JIRA_PROJECT_KEY": jira_project,
+        })
+        st.success("✅ Jira ayarları kaydedildi ve uygulandı!")
+        time.sleep(1)
+        st.rerun()
 
-    if save_jira:
-        save_env_value("JIRA_URL", jira_url)
-        save_env_value("JIRA_EMAIL", jira_email)
-        save_env_value("JIRA_API_TOKEN", jira_token)
-        save_env_value("JIRA_PROJECT_KEY", jira_project)
-        st.success("✅ Jira ayarları kaydedildi. Değişikliklerin etkili olması için uygulamayı yeniden başlatın.")
-
-    if test_jira:
+    if col2.button("🧪 Jira Bağlantısını Test Et", use_container_width=True):
         if all([jira_url, jira_email, jira_token]):
             with st.spinner("Jira bağlantısı test ediliyor..."):
                 try:
                     from jira_client import JiraClient
-                    client = JiraClient(jira_url, jira_email, jira_token, jira_project)
+                    client = JiraClient(jira_url.rstrip("/"), jira_email, jira_token, jira_project)
                     if client.test_connection():
                         st.success("✅ Jira bağlantısı başarılı!")
                     else:
@@ -527,38 +724,43 @@ def page_settings():
     # --- LLM Provider ---
     st.subheader("🤖 LLM Sağlayıcı")
 
-    with st.form("llm_settings"):
-        provider = st.selectbox(
-            "Sağlayıcı",
-            ["groq", "openai"],
-            index=0 if config.LLM_PROVIDER == "groq" else 1,
-        )
-        groq_key = st.text_input("Groq API Key", value=config.GROQ_API_KEY, type="password")
-        openai_key = st.text_input("OpenAI API Key", value=config.OPENAI_API_KEY, type="password")
+    provider = st.selectbox(
+        "Sağlayıcı",
+        ["groq", "openai"],
+        index=0 if config.LLM_PROVIDER == "groq" else 1,
+    )
 
-        col1, col2 = st.columns(2)
-        save_llm = col1.form_submit_button("💾 Kaydet", use_container_width=True)
-        test_llm = col2.form_submit_button("🧪 API Key Test Et", use_container_width=True)
+    if provider == "groq":
+        llm_key = st.text_input("Groq API Key", value=config.GROQ_API_KEY, type="password",
+                                help="[Groq Console →](https://console.groq.com/keys) adresinden ücretsiz key alın")
+    else:
+        llm_key = st.text_input("OpenAI API Key", value=config.OPENAI_API_KEY, type="password",
+                                help="[OpenAI Platform →](https://platform.openai.com/api-keys) adresinden key alın")
 
-    if save_llm:
-        save_env_value("LLM_PROVIDER", provider)
-        save_env_value("GROQ_API_KEY", groq_key)
-        save_env_value("OPENAI_API_KEY", openai_key)
-        st.success("✅ LLM ayarları kaydedildi. Değişikliklerin etkili olması için uygulamayı yeniden başlatın.")
+    col1, col2 = st.columns(2)
+    if col1.button("💾 LLM Ayarlarını Kaydet", use_container_width=True):
+        env_values = {"LLM_PROVIDER": provider}
+        if provider == "groq":
+            env_values["GROQ_API_KEY"] = llm_key
+        else:
+            env_values["OPENAI_API_KEY"] = llm_key
+        save_multiple_env(env_values)
+        st.success("✅ LLM ayarları kaydedildi ve uygulandı!")
+        time.sleep(1)
+        st.rerun()
 
-    if test_llm:
-        active_key = groq_key if provider == "groq" else openai_key
-        if active_key:
+    if col2.button("🧪 LLM Bağlantısını Test Et", use_container_width=True):
+        if llm_key:
             with st.spinner("API key test ediliyor..."):
                 try:
-                    from llm_provider import create_llm_provider
-                    # Temporarily set env var for test
+                    # Temporarily set for test
                     if provider == "groq":
-                        os.environ["GROQ_API_KEY"] = groq_key
+                        os.environ["GROQ_API_KEY"] = llm_key
                     else:
-                        os.environ["OPENAI_API_KEY"] = openai_key
+                        os.environ["OPENAI_API_KEY"] = llm_key
                     os.environ["LLM_PROVIDER"] = provider
 
+                    from llm_provider import create_llm_provider
                     llm = create_llm_provider(provider)
                     if llm.test_connection():
                         st.success(f"✅ {provider.capitalize()} API bağlantısı başarılı!")
@@ -574,56 +776,67 @@ def page_settings():
     # --- App Settings ---
     st.subheader("🛠️ Uygulama Ayarları")
 
-    with st.form("app_settings"):
-        max_daily = st.number_input(
-            "Günlük Maksimum LLM İstek Sayısı",
-            min_value=1, max_value=500,
-            value=config.MAX_DAILY_REQUESTS,
-        )
-        groq_sleep = st.number_input(
-            "İstekler Arası Bekleme (saniye)",
-            min_value=0.0, max_value=30.0,
-            value=config.GROQ_SLEEP,
-            step=0.5,
-        )
-        mock_mode = st.toggle("Mock Data Modu (Jira olmadan demo)", value=config.USE_MOCK_DATA)
+    max_daily = st.number_input(
+        "Günlük Maksimum LLM İstek Sayısı",
+        min_value=1, max_value=500,
+        value=config.MAX_DAILY_REQUESTS,
+        help="Günlük maliyet kontrolü için LLM çağrı limiti",
+    )
+    groq_sleep = st.number_input(
+        "İstekler Arası Bekleme (saniye)",
+        min_value=0.0, max_value=30.0,
+        value=config.GROQ_SLEEP,
+        step=0.5,
+        help="Groq free-tier rate limit'e takılmamak için bekleme süresi",
+    )
+    mock_mode = st.toggle(
+        "Mock Data Modu (Jira olmadan demo)",
+        value=config.USE_MOCK_DATA,
+        help="Aktifken Jira yerine örnek veriler kullanılır",
+    )
 
-        save_app = st.form_submit_button("💾 Kaydet", use_container_width=True)
-
-    if save_app:
-        save_env_value("MAX_DAILY_REQUESTS", str(max_daily))
-        save_env_value("GROQ_SLEEP", str(groq_sleep))
-        save_env_value("USE_MOCK_DATA", str(mock_mode))
-        st.success("✅ Uygulama ayarları kaydedildi. Değişikliklerin etkili olması için uygulamayı yeniden başlatın.")
+    if st.button("💾 Uygulama Ayarlarını Kaydet", use_container_width=True):
+        save_multiple_env({
+            "MAX_DAILY_REQUESTS": str(max_daily),
+            "GROQ_SLEEP": str(groq_sleep),
+            "USE_MOCK_DATA": str(mock_mode),
+        })
+        st.success("✅ Uygulama ayarları kaydedildi ve uygulandı!")
+        time.sleep(1)
+        st.rerun()
 
     st.markdown("---")
 
-    # --- Status Overview ---
+    # --- System Status ---
     st.subheader("📋 Sistem Durumu")
-    health = get_health()
-    if health:
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if health.get("jira_configured"):
-                st.success("✅ Jira: Yapılandırıldı")
-            else:
-                st.error("❌ Jira: Yapılandırılmamış")
-        with col2:
-            if health.get("llm_configured"):
-                st.success(f"✅ LLM: {config.LLM_PROVIDER.capitalize()}")
-            else:
-                st.error("❌ LLM: API Key Eksik")
-        with col3:
-            if health.get("mock_mode"):
-                st.info("🎭 Mock Mod: Aktif")
-            else:
-                st.success("🔴 Mock Mod: Kapalı")
 
-    # API Key display
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        if is_api_running():
+            st.success("✅ API Çalışıyor")
+        else:
+            st.error("❌ API Kapalı")
+    with col2:
+        if config.is_jira_configured():
+            st.success("✅ Jira Bağlı")
+        else:
+            st.error("❌ Jira Eksik")
+    with col3:
+        if config.is_llm_configured():
+            st.success(f"✅ LLM ({config.LLM_PROVIDER})")
+        else:
+            st.error("❌ LLM Eksik")
+    with col4:
+        if config.USE_MOCK_DATA:
+            st.info("🎭 Mock Aktif")
+        else:
+            st.success("🔴 Canlı Mod")
+
+    # API Key
     st.markdown("---")
     st.subheader("🔑 API Key")
     st.code(config.API_KEY, language=None)
-    st.caption("Bu key, API isteklerinde X-API-Key header'ı olarak kullanılır. Jira webhook'a bu key'i ekleyin.")
+    st.caption("Bu key, API isteklerinde `X-API-Key` header'ı olarak kullanılır. Jira webhook yapılandırmasında da bu key gerekir.")
 
 
 # =============================================================================
@@ -631,17 +844,22 @@ def page_settings():
 # =============================================================================
 
 def main():
-    """Main app entry point — route to selected page."""
-    page = render_sidebar()
+    """Main app entry point."""
+    config.reload()
 
-    # First-run check: if nothing is configured, show settings
-    health = get_health()
-    if health is None and not config.is_jira_configured() and not config.USE_MOCK_DATA:
-        st.warning("⚠️ İlk kurulum: Lütfen Ayarlar sayfasından bağlantı bilgilerinizi girin veya Mock Data modunu aktifleştirin.")
-        page_settings()
+    # First-run: show setup wizard if nothing is configured
+    if config.is_first_run():
+        page_setup_wizard()
         return
 
-    if "Dashboard" in page:
+    # Force page redirect (from session state)
+    force_page = st.session_state.pop("force_page", None)
+
+    page = render_sidebar()
+
+    if force_page == "settings":
+        page_settings()
+    elif "Dashboard" in page:
         page_dashboard()
     elif "Bug Listesi" in page:
         page_bug_list()

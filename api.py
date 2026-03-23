@@ -117,6 +117,41 @@ async def health_check():
 
 
 # =============================================================================
+# Reload Configuration (called by Dashboard after settings change)
+# =============================================================================
+
+@app.post(
+    "/reload-config",
+    dependencies=[Depends(require_api_key)],
+    tags=["System"],
+)
+async def reload_config():
+    """
+    Reload configuration from .env file.
+
+    Called automatically by the Dashboard Settings page after saving changes.
+    Reloads config values and reinitializes the LLM provider so the API
+    picks up new credentials without a restart.
+    """
+    config.reload()
+    analyzer.reset_llm()
+    logger.info(
+        "Config reloaded. Jira: %s, LLM: %s (%s), Mock: %s",
+        config.is_jira_configured(),
+        config.is_llm_configured(),
+        config.LLM_PROVIDER,
+        config.USE_MOCK_DATA,
+    )
+    return {
+        "status": "ok",
+        "jira_configured": config.is_jira_configured(),
+        "llm_configured": config.is_llm_configured(),
+        "llm_provider": config.LLM_PROVIDER,
+        "mock_mode": config.USE_MOCK_DATA,
+    }
+
+
+# =============================================================================
 # Single Analysis
 # =============================================================================
 

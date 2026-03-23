@@ -392,6 +392,11 @@ class RiskAnalyzer:
             self._llm = create_llm_provider()
         return self._llm
 
+    def reset_llm(self) -> None:
+        """Reset LLM provider so next call creates a fresh one with new config."""
+        self._llm = None
+        logger.info("LLM provider reset. Will reinitialize on next analysis.")
+
     def analyze_bug(
         self,
         query: str,
