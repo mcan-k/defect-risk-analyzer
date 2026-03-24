@@ -5,13 +5,54 @@ echo   Defect Risk Analyzer - Baslatiliyor
 echo ============================================================
 echo.
 
-:: Check venv exists
+:: Check venv exists — auto-setup if missing
 if not exist ".venv\Scripts\activate.bat" (
-    echo [HATA] Sanal ortam bulunamadi. Once kurulum yapin:
-    echo        scripts\setup.bat
+    echo [INFO] Ilk calistirma tespit edildi. Otomatik kurulum baslatiliyor...
     echo.
-    pause
-    exit /b 1
+    
+    :: Check Python
+    python --version >nul 2>&1
+    if %ERRORLEVEL% NEQ 0 (
+        echo [HATA] Python bulunamadi. Python 3.11+ yukleyin: https://python.org
+        echo.
+        pause
+        exit /b 1
+    )
+    
+    echo [1/3] Sanal ortam olusturuluyor...
+    python -m venv .venv
+    if %ERRORLEVEL% NEQ 0 (
+        echo [HATA] Sanal ortam olusturulamadi.
+        pause
+        exit /b 1
+    )
+    
+    call .venv\Scripts\activate.bat
+    
+    echo [2/3] Bagimliliklar yukleniyor (ilk seferde 1-2 dakika surebilir^)...
+    pip install --upgrade pip >nul 2>&1
+    pip install -r requirements.txt
+    if %ERRORLEVEL% NEQ 0 (
+        echo [HATA] Bagimliliklar yuklenemedi.
+        pause
+        exit /b 1
+    )
+    
+    echo [3/3] Yapilandirma hazirlaniyor...
+    if not exist "data" mkdir data
+    if not exist ".env" (
+        if exist ".env.example" (
+            copy .env.example .env >nul
+        )
+        echo USE_MOCK_DATA=True>> .env
+        echo       Mock modu aktif olarak ayarlandi. Ayarlar sayfasindan degistirebilirsiniz.
+    )
+    
+    echo.
+    echo ============================================================
+    echo   Kurulum tamamlandi! Uygulama baslatiliyor...
+    echo ============================================================
+    echo.
 )
 
 :: Activate venv
