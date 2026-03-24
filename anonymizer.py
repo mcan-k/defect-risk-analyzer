@@ -29,12 +29,24 @@ class DataAnonymizer:
             "IP": 0,
             "URL": 0,
             "PHONE": 0,
+            "TOKEN": 0,
+            "APIKEY": 0,
         }
         self._load_map()
 
     # ------------------------------------------------------------------
     # Regex patterns for PII detection
     # ------------------------------------------------------------------
+    _BEARER_RE = re.compile(
+        r"Bearer\s+[A-Za-z0-9\-._~+/]+=*", re.UNICODE
+    )
+    _APIKEY_RE = re.compile(
+        r"(?:(?:api[_-]?key|token|secret|password|authorization)\s*[=:]\s*)([A-Za-z0-9\-._~+/]{20,}=*)",
+        re.IGNORECASE,
+    )
+    _APIKEY_PREFIX_RE = re.compile(
+        r"\b(?:gsk_|sk-|xoxb-|xoxp-|ghp_|glpat-|ATATT)[A-Za-z0-9\-._~+/]{10,}=*\b"
+    )
     _EMAIL_RE = re.compile(
         r"[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+", re.UNICODE
     )
@@ -110,14 +122,23 @@ class DataAnonymizer:
     # ------------------------------------------------------------------
 
     def _anonymize_string(self, text: str) -> str:
-        """Apply all PII patterns to a string."""
+        """Apply all PII patterns to a string. Order matters for accuracy."""
         if not text:
             return text
 
-        # Order matters: URLs before emails (URLs may contain email-like parts)
-        result = self._URL_RE.sub(lambda m: self._get_token(m.group(), "URL"), text)
+        # 1. Bearer tokens first (before URL/email could match sub-parts)
+        result = self._BEARER_RE.sub(lambda m: self._get_token(m.group(), "TOKEN"), text)
+        # 2. Known API key prefixes (gsk_, sk-, ghp_, ATATT, etc.)
+        result = self._APIKEY_PREFIX_RE.sub(lambda m: self._get_token(m.group(), "APIKEY"), result)
+        # 3. Generic key=value patterns (api_key=..., token=..., secret=...)
+        result = self._APIKEY_RE.sub(lambda m: m.group(0).replace(m.group(1), self._get_token(m.group(1), "APIKEY")), result)
+        # 4. URLs before emails (URLs may contain email-like parts)
+        result = self._URL_RE.sub(lambda m: self._get_token(m.group(), "URL"), result)
+        # 5. Emails
         result = self._EMAIL_RE.sub(lambda m: self._get_token(m.group(), "EMAIL"), result)
+        # 6. IP addresses
         result = self._IP_RE.sub(lambda m: self._get_token(m.group(), "IP"), result)
+        # 7. Phone numbers
         result = self._PHONE_RE.sub(lambda m: self._get_token(m.group(), "PHONE"), result)
 
         return result

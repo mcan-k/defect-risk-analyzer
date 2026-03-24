@@ -799,15 +799,19 @@ def page_settings():
 
     # --- Data Anonymization ---
     st.subheader("🔒 Veri Anonimleştirme")
+    st.markdown("Aktifken, bug verileri LLM'e gönderilmeden önce hassas bilgiler maskelenir.")
     st.markdown(
-        "Aktifken, bug verileri LLM'e gönderilmeden önce kişisel bilgiler maskelenir. "
-        "Gerçek müşteri verileriyle çalışırken **açık tutmanız** önerilir."
-    )
-    st.markdown(
-        "**Maskelenen veriler:** E-posta adresleri (`ahmet@firma.com` → `[EMAIL_001]`), "
-        "IP adresleri (`192.168.1.50` → `[IP_001]`), "
-        "URL'ler (`https://site.com/api` → `[URL_001]`), "
-        "Telefon numaraları (`+90 532 123 4567` → `[PHONE_001]`)"
+        """**Maskelenen veriler:**
+
+| Veri Türü | Örnek | Maskelenmiş Hali |
+|-----------|-------|-----------------|
+| E-posta adresleri | `ahmet@firma.com` | `[EMAIL_001]` |
+| IP adresleri | `192.168.1.50` | `[IP_001]` |
+| URL'ler | `https://site.com/api` | `[URL_001]` |
+| Telefon numaraları | `+90 532 123 4567` | `[PHONE_001]` |
+| Bearer Token'lar | `Bearer eyJhbG...` | `[TOKEN_001]` |
+| API Key'ler | `gsk_abc123...`, `sk-abc123...` | `[APIKEY_001]` |
+"""
     )
     st.caption("Not: Düz metin olarak yazılmış kişi isimleri (ör. 'Ahmet Yılmaz') yapısal bir formata uymadığı için maskelenmez.")
 
