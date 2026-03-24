@@ -66,7 +66,7 @@ calculate_module_stats() → statistics → LLM prompt → Groq/OpenAI → JSON 
 
 ```powershell
 # 1. Clone the repository
-git clone https://github.com/Kartall01/defect-risk-analyzer.git
+git clone https://github.com/mcan-k/defect-risk-analyzer.git
 cd defect-risk-analyzer
 
 # 2. Run the setup script
@@ -83,7 +83,7 @@ The start script launches both the API and Dashboard, then opens your browser.
 
 ```bash
 # 1. Clone and enter directory
-git clone https://github.com/Kartall01/defect-risk-analyzer.git
+git clone https://github.com/mcan-k/defect-risk-analyzer.git
 cd defect-risk-analyzer
 
 # 2. Create virtual environment
@@ -111,7 +111,7 @@ streamlit run dashboard.py --server.port 8501
 
 ```bash
 # 1. Clone and configure
-git clone https://github.com/Kartall01/defect-risk-analyzer.git
+git clone https://github.com/mcan-k/defect-risk-analyzer.git
 cd defect-risk-analyzer
 cp .env.example .env
 # Edit .env with your credentials
@@ -287,7 +287,7 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 **Mustafa Can** — QA Engineer
 
-- GitHub: [@Kartall01](https://github.com/Kartall01)
+- GitHub: [@mcan-k](https://github.com/mcan-k)
 
 ---
 
