@@ -180,7 +180,7 @@ def render_sidebar() -> str:
 
     page = st.sidebar.radio(
         "Sayfa Seçin",
-        ["📊 Dashboard", "🐛 Bug Listesi", "⚡ Canlı Analiz", "🔗 Pattern Tespiti", "🔔 Webhook Sonuçları", "⚙️ Ayarlar"],
+        ["📊 Dashboard", "🐛 Bug Listesi", "⚡ Canlı Analiz", "🔗 Pattern Tespiti", "🎯 Kör Nokta Tespiti", "🔔 Webhook Sonuçları", "⚙️ Ayarlar"],
         index=0,
     )
 
@@ -865,7 +865,144 @@ def page_patterns():
 
 
 # =============================================================================
-# Page 5: Webhook Results
+# Page 5: Blind Spot Detection
+# =============================================================================
+
+def page_blind_spots():
+    """Display blind spots — untested risky areas and neglected bugs."""
+    st.title("🎯 Kör Nokta Tespiti")
+    st.caption("Test edilmemiş riskli alanları, sahipsiz kritik bug'ları ve uzun süredir açık sorunları tespit eder.")
+
+    data = api_request("GET", "/blind-spots")
+
+    if data is None:
+        return
+
+    summary = data.get("summary", {})
+    total = summary.get("total_blind_spots", 0)
+    critical = summary.get("critical_spots", 0)
+    categories = summary.get("categories", {})
+
+    # Summary metrics
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Toplam Kör Nokta", total)
+    col2.metric("🔴 Kritik", critical)
+    col3.metric("Sahipsiz Bug", categories.get("neglected_critical_bugs", 0))
+    col4.metric("Bayat Bug", categories.get("stale_bugs", 0))
+
+    if total == 0:
+        st.success("✅ Kör nokta tespit edilmedi! QA kapsamınız iyi durumda.")
+        return
+
+    st.markdown("---")
+
+    # --- 1. Unanalyzed Risky Modules ---
+    unanalyzed = data.get("unanalyzed_risky_modules", [])
+    if unanalyzed:
+        st.subheader("⚠️ Analiz Edilmemiş Riskli Modüller")
+        st.caption("Bu modüller yüksek risk taşıyor ancak henüz detaylı analiz yapılmamış.")
+
+        for item in unanalyzed:
+            risk_level = item.get("risk_level", "MEDIUM")
+            color = RISK_COLORS.get(risk_level, "#666")
+
+            st.markdown(
+                f"**{item.get('module', '?')}** — "
+                f"<span style='background-color:{color}; color:white; padding:2px 8px; "
+                f"border-radius:4px;'>{risk_level}</span> "
+                f"(Skor: {item.get('risk_score', 0)}, "
+                f"{item.get('open_bugs', 0)} açık bug)",
+                unsafe_allow_html=True,
+            )
+            st.caption(f"💡 {item.get('recommendation', '')}")
+
+        st.markdown("---")
+
+    # --- 2. Neglected Critical Bugs ---
+    neglected = data.get("neglected_critical_bugs", [])
+    if neglected:
+        st.subheader("🚨 Sahipsiz Kritik Bug'lar")
+        st.caption("Yüksek öncelikli bug'lar henüz üzerinde çalışılmıyor.")
+
+        import pandas as pd
+        df_neglected = pd.DataFrame([
+            {
+                "Key": item.get("key", ""),
+                "Özet": item.get("summary", "")[:70],
+                "Öncelik": item.get("priority", ""),
+                "Durum": item.get("status", ""),
+                "Modül": item.get("component", ""),
+                "Açık (gün)": item.get("days_open", 0),
+            }
+            for item in neglected
+        ])
+        st.dataframe(df_neglected, use_container_width=True, hide_index=True)
+
+        for item in neglected[:3]:
+            st.caption(f"💡 {item.get('recommendation', '')}")
+
+        st.markdown("---")
+
+    # --- 3. Stale Bugs ---
+    stale = data.get("stale_bugs", [])
+    if stale:
+        st.subheader("🕐 Bayat Bug'lar (14+ gündür açık)")
+        st.caption("Uzun süredir açık olan bug'lar — çözüm süresi beklentinin üzerinde.")
+
+        import pandas as pd
+        df_stale = pd.DataFrame([
+            {
+                "Key": item.get("key", ""),
+                "Özet": item.get("summary", "")[:70],
+                "Öncelik": item.get("priority", ""),
+                "Durum": item.get("status", ""),
+                "Modül": item.get("component", ""),
+                "Açık (gün)": item.get("days_open", 0),
+            }
+            for item in stale
+        ])
+        st.dataframe(df_stale, use_container_width=True, hide_index=True)
+
+        st.markdown("---")
+
+    # --- 4. Rising Unattended ---
+    rising = data.get("rising_unattended", [])
+    if rising:
+        st.subheader("📈 Yükselen Risk — Müdahale Yok")
+        st.caption("Bug sayısı artıyor ancak üzerinde çalışılan bug yok.")
+
+        for item in rising:
+            st.markdown(
+                f"**{item.get('module', '?')}** — "
+                f"{item.get('total_bugs', 0)} toplam bug, "
+                f"{item.get('recent_bugs', 0)} yeni, "
+                f"{item.get('in_progress', 0)} üzerinde çalışılıyor"
+            )
+            st.caption(f"💡 {item.get('recommendation', '')}")
+
+    # Action summary
+    st.markdown("---")
+    st.subheader("📋 Önerilen Aksiyonlar")
+
+    actions = []
+    if unanalyzed:
+        actions.append(f"⚡ {len(unanalyzed)} riskli modülü **Canlı Analiz** sayfasından analiz edin")
+    if neglected:
+        actions.append(f"🚨 {len(neglected)} kritik bug'a kaynak atayın veya öncelik güncelleyin")
+    if stale:
+        actions.append(f"🕐 {len(stale)} bayat bug'ı gözden geçirin — kapatılabilir veya önceliklendirilebilir")
+    if rising:
+        actions.append(f"📈 {len(rising)} modüle ek test kaynağı ayrılması önerilir")
+
+    if actions:
+        for action in actions:
+            st.markdown(f"- {action}")
+    else:
+        st.success("Tüm alanlar kontrol altında!")
+
+
+# =============================================================================
+# Page 6: Webhook Results
 # =============================================================================
 
 def page_webhook_results():
@@ -1125,6 +1262,8 @@ def main():
         page_live_analysis()
     elif "Pattern" in page:
         page_patterns()
+    elif "Kör Nokta" in page:
+        page_blind_spots()
     elif "Webhook" in page:
         page_webhook_results()
     elif "Ayarlar" in page:

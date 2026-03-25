@@ -545,6 +545,28 @@ async def get_duplicates(bug_key: str):
 
 
 # =============================================================================
+# Blind Spot Detection
+# =============================================================================
+
+@app.get(
+    "/blind-spots",
+    dependencies=[Depends(require_api_key)],
+    tags=["Analysis"],
+)
+async def get_blind_spots():
+    """Detect untested risky areas, neglected bugs, and coverage gaps."""
+    try:
+        spots = await asyncio.to_thread(analyzer.detect_blind_spots)
+        return spots
+    except Exception as e:
+        logger.error("Blind spot detection failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Blind spot detection failed: {e}",
+        )
+
+
+# =============================================================================
 # Entry point (for direct run: python api.py)
 # =============================================================================
 

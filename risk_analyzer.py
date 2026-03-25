@@ -684,6 +684,30 @@ class RiskAnalyzer:
         collection = self._get_collection()
         return find_duplicates(bug, collection)
 
+    def detect_blind_spots(self) -> dict[str, Any]:
+        """
+        Detect blind spots — untested risky areas and neglected bugs.
+
+        Returns:
+            Dict with categorized blind spots and summary.
+        """
+        from blind_spot_detector import detect_blind_spots
+
+        module_stats = self.calculate_module_stats()
+        analysis_results = self.get_all_results()
+
+        # Calculate risk scores for each module
+        risk_scores = {}
+        for module_name, stats in module_stats.items():
+            risk_scores[module_name] = self.calculate_risk_score(module_name, stats)
+
+        return detect_blind_spots(
+            bugs=self._bugs,
+            module_stats=module_stats,
+            analysis_results=analysis_results,
+            risk_scores=risk_scores,
+        )
+
     def get_daily_request_count(self) -> int:
         """Return current daily LLM request count."""
         today = datetime.now().strftime("%Y-%m-%d")
