@@ -20,6 +20,7 @@ from typing import Any
 
 import config
 from anonymizer import DataAnonymizer
+from component_classifier import classify_bugs
 from llm_provider import LLMProvider, RateLimitError, LLMError, create_llm_provider
 from prompt_templates import SYSTEM_PROMPT, build_user_prompt, build_webhook_prompt
 
@@ -117,6 +118,9 @@ class RiskAnalyzer:
             Number of bugs loaded into ChromaDB.
         """
         self._bugs = bugs
+
+        # Auto-classify bugs with missing components
+        classify_bugs(self._bugs)
 
         # Reset collection to remove stale data (mock + real data mixing)
         self._reset_collection()
@@ -295,9 +299,12 @@ class RiskAnalyzer:
         """
         Calculate deterministic risk score for a module.
 
-        Formula: base_score = (priority_weight × bug_density × 100)
-                 adjusted  = base_score × open_ratio_factor × trend_multiplier
+        Formula: base_score = (priority_factor × 60) + (bug_density × 40)
+                 adjusted  = base_score × open_ratio_factor × trend_multiplier × volume_factor
                  clamped   = clamp(adjusted, 0, 100)
+
+        Volume factor prevents modules with 1-2 bugs from reaching CRITICAL.
+        You need statistical significance (3+ bugs) for a high confidence score.
 
         Args:
             module_name: Name of the module.
@@ -334,16 +341,20 @@ class RiskAnalyzer:
         }
         trend_multiplier = trend_multipliers.get(trend, 1.0)
 
+        # Component 5: Volume factor (statistical confidence)
+        # 1 bug = 0.4, 2 bugs = 0.65, 3 bugs = 0.85, 4+ bugs = 1.0
+        volume_threshold = 4
+        volume_factor = min(total_bugs / volume_threshold, 1.0)
+        volume_factor = 0.4 + (volume_factor * 0.6)  # Range: 0.4 to 1.0
+
         # Calculate base score
-        # priority_factor: 0-1, bug_density: 0-1
-        # We want a score that reflects both severity and concentration
         base_score = (
             (priority_factor * 60)      # Severity contributes up to 60
             + (bug_density * 40)         # Concentration contributes up to 40
         )
 
         # Apply multipliers
-        adjusted = base_score * open_ratio_factor * trend_multiplier
+        adjusted = base_score * open_ratio_factor * trend_multiplier * volume_factor
 
         # Clamp to 0-100
         return max(0, min(100, int(round(adjusted))))
