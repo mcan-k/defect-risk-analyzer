@@ -49,6 +49,21 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Hide Streamlit rerun indicator bar
+st.markdown("""<style>
+    [data-testid="stStatusWidget"],
+    .stApp > header,
+    div[data-testid="stDecoration"],
+    .stDeployButton,
+    #stDecoration,
+    iframe[title="streamlit_status_widget"] {
+        display: none !important;
+    }
+    .stApp [data-testid="stHeader"] {
+        background: transparent !important;
+    }
+</style>""", unsafe_allow_html=True)
+
 
 # ---------------------------------------------------------------------------
 # .env Read/Write Helpers

@@ -52,6 +52,7 @@ class RiskAnalyzer:
     """
 
     def __init__(self) -> None:
+        self._chroma_client = None
         self._collection = None
         self._bugs: list[dict[str, Any]] = []
         self._anonymizer = DataAnonymizer()
@@ -70,8 +71,8 @@ class RiskAnalyzer:
 
         try:
             import chromadb
-            client = chromadb.PersistentClient(path=str(config.CHROMA_DB_DIR))
-            self._collection = client.get_or_create_collection(
+            self._chroma_client = chromadb.PersistentClient(path=str(config.CHROMA_DB_DIR))
+            self._collection = self._chroma_client.get_or_create_collection(
                 name="defect_history",
                 metadata={"hnsw:space": "cosine"},
             )
@@ -85,6 +86,26 @@ class RiskAnalyzer:
 
         return self._collection
 
+    def _reset_collection(self):
+        """Delete and recreate ChromaDB collection to remove stale data."""
+        try:
+            if self._chroma_client is None:
+                import chromadb
+                self._chroma_client = chromadb.PersistentClient(path=str(config.CHROMA_DB_DIR))
+
+            self._chroma_client.delete_collection("defect_history")
+            self._collection = self._chroma_client.create_collection(
+                name="defect_history",
+                metadata={"hnsw:space": "cosine"},
+            )
+            logger.info("ChromaDB collection reset. Clean slate.")
+        except Exception as e:
+            logger.warning("Could not reset collection, falling back to get_or_create: %s", e)
+            self._collection = self._chroma_client.get_or_create_collection(
+                name="defect_history",
+                metadata={"hnsw:space": "cosine"},
+            )
+
     def load_bugs(self, bugs: list[dict[str, Any]]) -> int:
         """
         Load bugs into memory and sync to ChromaDB.
@@ -96,7 +117,10 @@ class RiskAnalyzer:
             Number of bugs loaded into ChromaDB.
         """
         self._bugs = bugs
-        collection = self._get_collection()
+
+        # Reset collection to remove stale data (mock + real data mixing)
+        self._reset_collection()
+        collection = self._collection
 
         # Prepare documents for ChromaDB
         ids = []
