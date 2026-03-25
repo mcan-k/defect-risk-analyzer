@@ -465,6 +465,87 @@ def page_dashboard():
 
     st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
 
+    # --- Trend Charts ---
+    bugs = api_request("GET", "/bugs")
+    if bugs:
+        st.markdown("---")
+        st.subheader("📈 Bug Trend Analizi")
+
+        # Parse dates and build timeline data
+        trend_data = []
+        for bug in bugs:
+            created = bug.get("created", "")
+            component = bug.get("component", "Genel")
+            if created:
+                try:
+                    date = pd.to_datetime(created).date()
+                    trend_data.append({
+                        "Tarih": date,
+                        "Modül": component,
+                        "Durum": bug.get("status", "Open"),
+                    })
+                except Exception:
+                    pass
+
+        if trend_data:
+            df_trend = pd.DataFrame(trend_data)
+
+            col_left, col_right = st.columns(2)
+
+            with col_left:
+                st.markdown("**Haftalık Bug Oluşturma Trendi**")
+                df_weekly = df_trend.copy()
+                df_weekly["Hafta"] = pd.to_datetime(df_weekly["Tarih"]).apply(
+                    lambda d: d - pd.Timedelta(days=d.weekday())
+                )
+                weekly_counts = df_weekly.groupby(["Hafta", "Modül"]).size().reset_index(name="Bug Sayısı")
+
+                fig_trend = px.line(
+                    weekly_counts,
+                    x="Hafta",
+                    y="Bug Sayısı",
+                    color="Modül",
+                    markers=True,
+                )
+                fig_trend.update_layout(height=350, xaxis_title="", yaxis_title="Bug Sayısı")
+                st.plotly_chart(fig_trend, use_container_width=True)
+
+            with col_right:
+                st.markdown("**Açık vs Kapalı Bug Dağılımı**")
+                open_statuses = {"to do", "open", "in progress", "in review", "reopened"}
+                df_status = df_trend.copy()
+                df_status["Kategori"] = df_status["Durum"].apply(
+                    lambda s: "Açık" if s.lower() in open_statuses else "Kapalı"
+                )
+                status_by_module = df_status.groupby(["Modül", "Kategori"]).size().reset_index(name="Sayı")
+
+                fig_status = px.bar(
+                    status_by_module,
+                    x="Modül",
+                    y="Sayı",
+                    color="Kategori",
+                    barmode="stack",
+                    color_discrete_map={"Açık": "#F97316", "Kapalı": "#22C55E"},
+                )
+                fig_status.update_layout(height=350, xaxis_title="", yaxis_title="Bug Sayısı")
+                st.plotly_chart(fig_status, use_container_width=True)
+
+            # Cumulative trend
+            st.markdown("**Kümülatif Bug Trendi (Toplam)**")
+            df_cumulative = df_trend.sort_values("Tarih")
+            df_cumulative["Sıra"] = range(1, len(df_cumulative) + 1)
+            df_cumulative["Tarih"] = pd.to_datetime(df_cumulative["Tarih"])
+
+            fig_cum = px.area(
+                df_cumulative,
+                x="Tarih",
+                y="Sıra",
+                labels={"Sıra": "Toplam Bug Sayısı"},
+            )
+            fig_cum.update_layout(height=300, xaxis_title="", yaxis_title="Toplam Bug")
+            fig_cum.update_traces(fill="tozeroy", line_color="#8B5CF6")
+            st.plotly_chart(fig_cum, use_container_width=True)
+
 
 # =============================================================================
 # Page 2: Bug List
