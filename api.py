@@ -490,6 +490,61 @@ async def get_bugs():
 
 
 # =============================================================================
+# Pattern Detection
+# =============================================================================
+
+@app.get(
+    "/patterns",
+    dependencies=[Depends(require_api_key)],
+    tags=["Analysis"],
+)
+async def get_patterns():
+    """Detect bug patterns — groups of similar bugs that may share a root cause."""
+    try:
+        patterns = await asyncio.to_thread(analyzer.detect_patterns)
+        # Remove full bug objects from response (too large), keep keys
+        for p in patterns:
+            p.pop("bugs", None)
+        return patterns
+    except Exception as e:
+        logger.error("Pattern detection failed: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Pattern detection failed: {e}",
+        )
+
+
+@app.get(
+    "/patterns/{bug_key}/duplicates",
+    dependencies=[Depends(require_api_key)],
+    tags=["Analysis"],
+)
+async def get_duplicates(bug_key: str):
+    """Find potential duplicate bugs for a given bug key."""
+    bug_data = None
+    for bug in analyzer.get_bugs():
+        if bug.get("key") == bug_key:
+            bug_data = bug
+            break
+
+    if bug_data is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Bug '{bug_key}' not found.",
+        )
+
+    try:
+        duplicates = await asyncio.to_thread(analyzer.find_duplicate_bugs, bug_data)
+        return {"bug_key": bug_key, "potential_duplicates": duplicates}
+    except Exception as e:
+        logger.error("Duplicate search failed: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Duplicate search failed: {e}",
+        )
+
+
+# =============================================================================
 # Entry point (for direct run: python api.py)
 # =============================================================================
 

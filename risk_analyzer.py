@@ -656,6 +656,34 @@ class RiskAnalyzer:
         """Return currently loaded bugs."""
         return list(self._bugs)
 
+    def detect_patterns(self, similarity_threshold: float = 0.35) -> list[dict[str, Any]]:
+        """
+        Detect bug patterns — groups of similar bugs that may share a root cause.
+
+        Args:
+            similarity_threshold: Minimum similarity to group bugs (0-1).
+
+        Returns:
+            List of pattern dicts with bug clusters and common keywords.
+        """
+        from pattern_detector import detect_patterns
+        collection = self._get_collection()
+        return detect_patterns(self._bugs, collection, similarity_threshold)
+
+    def find_duplicate_bugs(self, bug: dict[str, Any]) -> list[dict[str, Any]]:
+        """
+        Find potential duplicate bugs for a given bug.
+
+        Args:
+            bug: Bug dictionary to check.
+
+        Returns:
+            List of similar bugs with similarity scores.
+        """
+        from pattern_detector import find_duplicates
+        collection = self._get_collection()
+        return find_duplicates(bug, collection)
+
     def get_daily_request_count(self) -> int:
         """Return current daily LLM request count."""
         today = datetime.now().strftime("%Y-%m-%d")
