@@ -7,7 +7,6 @@ All prompts are in English for optimal LLM performance.
 Output language auto-detected from bug data language.
 """
 
-import json
 from typing import Any
 
 # =============================================================================

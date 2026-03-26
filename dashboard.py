@@ -1,12 +1,14 @@
 """
-Streamlit Dashboard — 5-page UI for the Predictive Defect Analysis Engine.
+Streamlit Dashboard — 7-page UI for the Predictive Defect Analysis Engine.
 
 Pages:
-  1. Dashboard    — Risk heatmap, priority distribution, module ranking, alerts
-  2. Bug Listesi  — All bugs with filters and search
-  3. Canlı Analiz — Single + bulk analysis with progress bar + circuit breaker
-  4. Webhook      — Webhook analysis history
-  5. Ayarlar      — Self-service configuration panel
+  1. Dashboard       — Risk heatmap, priority distribution, module ranking, trends
+  2. Bug Listesi     — All bugs with filters and search
+  3. Canlı Analiz    — Single + bulk analysis with progress bar + circuit breaker
+  4. Pattern Tespiti  — Similar bug clustering and root cause hints
+  5. Kör Nokta Tespiti — Untested risky areas, neglected bugs
+  6. Webhook          — Webhook analysis history
+  7. Ayarlar          — Self-service configuration panel
 
 First-run experience: If no configuration exists, the app opens directly
 to a setup wizard that guides the user through entering credentials.
@@ -14,15 +16,11 @@ to a setup wizard that guides the user through entering credentials.
 All UI text is in Turkish.
 """
 
-import json
 import os
 import time
-from datetime import datetime
-from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 import requests
 import streamlit as st
 
@@ -31,7 +29,6 @@ import config
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-API_BASE = f"http://localhost:{config.API_PORT}"
 RISK_COLORS = {
     "CRITICAL": "#DC2626",
     "HIGH": "#F97316",
@@ -819,7 +816,6 @@ def page_patterns():
             if all_bugs:
                 pattern_bugs = [b for b in all_bugs if b.get("key") in bug_keys]
                 if pattern_bugs:
-                    import pandas as pd
                     df = pd.DataFrame([
                         {
                             "Key": b.get("key", ""),
@@ -924,7 +920,6 @@ def page_blind_spots():
         st.subheader("🚨 Sahipsiz Kritik Bug'lar")
         st.caption("Yüksek öncelikli bug'lar henüz üzerinde çalışılmıyor.")
 
-        import pandas as pd
         df_neglected = pd.DataFrame([
             {
                 "Key": item.get("key", ""),
@@ -949,7 +944,6 @@ def page_blind_spots():
         st.subheader("🕐 Bayat Bug'lar (14+ gündür açık)")
         st.caption("Uzun süredir açık olan bug'lar — çözüm süresi beklentinin üzerinde.")
 
-        import pandas as pd
         df_stale = pd.DataFrame([
             {
                 "Key": item.get("key", ""),

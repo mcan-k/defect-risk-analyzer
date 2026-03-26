@@ -8,7 +8,6 @@ Supports mock data mode for demo/evaluation without Jira credentials.
 
 import json
 import logging
-from datetime import datetime
 from typing import Any
 
 import requests
