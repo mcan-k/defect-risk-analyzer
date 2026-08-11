@@ -22,7 +22,6 @@ from defect_risk_analyzer import config
 from defect_risk_analyzer.anonymizer import DataAnonymizer
 from defect_risk_analyzer.component_classifier import classify_bugs
 from defect_risk_analyzer.llm_provider import (
-    LLMError,
     LLMProvider,
     RateLimitError,
     create_llm_provider,
@@ -655,7 +654,7 @@ class RiskAnalyzer:
         """Load defect density map from disk."""
         if config.DEFECT_DENSITY_FILE.exists():
             try:
-                with open(config.DEFECT_DENSITY_FILE, "r", encoding="utf-8") as f:
+                with open(config.DEFECT_DENSITY_FILE, encoding="utf-8") as f:
                     return json.load(f)
             except (OSError, json.JSONDecodeError):
                 pass
@@ -735,7 +734,7 @@ class RiskAnalyzer:
         if not path.exists():
             return []
         try:
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
             return data if isinstance(data, list) else []
         except (OSError, json.JSONDecodeError):

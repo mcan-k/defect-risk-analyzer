@@ -48,7 +48,7 @@ from defect_risk_analyzer.api_models import (
     WebhookPayload,
 )
 from defect_risk_analyzer.jira_client import load_bugs_from_file, refresh_data
-from defect_risk_analyzer.llm_provider import RateLimitError, LLMError
+from defect_risk_analyzer.llm_provider import LLMError, RateLimitError
 from defect_risk_analyzer.risk_analyzer import RiskAnalyzer
 
 # ---------------------------------------------------------------------------

@@ -210,7 +210,7 @@ def save_env_value(key: str, value: str) -> None:
     lines = []
 
     if env_path.exists():
-        with open(env_path, "r", encoding="utf-8") as f:
+        with open(env_path, encoding="utf-8") as f:
             lines = f.readlines()
 
     found = False

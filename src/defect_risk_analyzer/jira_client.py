@@ -321,7 +321,7 @@ def load_bugs_from_file(file_path=None) -> list[dict[str, Any]]:
             file_path = config.BUGS_FILE
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, encoding="utf-8") as f:
             bugs = json.load(f)
         logger.info("Loaded %d bugs from %s.", len(bugs), file_path)
         return bugs if isinstance(bugs, list) else []

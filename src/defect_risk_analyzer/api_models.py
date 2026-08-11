@@ -5,10 +5,8 @@ All API endpoints use these models for request validation and response serializa
 """
 
 from datetime import datetime
-from typing import Optional
 
 from pydantic import BaseModel, Field
-
 
 # =============================================================================
 # Request Models
@@ -16,12 +14,12 @@ from pydantic import BaseModel, Field
 
 class AnalyzeRequest(BaseModel):
     """Single bug or area risk analysis request."""
-    bug_key: Optional[str] = Field(
+    bug_key: str | None = Field(
         None,
         description="Jira bug key (e.g., 'AP-101'). If provided, fetches bug details from loaded data.",
         examples=["AP-101"],
     )
-    query: Optional[str] = Field(
+    query: str | None = Field(
         None,
         description="Free-text query describing an area or concern to analyze.",
         examples=["Authentication module login failures"],
@@ -52,16 +50,16 @@ class WebhookPayload(BaseModel):
 
 class SettingsUpdate(BaseModel):
     """Settings update request from the dashboard Settings page."""
-    jira_url: Optional[str] = None
-    jira_email: Optional[str] = None
-    jira_api_token: Optional[str] = None
-    jira_project_key: Optional[str] = None
-    llm_provider: Optional[str] = None
-    groq_api_key: Optional[str] = None
-    openai_api_key: Optional[str] = None
-    max_daily_requests: Optional[int] = None
-    groq_sleep: Optional[float] = None
-    use_mock_data: Optional[bool] = None
+    jira_url: str | None = None
+    jira_email: str | None = None
+    jira_api_token: str | None = None
+    jira_project_key: str | None = None
+    llm_provider: str | None = None
+    groq_api_key: str | None = None
+    openai_api_key: str | None = None
+    max_daily_requests: int | None = None
+    groq_sleep: float | None = None
+    use_mock_data: bool | None = None
 
 
 # =============================================================================
@@ -70,7 +68,7 @@ class SettingsUpdate(BaseModel):
 
 class BugRiskResult(BaseModel):
     """Risk analysis result for a single bug or query."""
-    bug_key: Optional[str] = Field(None, description="Jira bug key if applicable.")
+    bug_key: str | None = Field(None, description="Jira bug key if applicable.")
     query: str = Field(..., description="The analyzed query or bug summary.")
     risk_score: int = Field(..., ge=0, le=100, description="Deterministic risk score (0-100).")
     risk_level: str = Field(..., description="CRITICAL / HIGH / MEDIUM / LOW.")
@@ -116,7 +114,7 @@ class RiskSummary(BaseModel):
         default_factory=dict,
         description="Per-module defect density values.",
     )
-    last_updated: Optional[str] = Field(None, description="ISO timestamp of last analysis run.")
+    last_updated: str | None = Field(None, description="ISO timestamp of last analysis run.")
 
 
 class HealthResponse(BaseModel):
@@ -133,7 +131,7 @@ class HealthResponse(BaseModel):
 class ErrorResponse(BaseModel):
     """Standard error response."""
     detail: str = Field(..., description="Human-readable error message.")
-    error_code: Optional[str] = Field(None, description="Machine-readable error code.")
+    error_code: str | None = Field(None, description="Machine-readable error code.")
 
 
 # =============================================================================

@@ -19,7 +19,7 @@ STOP_WORDS = {
     "bir", "ve", "veya", "ile", "bu", "şu", "den", "dan", "da", "de",
     "mi", "mı", "için", "gibi", "daha", "çok", "var", "yok", "olan",
     "olarak", "ama", "ancak", "sonra", "önce", "her", "tüm", "bazı",
-    "diğer", "aynı", "kadar", "sonra", "zaman", "olarak", "dolayı",
+    "diğer", "aynı", "kadar", "zaman", "dolayı",
     "göre", "üzerinde", "altında", "içinde", "dışında", "tarafından",
     # English stop words
     "the", "a", "an", "is", "are", "was", "were", "be", "been", "being",
@@ -39,8 +39,8 @@ STOP_WORDS = {
     "sayfasında", "sayfasındaki", "sayfası", "sayfada",
     # Domain/technical noise (from URLs, emails, etc.)
     "com", "net", "org", "www", "http", "https", "api", "null",
-    "sirket", "firma", "test", "admin", "user", "data",
-    "eden", "olan", "iken", "sonra", "bildiren", "adımları",
+    "sirket", "firma", "admin", "user", "data",
+    "eden", "iken", "bildiren", "adımları",
     "tekrar", "kullanıcı", "kullanici",
 }
 

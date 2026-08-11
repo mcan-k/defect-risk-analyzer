@@ -11,6 +11,7 @@ so changes take effect immediately without restarting the application.
 import os
 import secrets
 from pathlib import Path
+
 from dotenv import load_dotenv
 
 # ---------------------------------------------------------------------------

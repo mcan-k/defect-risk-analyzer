@@ -174,7 +174,7 @@ class DataAnonymizer:
         if not self._map_file.exists():
             return
         try:
-            with open(self._map_file, "r", encoding="utf-8") as f:
+            with open(self._map_file, encoding="utf-8") as f:
                 data = json.load(f)
             self._forward = data.get("forward", {})
             self._reverse = data.get("reverse", {})

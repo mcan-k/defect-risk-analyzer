@@ -12,7 +12,6 @@ No API server needed — calls analysis logic directly.
 """
 
 import argparse
-import json
 import logging
 import re
 import sys
@@ -193,7 +192,7 @@ def generate_risk_report(
         report_lines.append("")
         report_lines.append("**Recommendation:** Ensure targeted testing for the affected module.")
     elif overall_level == "MEDIUM":
-        report_lines.append(f"### 🟡 MEDIUM RISK — Standard review recommended.")
+        report_lines.append("### 🟡 MEDIUM RISK — Standard review recommended.")
         report_lines.append("")
         report_lines.append("**Recommendation:** Follow normal review process with attention to edge cases.")
     else:
@@ -228,6 +227,10 @@ def generate_risk_report(
 
 def main():
     """CLI entry point."""
+    # The report contains emoji; a Windows console using a legacy codepage
+    # (e.g. cp1254) raises UnicodeEncodeError when printing it.
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
     parser = argparse.ArgumentParser(
         description="CI Risk Analyzer — Analyze PR risk from git diff",
     )
