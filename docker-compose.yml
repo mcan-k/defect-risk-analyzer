@@ -7,8 +7,6 @@
 #   docker-compose logs -f backend   Follow backend logs
 # =============================================================================
 
-version: "3.9"
-
 services:
   backend:
     build: .
@@ -25,7 +23,10 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
-      start_period: 15s
+      # On first run ChromaDB downloads its ONNX embedding model (~80MB)
+      # during app startup; a short start_period makes the backend look
+      # unhealthy and frontend dies with "dependency failed to start".
+      start_period: 180s
     restart: unless-stopped
 
   frontend:
