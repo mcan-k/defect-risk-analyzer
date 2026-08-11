@@ -23,6 +23,9 @@ data/webhook_results.json
 # Keep sample data for demo/mock mode
 !data/sample_bugs.json
 
+# Faz 2 refactor baseline — local-only scoring snapshots, never committed
+baseline/
+
 # IDE
 .vscode/
 .idea/
