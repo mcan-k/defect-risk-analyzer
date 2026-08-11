@@ -1,0 +1,52 @@
+# =============================================================================
+# Predictive Defect Analysis Engine — Packaging (PEP 621)
+# =============================================================================
+# Install for development:  pip install -e .
+# Install dev tooling:      pip install -r requirements-dev.txt
+#
+# Runtime dependencies are NOT duplicated here — they are read dynamically
+# from requirements.txt, which stays the single source of truth.
+# =============================================================================
+
+[build-system]
+# setuptools>=77 is required for the PEP 639 SPDX string form of `license`.
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "defect-risk-analyzer"
+description = "AI-powered Jira defect risk prediction using RAG and ISTQB principles."
+readme = "README.md"
+requires-python = ">=3.11"
+license = "MIT"
+authors = [{ name = "Mustafa Can" }]
+keywords = ["jira", "qa", "testing", "risk-analysis", "istqb", "rag", "llm"]
+dynamic = ["version", "dependencies"]
+
+[project.scripts]
+dra = "defect_risk_analyzer.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/mcan-k/defect-risk-analyzer"
+Repository = "https://github.com/mcan-k/defect-risk-analyzer"
+
+[tool.setuptools.dynamic]
+version = { attr = "defect_risk_analyzer.__version__" }
+dependencies = { file = ["requirements.txt"] }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+# =============================================================================
+# Linting
+# =============================================================================
+# pytest configuration is intentionally absent: there is no tests/ directory
+# yet. It lands together with the test suite.
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]

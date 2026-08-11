@@ -7,6 +7,11 @@ __pycache__/
 *.pyc
 *.pyo
 
+# Packaging artifacts
+src/*.egg-info/
+build/
+dist/
+
 # Runtime data (user-specific, regenerated at runtime)
 data/bugs.json
 data/chroma_db/

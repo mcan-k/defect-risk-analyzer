@@ -77,6 +77,20 @@ if not exist ".venv\Scripts\activate.bat" (
     call .venv\Scripts\activate.bat
 )
 
+REM --- Paketi editable modda kur (idempotent, mevcut kurulumlar icin de) ---
+REM Dashboard ve API artik "defect_risk_analyzer" paketini import ediyor;
+REM paket kurulu degilse ModuleNotFoundError alinir.
+python -c "import defect_risk_analyzer" >nul 2>&1
+if errorlevel 1 (
+    echo   Paket kuruluyor...
+    pip install -e . --no-deps
+    if errorlevel 1 (
+        echo   [HATA] Paket kurulamadi.
+        pause
+        exit /b 1
+    )
+)
+
 REM --- Onceki islemleri temizle ---
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8000" ^| findstr "LISTENING" 2^>nul') do (
     taskkill /F /PID %%a >nul 2>&1
@@ -87,14 +101,14 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8501" ^| findstr "LISTENING
 
 REM --- API sunucusunu baslat ---
 echo   API sunucusu baslatiliyor...
-start /B "" cmd /c "call .venv\Scripts\activate.bat && python -m uvicorn api:app --host 0.0.0.0 --port 8000 2>&1 > data\api.log"
+start /B "" cmd /c "call .venv\Scripts\activate.bat && python -m uvicorn defect_risk_analyzer.api:app --host 0.0.0.0 --port 8000 2>&1 > data\api.log"
 
 echo   API hazir olana kadar bekleniyor...
 timeout /t 4 /nobreak >nul
 
 REM --- Dashboard baslat ---
 echo   Dashboard baslatiliyor...
-start /B "" cmd /c "call .venv\Scripts\activate.bat && python -m streamlit run dashboard.py --server.port 8501 --server.headless true 2>&1 > data\dashboard.log"
+start /B "" cmd /c "call .venv\Scripts\activate.bat && python -m streamlit run src\defect_risk_analyzer\dashboard.py --server.port 8501 --server.headless true 2>&1 > data\dashboard.log"
 
 timeout /t 3 /nobreak >nul
 

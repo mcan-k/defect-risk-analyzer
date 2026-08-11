@@ -12,7 +12,7 @@ from typing import Any
 
 import requests
 
-import config
+from defect_risk_analyzer import config
 
 logger = logging.getLogger(__name__)
 

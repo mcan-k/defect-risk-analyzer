@@ -1,7 +1,7 @@
 # =============================================================================
 # Predictive Defect Analysis Engine — PR Risk Analysis Workflow
 # =============================================================================
-# Triggers on pull request open/update, runs ci_analyzer.py,
+# Triggers on pull request open/update, runs defect_risk_analyzer.ci_analyzer,
 # and posts a risk report as a PR comment.
 # =============================================================================
 
@@ -35,6 +35,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
+          pip install -e . --no-deps
 
       - name: Configure mock mode
         run: |
@@ -47,7 +48,7 @@ jobs:
 
       - name: Run risk analysis
         run: |
-          python ci_analyzer.py --diff-file changes.diff --output risk_report.md
+          python -m defect_risk_analyzer.ci_analyzer --diff-file changes.diff --output risk_report.md
 
       - name: Post report as PR comment
         uses: actions/github-script@v7

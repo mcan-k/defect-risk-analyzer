@@ -1,0 +1,17 @@
+# =============================================================================
+# Predictive Defect Analysis Engine — Development Dependencies
+# =============================================================================
+# Install: pip install -r requirements-dev.txt
+#
+# Note: this file is NOT the source for [project.dependencies] in
+# pyproject.toml — that reads requirements.txt. These are dev tools only.
+# =============================================================================
+
+-r requirements.txt
+
+# --- Testing ---
+pytest==8.3.4
+pytest-cov==6.0.0
+
+# --- Linting ---
+ruff==0.8.4

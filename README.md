@@ -18,7 +18,9 @@ Built on **ISTQB testing principles**: Defect Clustering (Pareto), Risk-Based Te
 - **Deterministic Risk Scoring** — Risk scores are calculated in Python using priority weights, bug density, open ratios, and trend analysis. The LLM interprets, not calculates.
 - **RAG Pipeline** — ChromaDB vector database stores historical bugs. Similar defects are retrieved for context-aware analysis.
 - **BYOK (Bring Your Own Key)** — Works with Groq (LLaMA 3.3 70b) or OpenAI (GPT-4o-mini). You provide your own API key.
-- **5-Page Dashboard** — Risk heatmap, bug browser, live analysis, webhook history, and self-service settings.
+- **7-Page Dashboard** — Risk heatmap and trend charts, bug browser, live analysis, pattern detection, blind spot detection, webhook history, and self-service settings.
+- **Pattern Detection** — Clusters similar bugs via vector similarity and extracts common root causes and duplicate candidates — no LLM call required.
+- **Blind Spot Detection** — Surfaces risky modules that were never analyzed, neglected critical bugs, and stale or rising-unattended areas.
 - **Circuit Breaker** — Bulk analysis stops on rate limit errors, protecting your API budget.
 - **CI/CD Integration** — GitHub Actions workflow posts risk reports on every PR.
 - **Data Privacy** — PII is anonymized before any LLM call. No personal data leaves your environment.
@@ -69,15 +71,13 @@ calculate_module_stats() → statistics → LLM prompt → Groq/OpenAI → JSON 
 git clone https://github.com/mcan-k/defect-risk-analyzer.git
 cd defect-risk-analyzer
 
-# 2. Run the setup script
-scripts\setup.bat
-
-# 3. Start the application
-scripts\start.bat
+# 2. Start the application
+BASLAT.bat
 ```
 
-The setup script creates a virtual environment, installs dependencies, and prepares the `.env` file.
-The start script launches both the API and Dashboard, then opens your browser.
+`BASLAT.bat` does everything in one step: on first run it creates the virtual environment, installs dependencies, and prepares the `.env` file; on every run it starts both the API and the Dashboard, then opens your browser.
+
+To stop all services, run `DURDUR.bat`.
 
 ### Option B: Manual Setup
 
@@ -93,19 +93,26 @@ python -m venv .venv
 # Linux/Mac:
 source .venv/bin/activate
 
-# 3. Install dependencies
+# 3. Install dependencies and the package itself
 pip install -r requirements.txt
+pip install -e .
 
 # 4. Configure environment
 cp .env.example .env
 # Edit .env with your credentials (or set USE_MOCK_DATA=True for demo)
 
 # 5. Start the API backend
-uvicorn api:app --host 0.0.0.0 --port 8000
+uvicorn defect_risk_analyzer.api:app --host 0.0.0.0 --port 8000
 
 # 6. In a new terminal, start the dashboard
-streamlit run dashboard.py --server.port 8501
+dra
+# ...or equivalently:
+streamlit run src/defect_risk_analyzer/dashboard.py --server.port 8501
 ```
+
+`pip install -e .` is required — the modules live in `src/defect_risk_analyzer/` and import each other by package name.
+
+The `dra` console command launches the dashboard on the port set by `STREAMLIT_PORT`.
 
 ### Option C: Docker
 
@@ -156,14 +163,19 @@ See [`.env.example`](.env.example) for the complete list.
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | `GET` | `/health` | ❌ | Service health check |
+| `POST` | `/reload-config` | ✅ | Re-read `.env` and apply settings without a restart |
+| `GET` | `/rate-limit` | ✅ | Rate limit status |
 | `POST` | `/analyze` | ✅ | Single bug/area risk analysis |
 | `POST` | `/analyze/bulk` | ✅ | Bulk analysis with circuit breaker |
+| `GET` | `/patterns` | ✅ | Bug clusters and common root causes |
+| `GET` | `/patterns/{bug_key}/duplicates` | ✅ | Similar/duplicate bugs for one bug |
 | `GET` | `/risks` | ✅ | Current risk overview (no new analysis) |
 | `POST` | `/refresh` | ✅ | Sync data from Jira |
-| `POST` | `/webhook/jira` | ✅ | Auto-analyze on Jira events |
 | `GET` | `/bugs` | ✅ | List loaded bugs |
 | `GET` | `/results` | ✅ | All analysis results |
-| `GET` | `/rate-limit` | ✅ | Rate limit status |
+| `GET` | `/results/webhook` | ✅ | Webhook-triggered analysis results |
+| `GET` | `/blind-spots` | ✅ | Risky areas not analyzed yet |
+| `POST` | `/webhook/jira` | ✅ | Auto-analyze on Jira events |
 
 **Authentication:** All endpoints (except `/health`) require `X-API-Key` header.
 
@@ -182,7 +194,7 @@ Risk scores are **deterministic** — calculated in Python, not by the LLM.
 
 ```
 base_score = (priority_factor × 60) + (bug_density × 40)
-adjusted   = base_score × open_ratio_factor × trend_multiplier
+adjusted   = base_score × open_ratio_factor × trend_multiplier × volume_factor
 risk_score = clamp(adjusted, 0, 100)
 ```
 
@@ -191,6 +203,14 @@ risk_score = clamp(adjusted, 0, 100)
 - **Bug density** (0-1): Module's share of total bugs (Defect Clustering / Pareto Principle)
 - **Open ratio factor** (1.0-1.5): More open bugs = higher risk
 - **Trend multiplier**: Increasing=1.3×, Stable=1.0×, Decreasing=0.8×
+- **Volume factor** (0.55-1.0): Statistical confidence damper — `0.4 + (min(total_bugs / 4, 1.0) × 0.6)`. Prevents modules with only one or two bugs from reaching CRITICAL; a high-confidence score needs 3+ bugs.
+
+| Bugs in module | Volume factor |
+|----------------|---------------|
+| 1 | 0.55 |
+| 2 | 0.70 |
+| 3 | 0.85 |
+| 4+ | 1.00 |
 
 **Risk Levels:**
 | Score | Level |
@@ -230,38 +250,61 @@ The workflow uses mock data mode, so it works without Jira credentials in CI.
 
 ```
 defect-risk-analyzer/
-├── api.py                  # FastAPI backend — all REST endpoints
-├── api_models.py           # Pydantic request/response models
-├── api_auth.py             # X-API-Key authentication
-├── llm_provider.py         # BYOK — Strategy Pattern (Groq / OpenAI)
-├── risk_analyzer.py        # RAG engine — ChromaDB + risk scoring + LLM
-├── prompt_templates.py     # System & User prompts (ISTQB-standard)
-├── anonymizer.py           # PII masking — reversible tokenization
-├── jira_client.py          # Jira REST API v3 + ADF parser
-├── ci_analyzer.py          # Headless CLI for GitHub Actions
-├── dashboard.py            # Streamlit UI (5 pages, Turkish)
-├── config.py               # Centralized .env configuration
-├── scripts/
-│   ├── start.bat           # Windows: launch everything
-│   ├── stop.bat            # Windows: stop all services
-│   └── setup.bat           # Windows: first-time setup
+├── src/defect_risk_analyzer/
+│   ├── __init__.py             # Single source of __version__
+│   ├── cli.py                  # "dra" console entry point
+│   ├── api.py                  # FastAPI backend — all REST endpoints
+│   ├── api_models.py           # Pydantic request/response models
+│   ├── api_auth.py             # X-API-Key authentication
+│   ├── llm_provider.py         # BYOK — Strategy Pattern (Groq / OpenAI)
+│   ├── risk_analyzer.py        # RAG engine — ChromaDB + risk scoring + LLM
+│   ├── prompt_templates.py     # System & User prompts (ISTQB-standard)
+│   ├── anonymizer.py           # PII masking — reversible tokenization
+│   ├── pattern_detector.py     # Bug clustering + common root cause extraction
+│   ├── blind_spot_detector.py  # Unanalyzed risky areas (no LLM)
+│   ├── component_classifier.py # Keyword-based component inference for empty Jira fields
+│   ├── jira_client.py          # Jira REST API v3 + ADF parser
+│   ├── ci_analyzer.py          # Headless CLI for GitHub Actions
+│   ├── dashboard.py            # Streamlit UI (7 pages, Turkish)
+│   └── config.py               # Centralized .env configuration
+├── docs/
+│   └── KNOWN-DEBT.md           # Accepted trade-offs, with planned fixes
 ├── data/
-│   └── sample_bugs.json    # Mock data for demo mode
+│   └── sample_bugs.json        # Mock data for demo mode
 ├── .github/workflows/
 │   └── pr-risk-analysis.yml
+├── BASLAT.bat                  # Windows: setup + launch everything
+├── DURDUR.bat                  # Windows: stop all services
+├── pyproject.toml              # Packaging (PEP 621) + ruff config
+├── requirements.txt            # Runtime deps (also read by pyproject.toml)
+├── requirements-dev.txt        # pytest, pytest-cov, ruff
 ├── Dockerfile
 ├── docker-compose.yml
-├── requirements.txt
 ├── .env.example
 └── LICENSE
+```
+
+`data/` and `.env` stay at the project root. `config.py` locates the root via
+`DRA_BASE_DIR` → the nearest ancestor holding `pyproject.toml` → the current
+working directory; see [`docs/KNOWN-DEBT.md`](docs/KNOWN-DEBT.md) for the
+limits of that last fallback.
+
+### Development
+
+```bash
+pip install -r requirements-dev.txt
+pip install -e .
+ruff check .
 ```
 
 ---
 
 ## 🗺️ Roadmap
 
+- [x] Trend charts (bug volume over time)
+- [x] Pattern detection (bug clustering + duplicate finder)
+- [x] Blind spot detection (unanalyzed risky areas)
 - [ ] PDF risk report export
-- [ ] Trend charts (module risk over time)
 - [ ] Sprint-based risk summaries
 - [ ] Bug prediction model
 - [ ] Additional LLM providers (Anthropic, Ollama, Azure OpenAI)

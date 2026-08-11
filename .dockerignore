@@ -30,9 +30,12 @@ data/webhook_results.json
 Thumbs.db
 
 # Docs (not needed in image)
-README.md
 LICENSE
 *.md
+
+# ...except README.md: pyproject.toml declares it as `readme`, so the
+# `pip install -e .` build step fails if it is missing.
+!README.md
 
 # Docker (prevent recursive copy)
 Dockerfile

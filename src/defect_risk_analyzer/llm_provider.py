@@ -16,7 +16,7 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any
 
-import config
+from defect_risk_analyzer import config
 
 logger = logging.getLogger(__name__)
 

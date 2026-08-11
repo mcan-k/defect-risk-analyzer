@@ -5,10 +5,10 @@ All endpoints except /health require a valid X-API-Key header.
 The key is auto-generated on first run and saved to .env.
 """
 
-from fastapi import Depends, HTTPException, Security, status
+from fastapi import HTTPException, Security, status
 from fastapi.security import APIKeyHeader
 
-import config
+from defect_risk_analyzer import config
 
 # Header-based API key scheme
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)

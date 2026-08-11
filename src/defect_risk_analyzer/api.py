@@ -1,14 +1,29 @@
 """
 FastAPI Backend — REST API for the Predictive Defect Analysis Engine.
 
-Endpoints:
+Endpoints (14 total):
+
+System:
+  GET  /health         — Service health check (no auth required)
+  POST /reload-config  — Re-read .env and apply settings without a restart
+  GET  /rate-limit     — Current rate limit status
+
+Analysis:
   POST /analyze        — Single bug/area risk analysis
   POST /analyze/bulk   — Bulk analysis with circuit breaker
+  GET  /patterns       — Bug clusters and common root causes
+  GET  /patterns/{bug_key}/duplicates — Similar/duplicate bugs for one bug
+
+Data:
   GET  /risks          — Current risk scores (reads saved data, no new analysis)
   POST /refresh        — Fetch from Jira + sync ChromaDB
-  GET  /health         — Service health check (no auth required)
+  GET  /bugs           — List loaded bugs
+  GET  /results        — All analysis results
+  GET  /results/webhook — Webhook-triggered analysis results
+  GET  /blind-spots    — Risky areas that have not been analyzed yet
+
+Webhook:
   POST /webhook/jira   — Auto-analyze on Jira bug create/update
-  GET  /rate-limit     — Current rate limit status
 """
 
 import asyncio
@@ -19,9 +34,9 @@ from datetime import datetime, timedelta
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
 
-import config
-from api_auth import require_api_key
-from api_models import (
+from defect_risk_analyzer import __version__, config
+from defect_risk_analyzer.api_auth import require_api_key
+from defect_risk_analyzer.api_models import (
     AnalyzeRequest,
     BugRiskResult,
     BulkAnalyzeRequest,
@@ -32,9 +47,9 @@ from api_models import (
     RiskSummary,
     WebhookPayload,
 )
-from jira_client import load_bugs_from_file, refresh_data
-from llm_provider import RateLimitError, LLMError
-from risk_analyzer import RiskAnalyzer
+from defect_risk_analyzer.jira_client import load_bugs_from_file, refresh_data
+from defect_risk_analyzer.llm_provider import RateLimitError, LLMError
+from defect_risk_analyzer.risk_analyzer import RiskAnalyzer
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -84,7 +99,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="Predictive Defect Analysis Engine",
     description="AI-powered Jira defect risk prediction using RAG and ISTQB principles.",
-    version="1.0.0",
+    version=__version__,
     lifespan=lifespan,
 )
 
@@ -274,8 +289,12 @@ async def analyze_bulk(request: BulkAnalyzeRequest):
                     bug_key,
                 )
 
-            except (LLMError, Exception) as e:
-                logger.error("Error analyzing bug '%s': %s", bug_key, e)
+            except LLMError as e:
+                logger.error("LLM error analyzing bug '%s': %s", bug_key, e)
+                skipped_keys.append(bug_key)
+
+            except Exception as e:
+                logger.exception("Unexpected error analyzing bug '%s': %s", bug_key, e)
                 skipped_keys.append(bug_key)
 
     return BulkAnalyzeResponse(
@@ -573,7 +592,7 @@ async def get_blind_spots():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
-        "api:app",
+        "defect_risk_analyzer.api:app",
         host=config.API_HOST,
         port=config.API_PORT,
         reload=True,

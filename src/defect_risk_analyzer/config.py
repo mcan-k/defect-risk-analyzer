@@ -16,7 +16,34 @@ from dotenv import load_dotenv
 # ---------------------------------------------------------------------------
 # Paths (these never change)
 # ---------------------------------------------------------------------------
-BASE_DIR = Path(__file__).resolve().parent
+
+def _resolve_base_dir() -> Path:
+    """
+    Locate the project root, which holds `data/` and `.env`.
+
+    This module lives inside the package (src/defect_risk_analyzer/), so
+    `Path(__file__).parent` would point at the package directory, not the
+    project root — silently relocating data/ and .env. Resolution order:
+
+      1. DRA_BASE_DIR environment variable (explicit override).
+      2. The nearest ancestor directory containing pyproject.toml
+         (source checkout, editable install, and the Docker image).
+      3. The current working directory (installed wheel, no project tree).
+
+    See docs/KNOWN-DEBT.md for the limitations of the cwd fallback.
+    """
+    override = os.getenv("DRA_BASE_DIR", "").strip()
+    if override:
+        return Path(override).resolve()
+
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "pyproject.toml").is_file():
+            return parent
+
+    return Path.cwd().resolve()
+
+
+BASE_DIR = _resolve_base_dir()
 DATA_DIR = BASE_DIR / "data"
 ENV_FILE = BASE_DIR / ".env"
 

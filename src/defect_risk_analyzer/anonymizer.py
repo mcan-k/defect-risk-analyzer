@@ -13,7 +13,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-import config
+from defect_risk_analyzer import config
 
 
 class DataAnonymizer:

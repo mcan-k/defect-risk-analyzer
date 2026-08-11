@@ -24,7 +24,7 @@ import plotly.express as px
 import requests
 import streamlit as st
 
-import config
+from defect_risk_analyzer import config
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -480,7 +480,7 @@ def page_setup_wizard():
 
         # Test Jira
         try:
-            from jira_client import JiraClient
+            from defect_risk_analyzer.jira_client import JiraClient
             client = JiraClient(jira_url, jira_email, jira_token, jira_project)
             if client.test_connection():
                 st.success("✅ Jira bağlantısı başarılı!")
@@ -491,7 +491,7 @@ def page_setup_wizard():
 
         # Test LLM
         try:
-            from llm_provider import create_llm_provider
+            from defect_risk_analyzer.llm_provider import create_llm_provider
             llm = create_llm_provider(llm_provider)
             if llm.test_connection():
                 st.success(f"✅ {llm_provider.capitalize()} API bağlantısı başarılı!")
@@ -1205,7 +1205,7 @@ def page_settings():
         if all([jira_url, jira_email, jira_token]):
             with st.spinner("Jira bağlantısı test ediliyor..."):
                 try:
-                    from jira_client import JiraClient
+                    from defect_risk_analyzer.jira_client import JiraClient
                     client = JiraClient(jira_url.rstrip("/"), jira_email, jira_token, jira_project)
                     if client.test_connection():
                         st.success("✅ Jira bağlantısı başarılı!")
@@ -1257,7 +1257,7 @@ def page_settings():
                         os.environ["OPENAI_API_KEY"] = llm_key
                     os.environ["LLM_PROVIDER"] = provider
 
-                    from llm_provider import create_llm_provider
+                    from defect_risk_analyzer.llm_provider import create_llm_provider
                     llm = create_llm_provider(provider)
                     if llm.test_connection():
                         st.success(f"✅ {provider.capitalize()} API bağlantısı başarılı!")

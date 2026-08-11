@@ -28,10 +28,15 @@ RUN pip install --no-cache-dir --upgrade pip && \
 # Copy application code
 COPY . .
 
+# Install the package itself in editable mode.
+# --no-deps: runtime dependencies were already installed above, and
+# pyproject.toml reads them dynamically from the same requirements.txt.
+RUN pip install --no-cache-dir -e . --no-deps
+
 # Create data directory for runtime files
 RUN mkdir -p /app/data
 
 # Default: start the FastAPI backend
 # Override in docker-compose.yml for the Streamlit service
 EXPOSE 8000
-CMD ["uvicorn", "api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "defect_risk_analyzer.api:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -18,11 +18,20 @@ from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-import config
-from anonymizer import DataAnonymizer
-from component_classifier import classify_bugs
-from llm_provider import LLMProvider, RateLimitError, LLMError, create_llm_provider
-from prompt_templates import SYSTEM_PROMPT, build_user_prompt, build_webhook_prompt
+from defect_risk_analyzer import config
+from defect_risk_analyzer.anonymizer import DataAnonymizer
+from defect_risk_analyzer.component_classifier import classify_bugs
+from defect_risk_analyzer.llm_provider import (
+    LLMError,
+    LLMProvider,
+    RateLimitError,
+    create_llm_provider,
+)
+from defect_risk_analyzer.prompt_templates import (
+    SYSTEM_PROMPT,
+    build_user_prompt,
+    build_webhook_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -342,10 +351,10 @@ class RiskAnalyzer:
         trend_multiplier = trend_multipliers.get(trend, 1.0)
 
         # Component 5: Volume factor (statistical confidence)
-        # 1 bug = 0.4, 2 bugs = 0.65, 3 bugs = 0.85, 4+ bugs = 1.0
+        # 1 bug = 0.55, 2 bugs = 0.70, 3 bugs = 0.85, 4+ bugs = 1.0
         volume_threshold = 4
         volume_factor = min(total_bugs / volume_threshold, 1.0)
-        volume_factor = 0.4 + (volume_factor * 0.6)  # Range: 0.4 to 1.0
+        volume_factor = 0.4 + (volume_factor * 0.6)  # Range: 0.55 (1 bug) to 1.0 (4+ bugs)
 
         # Calculate base score
         base_score = (
@@ -666,7 +675,7 @@ class RiskAnalyzer:
         Returns:
             List of pattern dicts with bug clusters and common keywords.
         """
-        from pattern_detector import detect_patterns
+        from defect_risk_analyzer.pattern_detector import detect_patterns
         collection = self._get_collection()
         return detect_patterns(self._bugs, collection, similarity_threshold)
 
@@ -680,7 +689,7 @@ class RiskAnalyzer:
         Returns:
             List of similar bugs with similarity scores.
         """
-        from pattern_detector import find_duplicates
+        from defect_risk_analyzer.pattern_detector import find_duplicates
         collection = self._get_collection()
         return find_duplicates(bug, collection)
 
@@ -691,7 +700,7 @@ class RiskAnalyzer:
         Returns:
             Dict with categorized blind spots and summary.
         """
-        from blind_spot_detector import detect_blind_spots
+        from defect_risk_analyzer.blind_spot_detector import detect_blind_spots
 
         module_stats = self.calculate_module_stats()
         analysis_results = self.get_all_results()
