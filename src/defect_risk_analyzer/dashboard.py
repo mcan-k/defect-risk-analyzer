@@ -16,15 +16,23 @@ to a setup wizard that guides the user through entering credentials.
 All UI text is in Turkish.
 """
 
+import logging
 import os
 import time
 
 import pandas as pd
 import plotly.express as px
-import requests
 import streamlit as st
 
 from defect_risk_analyzer import config
+from defect_risk_analyzer.jira_client import load_bugs_from_file
+from defect_risk_analyzer.llm_provider import LLMError, RateLimitError
+from defect_risk_analyzer.services.analysis_service import (
+    AnalysisService,
+    BugNotFoundError,
+)
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -231,72 +239,74 @@ def save_env_value(key: str, value: str) -> None:
 
 
 def save_multiple_env(values: dict[str, str]) -> None:
-    """Save multiple values to .env, reload dashboard config, and notify API backend."""
+    """Save multiple values to .env and apply them to the running service."""
     for key, value in values.items():
         save_env_value(key, value)
     config.reload()
-    # Notify API backend to reload its config too
-    _notify_api_reload()
-
-
-def _notify_api_reload() -> None:
-    """Tell the API backend to reload its configuration from .env."""
-    try:
-        config.reload()
-        response = requests.post(
-            f"http://localhost:{config.API_PORT}/reload-config",
-            headers={"X-API-Key": config.API_KEY},
-            timeout=5,
-        )
-        if response.status_code == 200:
-            return
-    except Exception:
-        pass  # API might not be running yet during first setup
+    # The service holds a provider built from the old credentials; drop it so
+    # the next analysis picks up what was just saved.
+    get_service().reset_llm()
 
 
 # ---------------------------------------------------------------------------
-# API Helpers
+# Service Access
 # ---------------------------------------------------------------------------
 
-def api_request(method: str, endpoint: str, **kwargs) -> dict | list | None:
-    """Make an authenticated API request."""
-    config.reload()
-    url = f"http://localhost:{config.API_PORT}{endpoint}"
-    headers = {"X-API-Key": config.API_KEY}
-    try:
-        response = requests.request(method, url, headers=headers, timeout=60, **kwargs)
-        if response.status_code == 200:
-            return response.json()
-        else:
-            detail = "Bilinmeyen hata"
-            try:
-                detail = response.json().get("detail", detail)
-            except Exception:
-                pass
-            st.error(f"API Hatası ({response.status_code}): {detail}")
-            return None
-    except requests.ConnectionError:
-        st.error("⚠️ API sunucusuna bağlanılamıyor. Backend çalıştığından emin olun.")
-        return None
-    except requests.Timeout:
-        st.error("⚠️ API isteği zaman aşımına uğradı.")
-        return None
+@st.cache_resource(show_spinner="Analiz servisi hazırlanıyor...")
+def get_service() -> AnalysisService:
+    """
+    Return the process-wide analysis service, loading bug data on first use.
+
+    Cached with @st.cache_resource deliberately: Streamlit re-executes this
+    module top-to-bottom on every interaction, and a fresh AnalysisService per
+    rerun would start with an empty bug list. Nothing would raise — every page
+    would just quietly report "no data".
+    """
+    service = AnalysisService()
+
+    bugs = load_bugs_from_file()
+    if bugs:
+        service.load_bugs(bugs)
+        logger.info("Dashboard loaded %d bugs into the analysis service.", len(bugs))
+    else:
+        logger.warning("No bug data found. Use the sidebar sync button or mock mode.")
+
+    return service
 
 
-def get_health() -> dict | None:
-    """Get API health status (no auth required)."""
+def call(fn, *args, **kwargs):
+    """
+    Run a service call, reporting failures inline instead of raising.
+
+    Preserves the contract the old api_request() had: callers check the result
+    with `if not result:` and never see a traceback. Without this, an exception
+    from the service would surface as a raw Streamlit traceback.
+    """
     try:
-        response = requests.get(f"http://localhost:{config.API_PORT}/health", timeout=5)
-        if response.status_code == 200:
-            return response.json()
-    except Exception:
-        pass
+        return fn(*args, **kwargs)
+    except RateLimitError as e:
+        st.error(f"⚠️ Kota doldu: {e}")
+    except LLMError as e:
+        st.error(f"⚠️ LLM hatası: {e}")
+    except BugNotFoundError as e:
+        st.error(f"⚠️ {e}")
+    except ValueError as e:
+        st.error(f"⚠️ {e}")
+    except Exception as e:
+        logger.exception("Service call %s failed", getattr(fn, "__name__", fn))
+        st.error(f"⚠️ İşlem başarısız: {e}")
     return None
 
 
-def is_api_running() -> bool:
-    """Check if API backend is reachable."""
-    return get_health() is not None
+def get_status() -> dict:
+    """Local status for the sidebar — no HTTP, no backend process."""
+    service = get_service()
+    return {
+        "bugs_loaded": len(service.get_bugs()),
+        "daily_requests_used": service.get_daily_request_count(),
+        "daily_requests_limit": config.MAX_DAILY_REQUESTS,
+        "mock_mode": config.USE_MOCK_DATA,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -315,19 +325,20 @@ def render_sidebar() -> str:
 
     st.sidebar.markdown("---")
 
-    # Health status
-    health = get_health()
-    if health:
-        st.sidebar.success("✅ API Bağlantısı Aktif")
-        col1, col2 = st.sidebar.columns(2)
-        col1.metric("Yüklü Bug", health.get("bugs_loaded", 0))
-        col2.metric("Günlük İstek", f"{health.get('daily_requests_used', 0)}/{health.get('daily_requests_limit', 50)}")
+    # Local status — the analysis engine runs inside this process
+    status = get_status()
+    col1, col2 = st.sidebar.columns(2)
+    col1.metric("Yüklü Bug", status["bugs_loaded"])
+    col2.metric(
+        "Günlük İstek",
+        f"{status['daily_requests_used']}/{status['daily_requests_limit']}",
+    )
 
-        if health.get("mock_mode"):
-            st.sidebar.info("🎭 Mock Data Modu Aktif")
-    else:
-        st.sidebar.error("❌ API Bağlantısı Yok")
-        st.sidebar.caption("Backend çalışmıyor. `BASLAT.bat` ile başlatın.")
+    if status["mock_mode"]:
+        st.sidebar.info("🎭 Mock Data Modu Aktif")
+
+    if status["bugs_loaded"] == 0:
+        st.sidebar.warning("⚠️ Bug verisi yok. Aşağıdan senkronize edin.")
 
     st.sidebar.markdown("---")
 
@@ -345,13 +356,15 @@ def render_sidebar() -> str:
 
     st.sidebar.markdown("---")
 
-    # Refresh button
-    if health and st.sidebar.button("🔄 Jira'dan Senkronize Et", use_container_width=True):
+    # Refresh button — unconditional. It used to be gated behind a reachable
+    # backend; with the service in-process there is nothing to be unreachable,
+    # and a hidden button would leave the user unable to load any data.
+    if st.sidebar.button("🔄 Jira'dan Senkronize Et", use_container_width=True):
         with st.spinner("Veriler senkronize ediliyor..."):
-            result = api_request("POST", "/refresh")
-            if result:
-                st.sidebar.success(f"✅ {result.get('bugs_fetched', 0)} bug yüklendi!")
-                st.rerun()
+            result = call(get_service().refresh)
+        if result:
+            st.sidebar.success(f"✅ {result.get('bugs_fetched', 0)} bug yüklendi!")
+            st.rerun()
 
     return page
 
@@ -513,7 +526,7 @@ def page_dashboard():
     """Risk overview dashboard with charts and alerts."""
     st.title("📊 Risk Dashboard")
 
-    risks = api_request("GET", "/risks")
+    risks = call(get_service().get_risk_summary)
     if not risks:
         st.info("Henüz analiz verisi yok. Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın.")
         return
@@ -596,7 +609,7 @@ def page_dashboard():
     st.dataframe(pd.DataFrame(table_data), use_container_width=True, hide_index=True)
 
     # --- Trend Charts ---
-    bugs = api_request("GET", "/bugs")
+    bugs = get_service().get_bugs()
     if bugs:
         st.markdown("---")
         st.subheader("📈 Bug Trend Analizi")
@@ -687,7 +700,7 @@ def page_bug_list():
     """Bug list with filters and search."""
     st.title("🐛 Bug Listesi")
 
-    bugs = api_request("GET", "/bugs")
+    bugs = get_service().get_bugs()
     if not bugs:
         st.info("Henüz bug verisi yüklenmemiş. Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın.")
         return
@@ -770,13 +783,11 @@ def page_live_analysis():
                 st.warning("Lütfen bir Bug Key veya sorgu girin.")
             else:
                 with st.spinner("Analiz yapılıyor... (LLM çağrısı 5-15 saniye sürebilir)"):
-                    payload = {}
-                    if bug_key:
-                        payload["bug_key"] = bug_key
-                    if query:
-                        payload["query"] = query
-
-                    result = api_request("POST", "/analyze", json=payload)
+                    result = call(
+                        get_service().analyze,
+                        bug_key=bug_key or None,
+                        query=query or None,
+                    )
 
                 if result:
                     display_analysis_result(result)
@@ -785,7 +796,7 @@ def page_live_analysis():
         st.subheader("Toplu Bug Analizi")
         st.info("⚠️ Toplu analiz LLM API kotanızı kullanır. Rate limit aşılırsa circuit breaker devreye girer.")
 
-        bugs = api_request("GET", "/bugs")
+        bugs = get_service().get_bugs()
         if bugs:
             bug_keys = [b.get("key", "") for b in bugs if b.get("key")]
             selected_keys = st.multiselect("Analiz edilecek bugları seçin", bug_keys, default=[])
@@ -794,8 +805,23 @@ def page_live_analysis():
                 if not selected_keys:
                     st.warning("En az bir bug seçin.")
                 else:
-                    with st.spinner(f"{len(selected_keys)} bug analiz ediliyor..."):
-                        result = api_request("POST", "/analyze/bulk", json={"bug_keys": selected_keys})
+                    # The analysis now runs in this process, so the page blocks
+                    # for the whole batch. Report progress per bug instead of
+                    # leaving the user in front of a frozen spinner.
+                    progress = st.progress(0.0, text="Analiz başlıyor...")
+
+                    def report(index: int, total: int, bug_key: str) -> None:
+                        progress.progress(
+                            index / total,
+                            text=f"{index}/{total} — {bug_key}",
+                        )
+
+                    result = call(
+                        get_service().analyze_bulk,
+                        selected_keys,
+                        on_progress=report,
+                    )
+                    progress.empty()
 
                     if result:
                         st.markdown("---")
@@ -870,7 +896,7 @@ def page_patterns():
     st.title("🔗 Pattern Tespiti")
     st.caption("Benzer bug'ları otomatik gruplar ve olası ortak nedenleri tespit eder.")
 
-    patterns = api_request("GET", "/patterns")
+    patterns = call(get_service().detect_patterns, include_bugs=False)
 
     if patterns is None:
         return
@@ -904,6 +930,10 @@ def page_patterns():
         "medium": "ORTA",
         "low": "DÜŞÜK",
     }
+
+    # Fetched once: this used to be re-read inside the loop below, one call
+    # per pattern.
+    all_bugs = get_service().get_bugs()
 
     # Display each pattern
     for pattern in patterns:
@@ -947,7 +977,6 @@ def page_patterns():
             st.markdown(f"**Bu pattern'daki bug'lar:** {', '.join(bug_keys)}")
 
             # Load full bug details
-            all_bugs = api_request("GET", "/bugs")
             if all_bugs:
                 pattern_bugs = [b for b in all_bugs if b.get("key") in bug_keys]
                 if pattern_bugs:
@@ -979,9 +1008,14 @@ def page_patterns():
     bug_key_input = st.text_input("Bug Key", placeholder="Örn: AP-12")
     if st.button("Benzer Bug'ları Bul"):
         if bug_key_input:
-            result = api_request("GET", f"/patterns/{bug_key_input}/duplicates")
-            if result:
-                dupes = result.get("potential_duplicates", [])
+            bug = get_service().get_bug(bug_key_input)
+            if bug is None:
+                st.error(f"⚠️ '{bug_key_input}' yüklü veride bulunamadı.")
+                dupes = None
+            else:
+                dupes = call(get_service().find_duplicate_bugs, bug)
+
+            if dupes is not None:
                 if dupes:
                     st.warning(f"⚠️ {len(dupes)} benzer bug bulundu!")
                     for d in dupes:
@@ -1004,7 +1038,7 @@ def page_blind_spots():
     st.title("🎯 Kör Nokta Tespiti")
     st.caption("Test edilmemiş riskli alanları, sahipsiz kritik bug'ları ve uzun süredir açık sorunları tespit eder.")
 
-    data = api_request("GET", "/blind-spots")
+    data = call(get_service().detect_blind_spots)
 
     if data is None:
         return
@@ -1138,7 +1172,7 @@ def page_webhook_results():
     """Display webhook analysis history."""
     st.title("🔔 Webhook Sonuçları")
 
-    results = api_request("GET", "/results/webhook")
+    results = get_service().get_webhook_results()
     if not results:
         st.info("Henüz webhook analiz sonucu yok.")
 
@@ -1336,10 +1370,7 @@ def page_settings():
 
     col1, col2, col3, col4 = st.columns(4)
     with col1:
-        if is_api_running():
-            st.success("✅ API Çalışıyor")
-        else:
-            st.error("❌ API Kapalı")
+        st.metric("Yüklü Bug", len(get_service().get_bugs()))
     with col2:
         if config.is_jira_configured():
             st.success("✅ Jira Bağlı")
@@ -1356,11 +1387,19 @@ def page_settings():
         else:
             st.success("🔴 Canlı Mod")
 
-    # API Key
+    # API Key — only relevant to the optional webhook server
     st.markdown("---")
-    st.subheader("🔑 API Key")
+    st.subheader("🔑 API Key (webhook servisi için)")
     st.code(config.API_KEY, language=None)
-    st.caption("Bu key, API isteklerinde `X-API-Key` header'ı olarak kullanılır. Jira webhook yapılandırmasında da bu key gerekir.")
+    st.caption(
+        "Bu key yalnızca opsiyonel webhook/API servisi için gerekir; dashboard "
+        "analiz motorunu doğrudan çalıştırır ve bu key'i kullanmaz."
+    )
+    st.warning(
+        "⚠️ Webhook servisi ayrı bir process olarak çalışıyorsa, buradaki "
+        "ayarları görmez. Kaydettiğiniz değişikliklerin webhook tarafında da "
+        "geçerli olması için o servisi yeniden başlatın."
+    )
 
 
 # =============================================================================

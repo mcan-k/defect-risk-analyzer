@@ -59,14 +59,40 @@ class VectorStore:
 
         return self._collection
 
+    @staticmethod
+    def _is_stale_handle(error: Exception) -> bool:
+        """True when the cached collection was deleted out from under us."""
+        return "does not exist" in str(error).lower()
+
+    def _run(self, operation):
+        """Run an operation on the collection, reopening a stale handle once.
+
+        The dashboard and the optional webhook server are separate processes
+        pointing at the same directory, and a full load deletes and recreates
+        the collection. Whoever was not doing the loading is left holding a
+        handle to a collection that no longer exists; every later call then
+        fails forever. Reopening once turns that into a transparent recovery.
+        """
+        try:
+            return operation(self._get_collection())
+        except Exception as e:
+            if not self._is_stale_handle(e):
+                raise
+            logger.warning("ChromaDB collection handle is stale (%s). Reopening.", e)
+            self._client = None
+            self._collection = None
+            return operation(self._get_collection())
+
     @property
     def collection(self):
         """The raw ChromaDB collection.
 
         pattern_detector and blind_spot_detector operate on the ChromaDB
-        collection object directly, so it is exposed rather than hidden.
+        collection object directly, so it is exposed rather than hidden. The
+        cheap count() forces a stale handle to surface here, where it can be
+        recovered, rather than inside the caller.
         """
-        return self._get_collection()
+        return self._run(lambda c: (c.count(), c)[1])
 
     def reset(self) -> None:
         """Delete and recreate the collection to remove stale data.
@@ -91,7 +117,7 @@ class VectorStore:
 
     def count(self) -> int:
         """Number of documents currently indexed."""
-        return self._get_collection().count()
+        return self._run(lambda c: c.count())
 
     # ------------------------------------------------------------------
     # Indexing
@@ -171,19 +197,22 @@ class VectorStore:
         Returns:
             List of similar bug metadata dictionaries.
         """
-        collection = self._get_collection()
+        try:
+            count = self.count()
+        except Exception as e:
+            logger.error("ChromaDB is unavailable: %s", e)
+            return []
 
-        if collection.count() == 0:
+        if count == 0:
             logger.info("ChromaDB is empty — no similar bugs to find.")
             return []
 
         # Limit n_results to collection size
-        actual_n = min(n_results, collection.count())
+        actual_n = min(n_results, count)
 
         try:
-            results = collection.query(
-                query_texts=[query],
-                n_results=actual_n,
+            results = self._run(
+                lambda c: c.query(query_texts=[query], n_results=actual_n)
             )
         except Exception as e:
             logger.error("ChromaDB query failed: %s", e)

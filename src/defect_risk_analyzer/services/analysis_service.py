@@ -46,6 +46,14 @@ from defect_risk_analyzer.prompt_templates import (
 logger = logging.getLogger(__name__)
 
 
+class BugNotFoundError(LookupError):
+    """Raised when a bug key is not present in the loaded data."""
+
+    def __init__(self, bug_key: str) -> None:
+        super().__init__(f"Bug '{bug_key}' not found in loaded data.")
+        self.bug_key = bug_key
+
+
 class AnalysisService:
     """Main analysis engine: statistics, similarity search and LLM interpretation."""
 
@@ -90,6 +98,64 @@ class AnalysisService:
     def get_bugs(self) -> list[dict[str, Any]]:
         """Return currently loaded bugs."""
         return list(self._bugs)
+
+    def get_bug(self, bug_key: str) -> dict[str, Any] | None:
+        """Return one loaded bug by key, or None if it is not present."""
+        for bug in self._bugs:
+            if bug.get("key") == bug_key:
+                return bug
+        return None
+
+    def refresh(self) -> dict[str, Any]:
+        """Fetch fresh data from Jira (or mock data) and reindex it.
+
+        Returns:
+            Dict with `bugs_fetched`, `bugs_loaded` and `mock_mode`.
+        """
+        from defect_risk_analyzer.jira_client import refresh_data
+
+        bugs = refresh_data()
+        loaded = self.load_bugs(bugs)
+        return {
+            "bugs_fetched": len(bugs),
+            "bugs_loaded": loaded,
+            "mock_mode": config.USE_MOCK_DATA,
+        }
+
+    def get_risk_summary(self) -> dict[str, Any]:
+        """
+        Current risk overview. Reads saved data; runs no new analysis.
+
+        Returns:
+            RiskSummary-compatible dict.
+        """
+        module_stats = self.calculate_module_stats()
+        defect_density = self.get_defect_density()
+        all_results = self.get_all_results()
+
+        module_risks = {}
+        for module_name, stats in module_stats.items():
+            score = self.calculate_risk_score(module_name, stats)
+            module_risks[module_name] = {
+                "score": score,
+                "level": scoring.get_risk_level(score),
+                "bug_count": stats.get("total_bugs", 0),
+                "open_count": stats.get("open_bugs", 0),
+            }
+
+        last_updated = None
+        if all_results:
+            last_updated = max(r.get("analyzed_at", "") for r in all_results)
+
+        return {
+            "total_bugs": len(self.get_bugs()),
+            "analyzed_count": len(all_results),
+            "module_risks": module_risks,
+            "defect_density": {
+                m: d.get("bug_density", 0) for m, d in defect_density.items()
+            },
+            "last_updated": last_updated,
+        }
 
     def find_similar_bugs(self, query: str, n_results: int = 5) -> list[dict[str, Any]]:
         """Find similar bugs via the vector store."""
@@ -362,6 +428,36 @@ class AnalysisService:
                 logger.warning("Webhook result for %s was not persisted.", result["bug_key"])
 
         return result
+
+    def analyze(
+        self,
+        bug_key: str | None = None,
+        query: str | None = None,
+        source: str = "live_analysis",
+    ) -> dict[str, Any]:
+        """
+        Analyze one bug by key, or a free-text area.
+
+        Resolves `bug_key` against the loaded bugs so every caller gets the same
+        lookup and the same errors.
+
+        Raises:
+            ValueError: if neither bug_key nor query is given.
+            BugNotFoundError: if bug_key is not in the loaded data.
+        """
+        if not bug_key and not query:
+            raise ValueError("Provide either 'bug_key' or 'query'.")
+
+        bug_data = None
+        resolved_query = query or ""
+
+        if bug_key:
+            bug_data = self.get_bug(bug_key)
+            if bug_data is None:
+                raise BugNotFoundError(bug_key)
+            resolved_query = bug_data.get("summary", bug_key)
+
+        return self.analyze_bug(query=resolved_query, bug_data=bug_data, source=source)
 
     def analyze_bulk(
         self,
