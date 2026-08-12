@@ -20,7 +20,7 @@ from pathlib import Path
 
 from defect_risk_analyzer.core import scoring
 from defect_risk_analyzer.jira_client import load_bugs_from_file
-from defect_risk_analyzer.risk_analyzer import RiskAnalyzer
+from defect_risk_analyzer.services.analysis_service import AnalysisService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -122,7 +122,7 @@ def infer_modules_from_files(changed_files: list[str]) -> list[str]:
 # =============================================================================
 
 def generate_risk_report(
-    analyzer: RiskAnalyzer,
+    analyzer: AnalysisService,
     changed_files: list[str],
     affected_modules: list[str],
 ) -> str:
@@ -130,7 +130,7 @@ def generate_risk_report(
     Generate a markdown risk report for a PR.
 
     Args:
-        analyzer: Initialized RiskAnalyzer with loaded bugs.
+        analyzer: Initialized AnalysisService with loaded bugs.
         changed_files: List of changed file paths.
         affected_modules: Inferred module names.
 
@@ -288,7 +288,7 @@ def main():
     logger.info("Affected modules: %s", affected_modules)
 
     # Initialize analyzer
-    analyzer = RiskAnalyzer()
+    analyzer = AnalysisService()
     bugs = load_bugs_from_file()
     if bugs:
         analyzer.load_bugs(bugs)

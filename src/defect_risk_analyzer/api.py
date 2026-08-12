@@ -50,7 +50,7 @@ from defect_risk_analyzer.api_models import (
 from defect_risk_analyzer.core import scoring
 from defect_risk_analyzer.jira_client import load_bugs_from_file, refresh_data
 from defect_risk_analyzer.llm_provider import LLMError, RateLimitError
-from defect_risk_analyzer.risk_analyzer import RiskAnalyzer
+from defect_risk_analyzer.services.analysis_service import AnalysisService
 
 # ---------------------------------------------------------------------------
 # Logging
@@ -64,7 +64,7 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Global State
 # ---------------------------------------------------------------------------
-analyzer = RiskAnalyzer()
+analyzer = AnalysisService()
 
 # Semaphore: max 1 concurrent LLM request (protects against parallel cost explosion)
 llm_semaphore = asyncio.Semaphore(1)
