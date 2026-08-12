@@ -362,7 +362,7 @@ This project is licensed under the MIT License — see the [LICENSE](LICENSE) fi
 
 ## 👤 Author
 
-**Mustafa Can** —
+**M. Can** —
 
 - GitHub: [@mcan-k](https://github.com/mcan-k)
 
