@@ -47,23 +47,28 @@ from defect_risk_analyzer.api_models import (
     RiskSummary,
     WebhookPayload,
 )
-from defect_risk_analyzer.jira_client import load_bugs_from_file, refresh_data
+from defect_risk_analyzer.jira_client import (
+    get_webhook_issue_type,
+    load_bugs_from_file,
+    normalize_webhook_issue,
+)
 from defect_risk_analyzer.llm_provider import LLMError, RateLimitError
-from defect_risk_analyzer.risk_analyzer import RiskAnalyzer
+from defect_risk_analyzer.services.analysis_service import (
+    AnalysisService,
+    BugNotFoundError,
+)
 
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-logging.basicConfig(
-    level=getattr(logging, config.LOG_LEVEL, logging.INFO),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+# Configured in the lifespan, not here: config.LOG_LEVEL is only meaningful
+# after config.init(), and importing this module must not read .env.
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Global State
 # ---------------------------------------------------------------------------
-analyzer = RiskAnalyzer()
+analyzer = AnalysisService()
 
 # Semaphore: max 1 concurrent LLM request (protects against parallel cost explosion)
 llm_semaphore = asyncio.Semaphore(1)
@@ -74,7 +79,16 @@ llm_semaphore = asyncio.Semaphore(1)
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load bug data on startup."""
+    """Bootstrap configuration and load bug data on startup."""
+    # The server is the one component that must have an API key to be usable
+    # at all — api_auth rejects every request without one.
+    config.init(generate_api_key=True)
+
+    logging.basicConfig(
+        level=getattr(logging, config.LOG_LEVEL, logging.INFO),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
     logger.info("Starting Predictive Defect Analysis Engine...")
     logger.info("Mock mode: %s", config.USE_MOCK_DATA)
     logger.info("LLM provider: %s", config.LLM_PROVIDER)
@@ -183,37 +197,26 @@ async def analyze_single(request: AnalyzeRequest):
 
     Provide either `bug_key` (to analyze a known bug) or `query` (free-text area).
     """
-    if not request.bug_key and not request.query:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Provide either 'bug_key' or 'query'.",
-        )
-
-    # Find bug data if bug_key provided
-    bug_data = None
-    query = request.query or ""
-
-    if request.bug_key:
-        for bug in analyzer.get_bugs():
-            if bug.get("key") == request.bug_key:
-                bug_data = bug
-                query = bug.get("summary", request.bug_key)
-                break
-        if bug_data is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Bug '{request.bug_key}' not found in loaded data.",
-            )
-
     async with llm_semaphore:
         try:
             result = await asyncio.to_thread(
-                analyzer.analyze_bug,
-                query=query,
-                bug_data=bug_data,
+                analyzer.analyze,
+                bug_key=request.bug_key,
+                query=request.query,
                 source="live_analysis",
             )
             return BugRiskResult(**result)
+
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            ) from e
+        except BugNotFoundError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e),
+            ) from e
 
         except RateLimitError as e:
             raise HTTPException(
@@ -250,60 +253,19 @@ async def analyze_bulk(request: BulkAnalyzeRequest):
 
     On first 429 rate limit error → stops immediately, marks remaining bugs as skipped.
     """
-    results: list[BugRiskResult] = []
-    skipped_keys: list[str] = []
-    circuit_breaker_triggered = False
-    all_bugs = analyzer.get_bugs()
-
-    # Build lookup map
-    bug_map = {bug.get("key"): bug for bug in all_bugs}
-
-    for bug_key in request.bug_keys:
-        # Circuit breaker: skip all remaining if triggered
-        if circuit_breaker_triggered:
-            skipped_keys.append(bug_key)
-            continue
-
-        bug_data = bug_map.get(bug_key)
-        if bug_data is None:
-            skipped_keys.append(bug_key)
-            continue
-
-        async with llm_semaphore:
-            try:
-                result = await asyncio.to_thread(
-                    analyzer.analyze_bug,
-                    query=bug_data.get("summary", bug_key),
-                    bug_data=bug_data,
-                    source="bulk_analysis",
-                )
-                results.append(BugRiskResult(**result))
-
-            except RateLimitError:
-                # CIRCUIT BREAKER: stop immediately on 429
-                circuit_breaker_triggered = True
-                skipped_keys.append(bug_key)
-                logger.warning(
-                    "Circuit breaker triggered at bug '%s'. "
-                    "Remaining bugs will be skipped.",
-                    bug_key,
-                )
-
-            except LLMError as e:
-                logger.error("LLM error analyzing bug '%s': %s", bug_key, e)
-                skipped_keys.append(bug_key)
-
-            except Exception as e:
-                logger.exception("Unexpected error analyzing bug '%s': %s", bug_key, e)
-                skipped_keys.append(bug_key)
+    # The loop, including the circuit breaker, lives in the service so the
+    # dashboard runs exactly the same code. No llm_semaphore here: the batch
+    # occupies one worker thread and the service releases its LLM lock between
+    # bugs, which matches the per-bug semaphore this replaced.
+    summary = await asyncio.to_thread(analyzer.analyze_bulk, request.bug_keys)
 
     return BulkAnalyzeResponse(
-        total=len(request.bug_keys),
-        analyzed=len(results),
-        skipped=len(skipped_keys),
-        results=results,
-        skipped_keys=skipped_keys,
-        circuit_breaker_triggered=circuit_breaker_triggered,
+        total=summary["total"],
+        analyzed=summary["analyzed"],
+        skipped=summary["skipped"],
+        results=[BugRiskResult(**r) for r in summary["results"]],
+        skipped_keys=summary["skipped_keys"],
+        circuit_breaker_triggered=summary["circuit_breaker_triggered"],
     )
 
 
@@ -319,31 +281,7 @@ async def analyze_bulk(request: BulkAnalyzeRequest):
 )
 async def get_risks():
     """Get current risk scores and defect density map. No new analysis performed."""
-    module_stats = analyzer.calculate_module_stats()
-    defect_density = analyzer.get_defect_density()
-    all_results = analyzer.get_all_results()
-
-    module_risks = {}
-    for module_name, stats in module_stats.items():
-        score = analyzer.calculate_risk_score(module_name, stats)
-        module_risks[module_name] = {
-            "score": score,
-            "level": config.get_risk_level(score),
-            "bug_count": stats.get("total_bugs", 0),
-            "open_count": stats.get("open_bugs", 0),
-        }
-
-    last_updated = None
-    if all_results:
-        last_updated = max(r.get("analyzed_at", "") for r in all_results)
-
-    return RiskSummary(
-        total_bugs=len(analyzer.get_bugs()),
-        analyzed_count=len(all_results),
-        module_risks=module_risks,
-        defect_density={m: d.get("bug_density", 0) for m, d in defect_density.items()},
-        last_updated=last_updated,
-    )
+    return RiskSummary(**analyzer.get_risk_summary())
 
 
 # =============================================================================
@@ -358,14 +296,8 @@ async def get_risks():
 async def refresh():
     """Fetch fresh data from Jira (or load mock data) and sync ChromaDB."""
     try:
-        bugs = await asyncio.to_thread(refresh_data)
-        loaded = analyzer.load_bugs(bugs)
-        return {
-            "status": "ok",
-            "bugs_fetched": len(bugs),
-            "bugs_loaded": loaded,
-            "mock_mode": config.USE_MOCK_DATA,
-        }
+        summary = await asyncio.to_thread(analyzer.refresh)
+        return {"status": "ok", **summary}
     except Exception as e:
         logger.error("Refresh failed: %s", e, exc_info=True)
         raise HTTPException(
@@ -396,12 +328,10 @@ async def jira_webhook(payload: WebhookPayload):
             detail=f"Unsupported webhook event: {event}",
         )
 
-    # Normalize the webhook issue data
     issue = payload.issue
-    fields = issue.get("fields", {})
 
     # Check if it's a Bug type
-    issue_type = fields.get("issuetype", {}).get("name", "")
+    issue_type = get_webhook_issue_type(issue)
     if issue_type.lower() != "bug":
         return BugRiskResult(
             query=f"Skipped non-bug issue type: {issue_type}",
@@ -411,20 +341,7 @@ async def jira_webhook(payload: WebhookPayload):
             source="webhook",
         )
 
-    # Build simplified bug data from webhook payload
-    components = fields.get("components", [])
-    priority_data = fields.get("priority")
-    status_data = fields.get("status")
-
-    bug_data = {
-        "key": issue.get("key", "UNKNOWN"),
-        "summary": fields.get("summary", ""),
-        "description": fields.get("description", ""),
-        "priority": priority_data.get("name", "Medium") if priority_data else "Medium",
-        "status": status_data.get("name", "Open") if status_data else "Open",
-        "component": components[0].get("name", "Unknown") if components else "Unknown",
-        "created": fields.get("created", datetime.now().isoformat()),
-    }
+    bug_data = normalize_webhook_issue(issue)
 
     async with llm_semaphore:
         try:
@@ -520,11 +437,7 @@ async def get_bugs():
 async def get_patterns():
     """Detect bug patterns — groups of similar bugs that may share a root cause."""
     try:
-        patterns = await asyncio.to_thread(analyzer.detect_patterns)
-        # Remove full bug objects from response (too large), keep keys
-        for p in patterns:
-            p.pop("bugs", None)
-        return patterns
+        return await asyncio.to_thread(analyzer.detect_patterns, include_bugs=False)
     except Exception as e:
         logger.error("Pattern detection failed: %s", e, exc_info=True)
         raise HTTPException(
@@ -540,12 +453,7 @@ async def get_patterns():
 )
 async def get_duplicates(bug_key: str):
     """Find potential duplicate bugs for a given bug key."""
-    bug_data = None
-    for bug in analyzer.get_bugs():
-        if bug.get("key") == bug_key:
-            bug_data = bug
-            break
-
+    bug_data = analyzer.get_bug(bug_key)
     if bug_data is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,

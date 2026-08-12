@@ -8,6 +8,7 @@ Supports mock data mode for demo/evaluation without Jira credentials.
 
 import json
 import logging
+from datetime import datetime
 from typing import Any
 
 import requests
@@ -331,6 +332,41 @@ def load_bugs_from_file(file_path=None) -> list[dict[str, Any]]:
     except (OSError, json.JSONDecodeError) as e:
         logger.error("Failed to load bugs from %s: %s", file_path, e)
         return []
+
+
+def normalize_webhook_issue(issue: dict[str, Any]) -> dict[str, Any]:
+    """
+    Flatten a Jira webhook issue into the bug dict shape used everywhere else.
+
+    Simpler than `JiraClient._normalize_issue`: webhook payloads carry only the
+    fields needed for a risk score, and the description arrives as plain text.
+
+    Args:
+        issue: The `issue` object from a Jira webhook payload.
+
+    Returns:
+        Bug dictionary.
+    """
+    fields = issue.get("fields", {})
+
+    components = fields.get("components", [])
+    priority_data = fields.get("priority")
+    status_data = fields.get("status")
+
+    return {
+        "key": issue.get("key", "UNKNOWN"),
+        "summary": fields.get("summary", ""),
+        "description": fields.get("description", ""),
+        "priority": priority_data.get("name", "Medium") if priority_data else "Medium",
+        "status": status_data.get("name", "Open") if status_data else "Open",
+        "component": components[0].get("name", "Unknown") if components else "Unknown",
+        "created": fields.get("created", datetime.now().isoformat()),
+    }
+
+
+def get_webhook_issue_type(issue: dict[str, Any]) -> str:
+    """Return the issue type name from a webhook payload, or '' when absent."""
+    return issue.get("fields", {}).get("issuetype", {}).get("name", "")
 
 
 def refresh_data() -> list[dict[str, Any]]:

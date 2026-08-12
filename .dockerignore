@@ -1,15 +1,38 @@
+# =============================================================================
+# Docker build context exclusions
+# =============================================================================
+# Keep this in sync with reality: everything not listed here is uploaded to the
+# daemon on every cold build. NOTE that pyproject.toml and requirements*.txt
+# must NEVER be excluded — the Dockerfile copies and installs from them.
+#
+# Pattern semantics differ from .gitignore: a pattern without a leading `**/`
+# only matches at the context root, so nested caches need the explicit prefix.
+# =============================================================================
+
 # Environment & secrets
 .env
 .env.*
 !.env.example
 
-# Python
+# Virtualenvs. The image installs its own dependencies, so these are pure
+# upload weight — together they were ~1.4 GB of the build context.
+# .venv-core is the throwaway env used to verify the core (no-webhook) install.
+.venv*/
 .venv/
-__pycache__/
-*.pyc
-*.pyo
+.venv-core/
 
-# Runtime data (rebuilt inside container)
+# Python caches and build artefacts
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# Runtime data — regenerated inside the container.
+# data/sample_bugs.json is deliberately kept: mock mode reads it.
 data/bugs.json
 data/chroma_db/
 data/anon_map.json
@@ -17,11 +40,13 @@ data/analysis_results.json
 data/defect_density.json
 data/webhook_results.json
 
-# Git
+# Local-only refactor verification scripts and score snapshots
+baseline/
+
+# VCS and tooling
 .git/
 .github/
-
-# IDE
+.claude/
 .vscode/
 .idea/
 
@@ -40,6 +65,7 @@ LICENSE
 # Docker (prevent recursive copy)
 Dockerfile
 docker-compose.yml
+.dockerignore
 
 # Logs
-*.log
+**/*.log

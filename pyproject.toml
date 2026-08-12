@@ -5,7 +5,8 @@
 # Install dev tooling:      pip install -r requirements-dev.txt
 #
 # Runtime dependencies are NOT duplicated here — they are read dynamically
-# from requirements.txt, which stays the single source of truth.
+# from requirements.txt, which stays the single source of truth. The optional
+# FastAPI server reads requirements-webhook.txt the same way.
 # =============================================================================
 
 [build-system]
@@ -21,7 +22,7 @@ requires-python = ">=3.11"
 license = "MIT"
 authors = [{ name = "Mustafa Can" }]
 keywords = ["jira", "qa", "testing", "risk-analysis", "istqb", "rag", "llm"]
-dynamic = ["version", "dependencies"]
+dynamic = ["version", "dependencies", "optional-dependencies"]
 
 [project.scripts]
 dra = "defect_risk_analyzer.cli:main"
@@ -33,6 +34,10 @@ Repository = "https://github.com/mcan-k/defect-risk-analyzer"
 [tool.setuptools.dynamic]
 version = { attr = "defect_risk_analyzer.__version__" }
 dependencies = { file = ["requirements.txt"] }
+
+# `pip install -e ".[webhook]"` adds the optional FastAPI server.
+[tool.setuptools.dynamic.optional-dependencies]
+webhook = { file = ["requirements-webhook.txt"] }
 
 [tool.setuptools.packages.find]
 where = ["src"]

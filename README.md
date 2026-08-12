@@ -101,10 +101,7 @@ pip install -e .
 cp .env.example .env
 # Edit .env with your credentials (or set USE_MOCK_DATA=True for demo)
 
-# 5. Start the API backend
-uvicorn defect_risk_analyzer.api:app --host 0.0.0.0 --port 8000
-
-# 6. In a new terminal, start the dashboard
+# 5. Start the dashboard — that is the whole application
 dra
 # ...or equivalently:
 streamlit run src/defect_risk_analyzer/dashboard.py --server.port 8501
@@ -113,6 +110,15 @@ streamlit run src/defect_risk_analyzer/dashboard.py --server.port 8501
 `pip install -e .` is required — the modules live in `src/defect_risk_analyzer/` and import each other by package name.
 
 The `dra` console command launches the dashboard on the port set by `STREAMLIT_PORT`.
+
+**No server needed.** The analysis engine runs inside the dashboard process. The
+FastAPI service is optional and only used for the Jira webhook and external REST
+integrations:
+
+```bash
+pip install -e ".[webhook]"
+uvicorn defect_risk_analyzer.api:app --host 0.0.0.0 --port 8000
+```
 
 ### Option C: Docker
 
@@ -123,12 +129,24 @@ cd defect-risk-analyzer
 cp .env.example .env
 # Edit .env with your credentials
 
-# 2. Build and run
+# 2. Build and run — dashboard only
 docker-compose up --build
 
-# API: http://localhost:8000
 # Dashboard: http://localhost:8501
 ```
+
+`docker-compose up` starts a single service and **does not open port 8000**. If
+you need the Jira webhook receiver, bring it up with its profile:
+
+```bash
+docker-compose --profile webhook up --build
+
+# Dashboard: http://localhost:8501
+# Webhook API: http://localhost:8000
+```
+
+Both services share the same `app-data` volume, so they read the same ChromaDB
+directory — see [`docs/KNOWN-DEBT.md`](docs/KNOWN-DEBT.md) for the caveat.
 
 ### Try Without Jira (Mock Mode)
 
@@ -158,7 +176,11 @@ See [`.env.example`](.env.example) for the complete list.
 
 ---
 
-## 🔌 API Endpoints
+## 🔌 API Endpoints (optional webhook service)
+
+These belong to the optional FastAPI service (`pip install -e ".[webhook]"`).
+**The dashboard does not use them** — it calls the analysis service directly, in
+its own process. They exist for the Jira webhook and external integrations.
 
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
@@ -253,36 +275,48 @@ defect-risk-analyzer/
 ├── src/defect_risk_analyzer/
 │   ├── __init__.py             # Single source of __version__
 │   ├── cli.py                  # "dra" console entry point
-│   ├── api.py                  # FastAPI backend — all REST endpoints
+│   ├── config.py               # Centralized .env configuration (no import side effects)
+│   ├── core/                   # Pure logic — dict in, dict out, no I/O
+│   │   └── scoring.py          # Risk score, module stats, risk thresholds
+│   ├── adapters/               # Network, disk, vector database
+│   │   ├── vector_store.py     # ChromaDB wrapper
+│   │   └── results_repository.py  # JSON persistence for results + density
+│   ├── services/
+│   │   └── analysis_service.py # Orchestration + LLM lock — the single entry point
+│   ├── dashboard.py            # Streamlit UI (7 pages, Turkish)
+│   ├── ci_analyzer.py          # Headless CLI for GitHub Actions
+│   ├── api.py                  # Optional FastAPI service — webhook + REST
 │   ├── api_models.py           # Pydantic request/response models
 │   ├── api_auth.py             # X-API-Key authentication
 │   ├── llm_provider.py         # BYOK — Strategy Pattern (Groq / OpenAI)
-│   ├── risk_analyzer.py        # RAG engine — ChromaDB + risk scoring + LLM
 │   ├── prompt_templates.py     # System & User prompts (ISTQB-standard)
 │   ├── anonymizer.py           # PII masking — reversible tokenization
 │   ├── pattern_detector.py     # Bug clustering + common root cause extraction
 │   ├── blind_spot_detector.py  # Unanalyzed risky areas (no LLM)
 │   ├── component_classifier.py # Keyword-based component inference for empty Jira fields
-│   ├── jira_client.py          # Jira REST API v3 + ADF parser
-│   ├── ci_analyzer.py          # Headless CLI for GitHub Actions
-│   ├── dashboard.py            # Streamlit UI (7 pages, Turkish)
-│   └── config.py               # Centralized .env configuration
+│   └── jira_client.py          # Jira REST API v3 + ADF parser
 ├── docs/
+│   ├── ROADMAP-v2.md           # Phased plan for v2
 │   └── KNOWN-DEBT.md           # Accepted trade-offs, with planned fixes
 ├── data/
 │   └── sample_bugs.json        # Mock data for demo mode
 ├── .github/workflows/
 │   └── pr-risk-analysis.yml
-├── BASLAT.bat                  # Windows: setup + launch everything
-├── DURDUR.bat                  # Windows: stop all services
+├── BASLAT.bat                  # Windows: setup + launch the dashboard
+├── DURDUR.bat                  # Windows: stop running services
 ├── pyproject.toml              # Packaging (PEP 621) + ruff config
-├── requirements.txt            # Runtime deps (also read by pyproject.toml)
+├── requirements.txt            # Core deps (also read by pyproject.toml)
+├── requirements-webhook.txt    # Optional FastAPI service deps — ".[webhook]"
 ├── requirements-dev.txt        # pytest, pytest-cov, ruff
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .env.example
 └── LICENSE
 ```
+
+Dependencies flow one way: `dashboard` / `api` / `ci_analyzer` → `services/` →
+`core/` + `adapters/`. Nothing under `core/` imports streamlit, fastapi,
+chromadb or requests.
 
 `data/` and `.env` stay at the project root. `config.py` locates the root via
 `DRA_BASE_DIR` → the nearest ancestor holding `pyproject.toml` → the current

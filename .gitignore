@@ -3,6 +3,8 @@
 
 # Python
 .venv/
+# Throwaway env used to prove the core install works without the webhook extra
+.venv-core/
 __pycache__/
 *.pyc
 *.pyo
@@ -23,6 +25,9 @@ data/webhook_results.json
 # Keep sample data for demo/mock mode
 !data/sample_bugs.json
 
+# Faz 2 refactor baseline — local-only scoring snapshots, never committed
+baseline/
+
 # IDE
 .vscode/
 .idea/
@@ -33,3 +38,5 @@ Thumbs.db
 
 # Docker
 *.log
+
+.claude/

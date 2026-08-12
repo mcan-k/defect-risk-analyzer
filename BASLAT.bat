@@ -77,34 +77,27 @@ if not exist ".venv\Scripts\activate.bat" (
     call .venv\Scripts\activate.bat
 )
 
-REM --- Paketi editable modda kur (idempotent, mevcut kurulumlar icin de) ---
-REM Dashboard ve API artik "defect_risk_analyzer" paketini import ediyor;
-REM paket kurulu degilse ModuleNotFoundError alinir.
-python -c "import defect_risk_analyzer" >nul 2>&1
+REM --- Paketi editable modda kur (kosulsuz, her acilista) ---
+REM Kosullu calistirmak yanlisti: "import edilebiliyor mu" sorusu
+REM "metadata guncel mi" sorusuna cevap vermiyor. Editable kurulumda paket
+REM bir kez kurulunca hep import edilebilir, ama pyproject.toml degisince
+REM (yeni entry point, yeni extra, yeni paket bulma kurali) yenilenmez.
+REM --no-deps oldugu icin idempotent ve hizli.
+echo   Paket kuruluyor...
+pip install -e . --no-deps >nul 2>&1
 if errorlevel 1 (
-    echo   Paket kuruluyor...
-    pip install -e . --no-deps
-    if errorlevel 1 (
-        echo   [HATA] Paket kurulamadi.
-        pause
-        exit /b 1
-    )
+    echo   [HATA] Paket kurulamadi.
+    echo   Ayrinti icin: pip install -e . --no-deps
+    pause
+    exit /b 1
 )
 
-REM --- Onceki islemleri temizle ---
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8000" ^| findstr "LISTENING" 2^>nul') do (
-    taskkill /F /PID %%a >nul 2>&1
-)
+REM --- Onceki islemi temizle ---
+REM Yalnizca dashboard portu: API sunucusu artik opsiyonel ve bu script
+REM tarafindan baslatilmiyor.
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8501" ^| findstr "LISTENING" 2^>nul') do (
     taskkill /F /PID %%a >nul 2>&1
 )
-
-REM --- API sunucusunu baslat ---
-echo   API sunucusu baslatiliyor...
-start /B "" cmd /c "call .venv\Scripts\activate.bat && python -m uvicorn defect_risk_analyzer.api:app --host 0.0.0.0 --port 8000 2>&1 > data\api.log"
-
-echo   API hazir olana kadar bekleniyor...
-timeout /t 4 /nobreak >nul
 
 REM --- Dashboard baslat ---
 echo   Dashboard baslatiliyor...
@@ -120,7 +113,11 @@ echo   ========================================================
 echo   Uygulama hazir!
 echo.
 echo   Dashboard:  http://localhost:8501
-echo   API:        http://localhost:8000
+echo.
+echo   Jira webhook kullanacaksaniz opsiyonel API sunucusunu
+echo   ayrica kurup baslatin:
+echo     pip install -r requirements-webhook.txt
+echo     python -m uvicorn defect_risk_analyzer.api:app --port 8000
 echo.
 echo   Bu pencereyi kapatmak uygulamayi durdurur.
 echo   ========================================================

@@ -19,8 +19,9 @@ from datetime import datetime
 from pathlib import Path
 
 from defect_risk_analyzer import config
+from defect_risk_analyzer.core import scoring
 from defect_risk_analyzer.jira_client import load_bugs_from_file
-from defect_risk_analyzer.risk_analyzer import RiskAnalyzer
+from defect_risk_analyzer.services.analysis_service import AnalysisService
 
 logging.basicConfig(
     level=logging.INFO,
@@ -122,7 +123,7 @@ def infer_modules_from_files(changed_files: list[str]) -> list[str]:
 # =============================================================================
 
 def generate_risk_report(
-    analyzer: RiskAnalyzer,
+    analyzer: AnalysisService,
     changed_files: list[str],
     affected_modules: list[str],
 ) -> str:
@@ -130,7 +131,7 @@ def generate_risk_report(
     Generate a markdown risk report for a PR.
 
     Args:
-        analyzer: Initialized RiskAnalyzer with loaded bugs.
+        analyzer: Initialized AnalysisService with loaded bugs.
         changed_files: List of changed file paths.
         affected_modules: Inferred module names.
 
@@ -161,7 +162,7 @@ def generate_risk_report(
         stats = module_stats.get(module, {})
         if stats:
             score = analyzer.calculate_risk_score(module, stats)
-            level = config.get_risk_level(score)
+            level = scoring.get_risk_level(score)
             total = stats.get("total_bugs", 0)
             open_bugs = stats.get("open_bugs", 0)
             trend = stats.get("trend", "stable")
@@ -182,7 +183,7 @@ def generate_risk_report(
     report_lines.append("")
 
     # Overall verdict
-    overall_level = config.get_risk_level(max_risk)
+    overall_level = scoring.get_risk_level(max_risk)
     if overall_level == "CRITICAL":
         report_lines.append(f"### ⚠️ CRITICAL RISK — `{max_risk_module}` module requires immediate attention!")
         report_lines.append("")
@@ -230,6 +231,10 @@ def main():
     # The report contains emoji; a Windows console using a legacy codepage
     # (e.g. cp1254) raises UnicodeEncodeError when printing it.
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    # Reads .env — without it USE_MOCK_DATA stays False and the CI run silently
+    # looks for bugs.json instead of the sample data.
+    config.init()
 
     parser = argparse.ArgumentParser(
         description="CI Risk Analyzer — Analyze PR risk from git diff",
@@ -288,7 +293,7 @@ def main():
     logger.info("Affected modules: %s", affected_modules)
 
     # Initialize analyzer
-    analyzer = RiskAnalyzer()
+    analyzer = AnalysisService()
     bugs = load_bugs_from_file()
     if bugs:
         analyzer.load_bugs(bugs)

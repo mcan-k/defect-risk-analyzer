@@ -4,8 +4,19 @@ Centralized configuration loaded from .env file.
 All application settings are defined here with type validation and sensible defaults.
 Import this module anywhere you need configuration values.
 
-Supports live reload via reload() — Settings page calls this after saving
-so changes take effect immediately without restarting the application.
+**Importing this module has no side effects.** It computes path constants and
+nothing else — no directory is created, no file is read, no file is written.
+Entry points (dashboard, API server, CI analyzer, `dra`) call `init()` once at
+startup; that is what creates `data/` and reads `.env`.
+
+Skipping `init()` does not raise: every setting simply keeps its module-level
+default, and the application silently behaves as if nothing were configured —
+mock mode off, no credentials, first-run wizard. If you add a new entry point,
+call `init()` in it.
+
+`reload()` re-reads `.env` on demand; the Settings page calls it after saving so
+changes take effect without a restart. API key generation is explicit via
+`ensure_api_key()` — it writes to `.env`, so it never happens implicitly.
 """
 
 import os
@@ -44,12 +55,13 @@ def _resolve_base_dir() -> Path:
     return Path.cwd().resolve()
 
 
+# Path constants stay at import time on purpose. They are pure computation —
+# no directory is created here — and moving them into init() would leave
+# config.DATA_DIR as None for any code that touches it first: that reads as a
+# valid value and fails much later, instead of raising at the point of misuse.
 BASE_DIR = _resolve_base_dir()
 DATA_DIR = BASE_DIR / "data"
 ENV_FILE = BASE_DIR / ".env"
-
-# Ensure data directory exists
-DATA_DIR.mkdir(exist_ok=True)
 
 # Data File Paths (static)
 BUGS_FILE: Path = DATA_DIR / "bugs.json"
@@ -60,10 +72,8 @@ ANON_MAP_FILE: Path = DATA_DIR / "anon_map.json"
 WEBHOOK_RESULTS_FILE: Path = DATA_DIR / "webhook_results.json"
 CHROMA_DB_DIR: Path = DATA_DIR / "chroma_db"
 
-# Risk Score Thresholds (static)
-RISK_CRITICAL: int = 80
-RISK_HIGH: int = 60
-RISK_MEDIUM: int = 35
+# Risk score thresholds are NOT here: they are fixed product rules rather than
+# user settings, and live in core/scoring.py next to the formula that uses them.
 
 
 # ---------------------------------------------------------------------------
@@ -89,21 +99,61 @@ def _get_env_int(key: str, default: int = 0) -> int:
         return default
 
 
-def _ensure_api_key() -> str:
-    """Return existing API key or auto-generate one and persist to .env."""
-    key = _get_env("API_KEY")
-    if key:
-        return key
+def set_env_value(key: str, value: str) -> None:
+    """
+    Write a single key to `.env`, replacing an existing entry or appending.
+
+    Also updates `os.environ` so the new value is visible immediately, before
+    any `reload()`.
+    """
+    lines: list[str] = []
+    if ENV_FILE.exists():
+        with open(ENV_FILE, encoding="utf-8") as f:
+            lines = f.readlines()
+
+    replaced = False
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}="):
+            lines[i] = f"{key}={value}\n"
+            replaced = True
+            break
+
+    if not replaced:
+        lines.append(f"{key}={value}\n")
+
+    with open(ENV_FILE, "w", encoding="utf-8") as f:
+        f.writelines(lines)
+
+    os.environ[key] = str(value)
+
+
+def ensure_api_key(*, rotate: bool = False) -> str:
+    """
+    Return the API key, generating and persisting one when needed.
+
+    Writes to `.env`, so it is never called implicitly — only by the API server
+    at startup and by the Settings page button.
+
+    Args:
+        rotate: Generate a fresh key even if one already exists.
+    """
+    global API_KEY
+
+    if not rotate:
+        existing = _get_env("API_KEY")
+        if existing:
+            API_KEY = existing
+            return existing
 
     new_key = secrets.token_urlsafe(32)
-
     try:
-        with open(ENV_FILE, "a", encoding="utf-8") as f:
-            f.write(f"\n# Auto-generated API key\nAPI_KEY={new_key}\n")
+        set_env_value("API_KEY", new_key)
     except OSError:
-        pass
+        # A read-only .env still gives a working key for this process.
+        os.environ["API_KEY"] = new_key
 
-    os.environ["API_KEY"] = new_key
+    API_KEY = new_key
     return new_key
 
 
@@ -179,7 +229,8 @@ def reload() -> None:
     OPENAI_API_KEY = _get_env("OPENAI_API_KEY")
     LLM_MODEL = _get_env("LLM_MODEL")
 
-    API_KEY = _ensure_api_key()
+    # Read only — generating a key writes to .env, which reload() must not do.
+    API_KEY = _get_env("API_KEY")
 
     MAX_DAILY_REQUESTS = _get_env_int("MAX_DAILY_REQUESTS", 50)
     GROQ_SLEEP = float(_get_env("GROQ_SLEEP", "2"))
@@ -207,17 +258,6 @@ def get_llm_model() -> str:
     return DEFAULT_GROQ_MODEL
 
 
-def get_risk_level(score: int) -> str:
-    """Map a numeric risk score to a human-readable level."""
-    if score >= RISK_CRITICAL:
-        return "CRITICAL"
-    if score >= RISK_HIGH:
-        return "HIGH"
-    if score >= RISK_MEDIUM:
-        return "MEDIUM"
-    return "LOW"
-
-
 def is_jira_configured() -> bool:
     """Return True if all Jira credentials are present."""
     return all([JIRA_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY])
@@ -243,6 +283,36 @@ def is_first_run() -> bool:
 
 
 # ---------------------------------------------------------------------------
-# Initial load on import
+# Bootstrap — called explicitly by entry points, never on import
 # ---------------------------------------------------------------------------
-reload()
+
+_initialized: bool = False
+
+
+def init(*, generate_api_key: bool = False) -> None:
+    """
+    Prepare configuration for an application run.
+
+    Creates `data/` and loads `.env`. Safe to call more than once: the load
+    happens on the first call only, so a Streamlit rerun does not re-read the
+    file on every interaction. Use `reload()` to force a re-read.
+
+    Args:
+        generate_api_key: Create and persist an API key if none exists. Only
+            the API server needs this; the dashboard offers it as an explicit
+            button instead, so that merely opening the UI never writes to .env.
+    """
+    global _initialized
+
+    if not _initialized:
+        DATA_DIR.mkdir(parents=True, exist_ok=True)
+        reload()
+        _initialized = True
+
+    if generate_api_key:
+        ensure_api_key()
+
+
+def is_initialized() -> bool:
+    """True once init() has run in this process."""
+    return _initialized
