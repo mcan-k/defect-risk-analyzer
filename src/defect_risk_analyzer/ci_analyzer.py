@@ -18,6 +18,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
+from defect_risk_analyzer import config
 from defect_risk_analyzer.core import scoring
 from defect_risk_analyzer.jira_client import load_bugs_from_file
 from defect_risk_analyzer.services.analysis_service import AnalysisService
@@ -230,6 +231,10 @@ def main():
     # The report contains emoji; a Windows console using a legacy codepage
     # (e.g. cp1254) raises UnicodeEncodeError when printing it.
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
+    # Reads .env — without it USE_MOCK_DATA stays False and the CI run silently
+    # looks for bugs.json instead of the sample data.
+    config.init()
 
     parser = argparse.ArgumentParser(
         description="CI Risk Analyzer — Analyze PR risk from git diff",

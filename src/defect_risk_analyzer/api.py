@@ -61,10 +61,8 @@ from defect_risk_analyzer.services.analysis_service import (
 # ---------------------------------------------------------------------------
 # Logging
 # ---------------------------------------------------------------------------
-logging.basicConfig(
-    level=getattr(logging, config.LOG_LEVEL, logging.INFO),
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-)
+# Configured in the lifespan, not here: config.LOG_LEVEL is only meaningful
+# after config.init(), and importing this module must not read .env.
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
@@ -81,7 +79,16 @@ llm_semaphore = asyncio.Semaphore(1)
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Load bug data on startup."""
+    """Bootstrap configuration and load bug data on startup."""
+    # The server is the one component that must have an API key to be usable
+    # at all — api_auth rejects every request without one.
+    config.init(generate_api_key=True)
+
+    logging.basicConfig(
+        level=getattr(logging, config.LOG_LEVEL, logging.INFO),
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    )
+
     logger.info("Starting Predictive Defect Analysis Engine...")
     logger.info("Mock mode: %s", config.USE_MOCK_DATA)
     logger.info("LLM provider: %s", config.LLM_PROVIDER)

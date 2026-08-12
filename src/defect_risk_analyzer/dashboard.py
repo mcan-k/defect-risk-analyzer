@@ -206,42 +206,11 @@ def apply_chart_theme(fig, height: int = 400) -> None:
 # .env Read/Write Helpers
 # ---------------------------------------------------------------------------
 
-def read_env_value(key: str) -> str:
-    """Read a value directly from .env file (not cached)."""
-    config.reload()
-    return getattr(config, key, "") or os.getenv(key, "")
-
-
-def save_env_value(key: str, value: str) -> None:
-    """Update a single value in .env file and reload config."""
-    env_path = config.ENV_FILE
-    lines = []
-
-    if env_path.exists():
-        with open(env_path, encoding="utf-8") as f:
-            lines = f.readlines()
-
-    found = False
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}="):
-            lines[i] = f"{key}={value}\n"
-            found = True
-            break
-
-    if not found:
-        lines.append(f"{key}={value}\n")
-
-    with open(env_path, "w", encoding="utf-8") as f:
-        f.writelines(lines)
-
-    os.environ[key] = str(value)
-
-
 def save_multiple_env(values: dict[str, str]) -> None:
     """Save multiple values to .env and apply them to the running service."""
     for key, value in values.items():
-        save_env_value(key, value)
+        config.set_env_value(key, value)
+    # The one place a re-read is still needed: .env just changed underneath us.
     config.reload()
     # The service holds a provider built from the old credentials; drop it so
     # the next analysis picks up what was just saved.
@@ -343,7 +312,6 @@ def render_sidebar() -> str:
     st.sidebar.markdown("---")
 
     # Connection status indicators
-    config.reload()
     if config.is_jira_configured():
         st.sidebar.success("✅ Jira: Bağlı")
     else:
@@ -756,7 +724,6 @@ def page_live_analysis():
     st.title("⚡ Canlı Analiz")
 
     # Check LLM is configured
-    config.reload()
     if not config.is_llm_configured():
         st.warning("⚠️ LLM API Key yapılandırılmamış. Ayarlar sayfasından API key girin.")
         if st.button("⚙️ Ayarlar Sayfasına Git"):
@@ -1178,8 +1145,6 @@ def page_webhook_results():
 
         st.markdown("---")
         st.subheader("Webhook Nasıl Kurulur?")
-
-        config.reload()
         st.markdown(f"""
         1. Jira'da **Settings → System → Webhooks** bölümüne gidin
         2. Yeni webhook oluşturun:
@@ -1210,8 +1175,6 @@ def page_settings():
     """Self-service configuration panel with live reload."""
     st.title("⚙️ Ayarlar")
     st.caption("Değişiklikler kaydedildiğinde anında uygulanır — yeniden başlatma gerekmez.")
-
-    config.reload()
 
     # --- Jira Connection ---
     st.subheader("🔗 Jira Bağlantısı")
@@ -1390,11 +1353,31 @@ def page_settings():
     # API Key — only relevant to the optional webhook server
     st.markdown("---")
     st.subheader("🔑 API Key (webhook servisi için)")
-    st.code(config.API_KEY, language=None)
-    st.caption(
-        "Bu key yalnızca opsiyonel webhook/API servisi için gerekir; dashboard "
-        "analiz motorunu doğrudan çalıştırır ve bu key'i kullanmaz."
-    )
+
+    if config.API_KEY:
+        st.code(config.API_KEY, language=None)
+        st.caption(
+            "Bu key yalnızca opsiyonel webhook/API servisi için gerekir; dashboard "
+            "analiz motorunu doğrudan çalıştırır ve bu key'i kullanmaz."
+        )
+    else:
+        st.info(
+            "Henüz bir API key üretilmemiş. Webhook kurmayacaksanız gerek yok — "
+            "dashboard bu key olmadan da tam olarak çalışır."
+        )
+
+    # Generation is explicit: it writes to .env, and merely opening this page
+    # must never do that.
+    label = "🔄 API Key'i Yenile" if config.API_KEY else "🔑 API Key Üret"
+    if st.button(label, use_container_width=True):
+        new_key = config.ensure_api_key(rotate=bool(config.API_KEY))
+        st.success(f"✅ API key kaydedildi: `{new_key[:8]}…`")
+        st.warning(
+            "Webhook servisi çalışıyorsa yeni key'i alması için yeniden "
+            "başlatılmalı; Jira webhook tanımındaki header da güncellenmeli."
+        )
+        time.sleep(1)
+        st.rerun()
     st.warning(
         "⚠️ Webhook servisi ayrı bir process olarak çalışıyorsa, buradaki "
         "ayarları görmez. Kaydettiğiniz değişikliklerin webhook tarafında da "
@@ -1408,7 +1391,9 @@ def page_settings():
 
 def main():
     """Main app entry point."""
-    config.reload()
+    # The single bootstrap point for this process: creates data/ and reads
+    # .env. Idempotent, so the Streamlit rerun loop does not re-read the file.
+    config.init()
 
     # First-run: show setup wizard if nothing is configured
     if config.is_first_run():

@@ -14,6 +14,9 @@ from defect_risk_analyzer import config
 
 def main() -> int:
     """Launch the Streamlit dashboard and return its exit code."""
+    # Needed for STREAMLIT_PORT; the dashboard process runs init() again itself.
+    config.init()
+
     dashboard = Path(__file__).resolve().parent / "dashboard.py"
 
     return subprocess.call(
