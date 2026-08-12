@@ -1,8 +1,8 @@
 # =============================================================================
 # Predictive Defect Analysis Engine — Docker Image
 # =============================================================================
-# Single image serving both FastAPI backend and Streamlit frontend.
-# Services are orchestrated via docker-compose.yml.
+# Single image serving the Streamlit dashboard and the optional FastAPI
+# webhook service. Services are orchestrated via docker-compose.yml.
 # =============================================================================
 
 FROM python:3.11-slim
@@ -20,10 +20,23 @@ RUN apt-get update && \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
+# Install Python dependencies.
+#
+# The webhook extra is installed by default: one image serves both the
+# dashboard and the optional API service, and docker-compose gates the API
+# behind a profile rather than behind a separate build. Without it the API
+# container would fail at startup with ImportError on fastapi, and the only
+# trace would be in the container log.
+#
+# Build a dashboard-only image with:  docker build --build-arg INSTALL_WEBHOOK=false .
+ARG INSTALL_WEBHOOK=true
+
+COPY requirements.txt requirements-webhook.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+    pip install --no-cache-dir -r requirements.txt && \
+    if [ "$INSTALL_WEBHOOK" = "true" ]; then \
+        pip install --no-cache-dir -r requirements-webhook.txt; \
+    fi
 
 # Copy application code
 COPY . .

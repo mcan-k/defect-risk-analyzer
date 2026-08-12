@@ -3,6 +3,8 @@
 
 # Python
 .venv/
+# Throwaway env used to prove the core install works without the webhook extra
+.venv-core/
 __pycache__/
 *.pyc
 *.pyo

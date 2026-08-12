@@ -1,0 +1,17 @@
+# =============================================================================
+# Predictive Defect Analysis Engine — Optional Webhook / REST API
+# =============================================================================
+# Install: pip install -r requirements.txt -r requirements-webhook.txt
+#      or: pip install -e ".[webhook]"
+#
+# Only needed to run `uvicorn defect_risk_analyzer.api:app` — the Jira webhook
+# receiver and the REST endpoints for external integrations. The dashboard and
+# the CI analyzer call the analysis service directly and never import these.
+# =============================================================================
+
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+
+# Required by fastapi.testclient.TestClient; not imported by the application.
+httpx==0.28.1

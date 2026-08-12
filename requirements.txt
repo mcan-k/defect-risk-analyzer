@@ -1,13 +1,12 @@
 # =============================================================================
-# Predictive Defect Analysis Engine — Python Dependencies
+# Predictive Defect Analysis Engine — Core Dependencies
 # =============================================================================
 # Install: pip install -r requirements.txt
+#
+# This is everything the dashboard and the CI analyzer need. The FastAPI
+# server is optional — it only serves the Jira webhook and external
+# integrations — and its dependencies live in requirements-webhook.txt.
 # =============================================================================
-
-# --- Web Framework ---
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
 
 # --- Frontend ---
 streamlit==1.41.1
@@ -29,6 +28,3 @@ python-dotenv==1.0.1
 # --- Data Processing ---
 numpy==1.26.4
 pandas==2.2.3
-
-# --- HTTP Client (async) ---
-httpx==0.28.1

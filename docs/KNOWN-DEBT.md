@@ -74,3 +74,84 @@ kaydı kalıyor.
 **Planned fix (Phase 3):** testler geldikten sonra sonuç sözlüğüne `persisted`
 alanı ekle ya da yazma hatasını fırlat; UI kullanıcıya "sonuç kaydedilemedi"
 uyarısı göstersin.
+
+---
+
+## Duplicate `API_KEY` lines in `.env`
+
+**Where:** `.env` (kullanıcı dosyası) ve
+[`src/defect_risk_analyzer/config.py`](../src/defect_risk_analyzer/config.py)
+
+`.env` iki `API_KEY=` satırı içerebiliyor: biri `.env.example`'dan gelen boş
+satır, diğeri eski otomatik üretimin dosya sonuna eklediği dolu satır. Bugün
+doğru anahtar okunuyor çünkü `python-dotenv` aynı anahtarın **sonuncusunu**
+kazandırıyor — yani davranış satır sırasına bağlı, tasarıma değil.
+
+**Detail:** `config.set_env_value()` replace-or-append çalışıyor ve **ilk**
+eşleşen satırı güncelliyor. Mükerrer satır varsa yeni değer boş olan üstteki
+satıra yazılır, alttaki eski satır olduğu yerde kalır ve `reload()` sonrasında
+yine o kazanır. Ayarlar sayfasındaki "API Key Yenile" butonu bu durumda
+başarılı görünür (yeni key ekranda gösterilir, `os.environ` güncellenir) ama
+bir sonraki `reload()`'da eski anahtara geri döner. Sessiz geri alma.
+
+**Impact:** yalnız mükerrer satırı olan `.env` dosyalarında. Anahtar üretimi
+artık örtük olmadığı için yeni kurulumlarda mükerrer satır oluşmuyor;
+sorun mevcut dosyalardan miras.
+
+**Workaround until then:** `.env` içindeki boş `API_KEY=` satırını elle silin.
+
+**Planned fix (Phase 6):** kimlik bilgileri `keyring`'e taşınırken `API_KEY`
+de `.env`'den çıkacak. O zamana kadar `set_env_value()` mükerrer satırları
+tespit edip tekilleştirebilir.
+
+---
+
+## Sidebar connection indicators show presence, not validity
+
+**Where:** [`src/defect_risk_analyzer/dashboard.py`](../src/defect_risk_analyzer/dashboard.py)
+
+Sidebar'daki "✅ Jira: Bağlı" ve "✅ LLM: Groq" göstergeleri
+`config.is_jira_configured()` / `config.is_llm_configured()` sonucunu
+gösteriyor. Bu iki fonksiyon yalnızca **anahtarın dolu olup olmadığına**
+bakıyor, geçerli olup olmadığına değil.
+
+**Detail:** doğrulandı — ölü bir Jira token'ı ve ölü bir Groq anahtarıyla,
+ikisi de 401 dönerken sidebar her ikisini de yeşil gösteriyordu. Kullanıcı
+sistemi çalışır sanıp analiz başlatıyor ve hatayı ancak LLM çağrısı
+başarısız olduğunda görüyor. Ayarlar sayfasındaki "Bağlantıyı Test Et"
+butonları gerçek doğrulamayı yapıyor, ama sonucu hiçbir yerde saklamıyor.
+
+**Impact:** yanlış güven. Fonksiyonel bir hata değil, ama arıza teşhisini
+zorlaştırıyor.
+
+**Planned fix (Phase 5):** UI bölünürken dört durum ayrılacak —
+*yapılandırılmamış* / *kontrol edilmedi* / *geçersiz* / *doğrulanmış*. Ağ
+doğrulaması `core/` katmanına giremez (bağımlılık kuralı), bu yüzden bir
+adapter üzerinden ve her render'da değil; açık bir tetikleyiciyle ya da
+önbelleğe alınmış sonuçla çalışmalı.
+
+---
+
+## The webhook extra is a declaration, not a physical separation
+
+**Where:** [`requirements.txt`](../requirements.txt),
+[`requirements-webhook.txt`](../requirements-webhook.txt)
+
+Faz 2 Adım 4 `fastapi`, `uvicorn`, `pydantic` ve `httpx`'i `requirements.txt`
+dışına, opsiyonel `webhook` ekstrasına taşıdı. Ama `chromadb` bu paketlerin
+**dördünü de kendi bağımlılığı olarak** çekiyor, dolayısıyla ekstra
+kurulmasa bile ortamda bulunuyorlar. Kurulum boyutu azalmadı.
+
+**Detail:** `pip show chromadb` → `Requires: fastapi, httpx, pydantic,
+uvicorn, opentelemetry-instrumentation-fastapi, ...`. Yalnız `requirements.txt`
+ile kurulan temiz bir sanal ortamda dördü de mevcut.
+
+**Impact:** ayrım gerçek ama **kod düzeyinde**, paket düzeyinde değil. Değeri
+şurada: niyet açıkça yazılı, `pip install -e ".[webhook]"` çalışıyor, ve
+çekirdek kod yolu bu modüllere hiç dokunmuyor —
+`baseline/check_core_boundary.py` importları loader seviyesinde engelleyip
+bunu doğruluyor. "Çekirdek ortamda fastapi yok" iddiası ise **yanlış olur**.
+
+**Planned fix:** yok — `chromadb` bağımlılığı sürdükçe çözülemez. Faz 4'te
+vektör katmanı ele alınırken daha hafif bir istemci değerlendirilirse bu da
+kendiliğinden düzelir.

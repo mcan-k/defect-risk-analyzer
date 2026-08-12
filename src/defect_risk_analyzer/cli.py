@@ -1,8 +1,13 @@
 """Console entry point for the Defect Risk Analyzer.
 
-For now `dra` only launches the Streamlit dashboard. The API server is still
-started separately (BASLAT.bat, docker-compose, or `uvicorn
-defect_risk_analyzer.api:app`); wiring it into subcommands is future work.
+`dra` launches the Streamlit dashboard, which is the whole application: the
+analysis engine runs inside that process and needs no server.
+
+The FastAPI service is optional and only needed for the Jira webhook and
+external integrations. It ships as a separate extra and is started on its own:
+
+    pip install -e ".[webhook]"
+    uvicorn defect_risk_analyzer.api:app --port 8000
 """
 
 import subprocess
