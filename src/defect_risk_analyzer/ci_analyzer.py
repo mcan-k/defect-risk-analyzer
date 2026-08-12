@@ -18,7 +18,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 
-from defect_risk_analyzer import config
+from defect_risk_analyzer.core import scoring
 from defect_risk_analyzer.jira_client import load_bugs_from_file
 from defect_risk_analyzer.risk_analyzer import RiskAnalyzer
 
@@ -161,7 +161,7 @@ def generate_risk_report(
         stats = module_stats.get(module, {})
         if stats:
             score = analyzer.calculate_risk_score(module, stats)
-            level = config.get_risk_level(score)
+            level = scoring.get_risk_level(score)
             total = stats.get("total_bugs", 0)
             open_bugs = stats.get("open_bugs", 0)
             trend = stats.get("trend", "stable")
@@ -182,7 +182,7 @@ def generate_risk_report(
     report_lines.append("")
 
     # Overall verdict
-    overall_level = config.get_risk_level(max_risk)
+    overall_level = scoring.get_risk_level(max_risk)
     if overall_level == "CRITICAL":
         report_lines.append(f"### ⚠️ CRITICAL RISK — `{max_risk_module}` module requires immediate attention!")
         report_lines.append("")

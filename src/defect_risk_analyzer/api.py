@@ -47,6 +47,7 @@ from defect_risk_analyzer.api_models import (
     RiskSummary,
     WebhookPayload,
 )
+from defect_risk_analyzer.core import scoring
 from defect_risk_analyzer.jira_client import load_bugs_from_file, refresh_data
 from defect_risk_analyzer.llm_provider import LLMError, RateLimitError
 from defect_risk_analyzer.risk_analyzer import RiskAnalyzer
@@ -328,7 +329,7 @@ async def get_risks():
         score = analyzer.calculate_risk_score(module_name, stats)
         module_risks[module_name] = {
             "score": score,
-            "level": config.get_risk_level(score),
+            "level": scoring.get_risk_level(score),
             "bug_count": stats.get("total_bugs", 0),
             "open_count": stats.get("open_bugs", 0),
         }

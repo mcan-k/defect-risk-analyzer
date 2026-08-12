@@ -60,10 +60,8 @@ ANON_MAP_FILE: Path = DATA_DIR / "anon_map.json"
 WEBHOOK_RESULTS_FILE: Path = DATA_DIR / "webhook_results.json"
 CHROMA_DB_DIR: Path = DATA_DIR / "chroma_db"
 
-# Risk Score Thresholds (static)
-RISK_CRITICAL: int = 80
-RISK_HIGH: int = 60
-RISK_MEDIUM: int = 35
+# Risk score thresholds are NOT here: they are fixed product rules rather than
+# user settings, and live in core/scoring.py next to the formula that uses them.
 
 
 # ---------------------------------------------------------------------------
@@ -205,17 +203,6 @@ def get_llm_model() -> str:
     if LLM_PROVIDER == "openai":
         return DEFAULT_OPENAI_MODEL
     return DEFAULT_GROQ_MODEL
-
-
-def get_risk_level(score: int) -> str:
-    """Map a numeric risk score to a human-readable level."""
-    if score >= RISK_CRITICAL:
-        return "CRITICAL"
-    if score >= RISK_HIGH:
-        return "HIGH"
-    if score >= RISK_MEDIUM:
-        return "MEDIUM"
-    return "LOW"
 
 
 def is_jira_configured() -> bool:
