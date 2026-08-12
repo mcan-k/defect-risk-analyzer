@@ -49,3 +49,28 @@ sarmalayıcının `core.scoring`'e yaptığı delegasyon.
 
 **Planned fix (Phase 4):** karar ver. Modül ağırlığı isteniyorsa formüle ekle,
 istenmiyorsa parametreyi ve tüm çağrı yerlerini birlikte temizle.
+
+---
+
+## Failed result writes are logged, not surfaced
+
+**Where:** [`src/defect_risk_analyzer/adapters/results_repository.py`](../src/defect_risk_analyzer/adapters/results_repository.py)
+
+`_write_json()` bir `OSError` yakaladığında hatayı logluyor ve `False` dönüyor.
+`AnalysisService` bu dönüşü kontrol edip uyarı basıyor, ama **çağırana bir şey
+söylemiyor**: analiz sonucu normal şekilde dönüyor, HTTP 200 çıkıyor, dashboard
+sonucu gösteriyor. Disk doluysa ya da dosya sistemi salt-okunursa kullanıcı
+LLM kotasını harcamış ama sonucu kaybetmiş olur ve bunu ancak sayfayı
+yenilediğinde fark eder.
+
+**Detail:** Faz 2 Adım 1b bu davranışı bilerek korudu. Fırlatmaya çevirmek
+`/analyze` ve `/webhook/jira` uçlarının sözleşmesini değiştirirdi — bugün 200
+dönen bir çağrı 500 dönmeye başlardı — ve bu değişikliği yakalayacak bir test
+yok. Refactor'ün davranış-koruyan kalması önceliklendirildi.
+
+**Impact:** sessiz veri kaybı, yalnız disk hatası durumunda. Log'da `ERROR`
+kaydı kalıyor.
+
+**Planned fix (Phase 3):** testler geldikten sonra sonuç sözlüğüne `persisted`
+alanı ekle ya da yazma hatasını fırlat; UI kullanıcıya "sonuç kaydedilemedi"
+uyarısı göstersin.

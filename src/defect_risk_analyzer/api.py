@@ -251,60 +251,19 @@ async def analyze_bulk(request: BulkAnalyzeRequest):
 
     On first 429 rate limit error → stops immediately, marks remaining bugs as skipped.
     """
-    results: list[BugRiskResult] = []
-    skipped_keys: list[str] = []
-    circuit_breaker_triggered = False
-    all_bugs = analyzer.get_bugs()
-
-    # Build lookup map
-    bug_map = {bug.get("key"): bug for bug in all_bugs}
-
-    for bug_key in request.bug_keys:
-        # Circuit breaker: skip all remaining if triggered
-        if circuit_breaker_triggered:
-            skipped_keys.append(bug_key)
-            continue
-
-        bug_data = bug_map.get(bug_key)
-        if bug_data is None:
-            skipped_keys.append(bug_key)
-            continue
-
-        async with llm_semaphore:
-            try:
-                result = await asyncio.to_thread(
-                    analyzer.analyze_bug,
-                    query=bug_data.get("summary", bug_key),
-                    bug_data=bug_data,
-                    source="bulk_analysis",
-                )
-                results.append(BugRiskResult(**result))
-
-            except RateLimitError:
-                # CIRCUIT BREAKER: stop immediately on 429
-                circuit_breaker_triggered = True
-                skipped_keys.append(bug_key)
-                logger.warning(
-                    "Circuit breaker triggered at bug '%s'. "
-                    "Remaining bugs will be skipped.",
-                    bug_key,
-                )
-
-            except LLMError as e:
-                logger.error("LLM error analyzing bug '%s': %s", bug_key, e)
-                skipped_keys.append(bug_key)
-
-            except Exception as e:
-                logger.exception("Unexpected error analyzing bug '%s': %s", bug_key, e)
-                skipped_keys.append(bug_key)
+    # The loop, including the circuit breaker, lives in the service so the
+    # dashboard runs exactly the same code. No llm_semaphore here: the batch
+    # occupies one worker thread and the service releases its LLM lock between
+    # bugs, which matches the per-bug semaphore this replaced.
+    summary = await asyncio.to_thread(analyzer.analyze_bulk, request.bug_keys)
 
     return BulkAnalyzeResponse(
-        total=len(request.bug_keys),
-        analyzed=len(results),
-        skipped=len(skipped_keys),
-        results=results,
-        skipped_keys=skipped_keys,
-        circuit_breaker_triggered=circuit_breaker_triggered,
+        total=summary["total"],
+        analyzed=summary["analyzed"],
+        skipped=summary["skipped"],
+        results=[BugRiskResult(**r) for r in summary["results"]],
+        skipped_keys=summary["skipped_keys"],
+        circuit_breaker_triggered=summary["circuit_breaker_triggered"],
     )
 
 

@@ -21,6 +21,7 @@ import logging
 import threading
 import time
 from collections import Counter
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -31,6 +32,7 @@ from defect_risk_analyzer.anonymizer import DataAnonymizer
 from defect_risk_analyzer.component_classifier import classify_bugs
 from defect_risk_analyzer.core import scoring
 from defect_risk_analyzer.llm_provider import (
+    LLMError,
     LLMProvider,
     RateLimitError,
     create_llm_provider,
@@ -360,6 +362,93 @@ class AnalysisService:
                 logger.warning("Webhook result for %s was not persisted.", result["bug_key"])
 
         return result
+
+    def analyze_bulk(
+        self,
+        bug_keys: list[str],
+        on_progress: Callable[[int, int, str], None] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Analyze several bugs in sequence, with a circuit breaker.
+
+        On the first RateLimitError the run stops immediately and every
+        remaining key is reported as skipped — one 429 means the quota is gone,
+        so continuing would only burn time and produce more 429s.
+
+        Unknown keys and per-bug failures are skipped without tripping the
+        breaker.
+
+        Args:
+            bug_keys: Keys to analyze, in order.
+            on_progress: Optional callback invoked after each key with
+                (index, total, bug_key). Index is 1-based. Exceptions raised by
+                the callback are not caught.
+
+        Returns:
+            BulkAnalyzeResponse-compatible dict. `results` holds plain result
+            dicts; the API layer wraps them in its response model.
+        """
+        results: list[dict[str, Any]] = []
+        skipped_keys: list[str] = []
+        circuit_breaker_triggered = False
+
+        # Build lookup map
+        bug_map = {bug.get("key"): bug for bug in self.get_bugs()}
+        total = len(bug_keys)
+
+        for index, bug_key in enumerate(bug_keys, start=1):
+            # Circuit breaker: skip all remaining if triggered
+            if circuit_breaker_triggered:
+                skipped_keys.append(bug_key)
+                if on_progress:
+                    on_progress(index, total, bug_key)
+                continue
+
+            bug_data = bug_map.get(bug_key)
+            if bug_data is None:
+                skipped_keys.append(bug_key)
+                if on_progress:
+                    on_progress(index, total, bug_key)
+                continue
+
+            try:
+                results.append(
+                    self.analyze_bug(
+                        query=bug_data.get("summary", bug_key),
+                        bug_data=bug_data,
+                        source="bulk_analysis",
+                    )
+                )
+
+            except RateLimitError:
+                # CIRCUIT BREAKER: stop immediately on 429
+                circuit_breaker_triggered = True
+                skipped_keys.append(bug_key)
+                logger.warning(
+                    "Circuit breaker triggered at bug '%s'. "
+                    "Remaining bugs will be skipped.",
+                    bug_key,
+                )
+
+            except LLMError as e:
+                logger.error("LLM error analyzing bug '%s': %s", bug_key, e)
+                skipped_keys.append(bug_key)
+
+            except Exception as e:
+                logger.exception("Unexpected error analyzing bug '%s': %s", bug_key, e)
+                skipped_keys.append(bug_key)
+
+            if on_progress:
+                on_progress(index, total, bug_key)
+
+        return {
+            "total": total,
+            "analyzed": len(results),
+            "skipped": len(skipped_keys),
+            "results": results,
+            "skipped_keys": skipped_keys,
+            "circuit_breaker_triggered": circuit_breaker_triggered,
+        }
 
     # ------------------------------------------------------------------
     # Detection helpers (no LLM)
