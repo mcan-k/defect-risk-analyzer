@@ -77,18 +77,19 @@ if not exist ".venv\Scripts\activate.bat" (
     call .venv\Scripts\activate.bat
 )
 
-REM --- Paketi editable modda kur (idempotent, mevcut kurulumlar icin de) ---
-REM Dashboard ve API artik "defect_risk_analyzer" paketini import ediyor;
-REM paket kurulu degilse ModuleNotFoundError alinir.
-python -c "import defect_risk_analyzer" >nul 2>&1
+REM --- Paketi editable modda kur (kosulsuz, her acilista) ---
+REM Kosullu calistirmak yanlisti: "import edilebiliyor mu" sorusu
+REM "metadata guncel mi" sorusuna cevap vermiyor. Editable kurulumda paket
+REM bir kez kurulunca hep import edilebilir, ama pyproject.toml degisince
+REM (yeni entry point, yeni extra, yeni paket bulma kurali) yenilenmez.
+REM --no-deps oldugu icin idempotent ve hizli.
+echo   Paket kuruluyor...
+pip install -e . --no-deps >nul 2>&1
 if errorlevel 1 (
-    echo   Paket kuruluyor...
-    pip install -e . --no-deps
-    if errorlevel 1 (
-        echo   [HATA] Paket kurulamadi.
-        pause
-        exit /b 1
-    )
+    echo   [HATA] Paket kurulamadi.
+    echo   Ayrinti icin: pip install -e . --no-deps
+    pause
+    exit /b 1
 )
 
 REM --- Onceki islemi temizle ---

@@ -155,3 +155,38 @@ bunu doğruluyor. "Çekirdek ortamda fastapi yok" iddiası ise **yanlış olur**
 **Planned fix:** yok — `chromadb` bağımlılığı sürdükçe çözülemez. Faz 4'te
 vektör katmanı ele alınırken daha hafif bir istemci değerlendirilirse bu da
 kendiliğinden düzelir.
+
+---
+
+## Two processes share one ChromaDB directory
+
+**Where:** [`docker-compose.yml`](../docker-compose.yml),
+[`src/defect_risk_analyzer/adapters/vector_store.py`](../src/defect_risk_analyzer/adapters/vector_store.py)
+
+`docker-compose --profile webhook up` çalıştırıldığında dashboard ve API
+servisleri `app-data` volume'ünü paylaşıyor, yani ikisi de aynı
+`data/chroma_db` dizinine bağlanıyor. Bir tam veri yüklemesi
+(`load_bugs` → `VectorStore.reset()`) koleksiyonu silip yeniden yarattığı
+için, o sırada yükleme yapmayan tarafın elindeki koleksiyon tanıtıcısı
+geçersiz kalıyor.
+
+**Detail:** Faz 2 Adım 2 doğrulaması sırasında gerçek bir arıza olarak
+görüldü: ikinci bir process veri yükleyince canlı dashboard'un Pattern
+sayfası `Collection ... does not exist` verdi ve o oturum boyunca bozuk
+kaldı. `VectorStore._run()` artık bu hatayı tanıyıp istemciyi ve tanıtıcıyı
+düşürerek bir kez yeniden deniyor, dolayısıyla kullanıcıya yansıyan kalıcı
+bozulma giderildi.
+
+**Impact:** artık kurtarılabilir, ama hâlâ bir yarış: iki taraf aynı anda
+`reset()` çağırırsa biri diğerinin yeni indekslediği verinin üzerine yazabilir.
+Varsayılan `docker-compose up` tek servis çalıştırdığı için normal kullanımda
+görülmez; yalnız `webhook` profili açıkken geçerli. SQLite kilit çakışması da
+teorik olarak mümkün.
+
+**Workaround until then:** iki profil birlikte çalışıyorken veri
+senkronizasyonunu tek taraftan yapın.
+
+**Planned fix (Phase 4):** veri katmanı ele alınırken toptan silme yerine
+diff-sync (`collection.get` → karşılaştır → `delete` + `upsert`) ve
+`defect_history_mock` / `defect_history_live` ayrı koleksiyonları geliyor;
+ikisi de bu yarışı büyük ölçüde ortadan kaldırır.

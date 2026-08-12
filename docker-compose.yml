@@ -1,47 +1,66 @@
 # =============================================================================
 # Predictive Defect Analysis Engine — Docker Compose
 # =============================================================================
-# Usage:
-#   docker-compose up --build        Start both services
-#   docker-compose down              Stop and remove containers
-#   docker-compose logs -f backend   Follow backend logs
+# The dashboard is the whole application: the analysis engine runs inside that
+# process, so a single service is all you need.
+#
+#   docker-compose up --build                    Dashboard only (default)
+#   docker-compose --profile webhook up --build  Dashboard + Jira webhook API
+#   docker-compose down                          Stop and remove containers
+#   docker-compose logs -f dashboard             Follow dashboard logs
 # =============================================================================
 
 services:
-  backend:
+  dashboard:
     build: .
-    container_name: defect-risk-backend
-    command: uvicorn defect_risk_analyzer.api:app --host 0.0.0.0 --port 8000
-    ports:
-      - "${API_PORT:-8000}:8000"
-    env_file:
-      - .env
-    volumes:
-      - app-data:/app/data
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 10s
-      timeout: 5s
-      retries: 3
-      # On first run ChromaDB downloads its ONNX embedding model (~80MB)
-      # during app startup; a short start_period makes the backend look
-      # unhealthy and frontend dies with "dependency failed to start".
-      start_period: 180s
-    restart: unless-stopped
-
-  frontend:
-    build: .
-    container_name: defect-risk-frontend
-    command: streamlit run src/defect_risk_analyzer/dashboard.py --server.port=8501 --server.address=0.0.0.0 --server.headless=true
+    container_name: defect-risk-dashboard
+    command: >
+      streamlit run src/defect_risk_analyzer/dashboard.py
+      --server.port=8501 --server.address=0.0.0.0 --server.headless=true
     ports:
       - "${STREAMLIT_PORT:-8501}:8501"
     env_file:
       - .env
     volumes:
       - app-data:/app/data
-    depends_on:
-      backend:
-        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # On first run ChromaDB downloads its ONNX embedding model (~80MB). That
+      # download moved here with the analysis engine: it is triggered by the
+      # first page render rather than at process start, so Streamlit usually
+      # answers /_stcore/health before it happens. The long start_period is
+      # kept as insurance — on a slow first boot a short one would mark the
+      # container unhealthy and put it in a restart loop.
+      start_period: 180s
+    restart: unless-stopped
+
+  # Optional: only needed for the Jira webhook and external REST integrations.
+  # Started with `docker-compose --profile webhook up`; a plain `up` does not
+  # open port 8000 at all.
+  api:
+    build: .
+    container_name: defect-risk-api
+    profiles: ["webhook"]
+    command: uvicorn defect_risk_analyzer.api:app --host 0.0.0.0 --port 8000
+    ports:
+      - "${API_PORT:-8000}:8000"
+    env_file:
+      - .env
+    volumes:
+      # Shares the ChromaDB directory with the dashboard. See docs/KNOWN-DEBT.md
+      # for the collection-reset race this creates.
+      - app-data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      # This service does load bugs during startup, so the model download
+      # blocks its health endpoint.
+      start_period: 180s
     restart: unless-stopped
 
 volumes:
