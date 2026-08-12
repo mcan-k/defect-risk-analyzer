@@ -152,9 +152,21 @@ ile kurulan temiz bir sanal ortamda dördü de mevcut.
 `baseline/check_core_boundary.py` importları loader seviyesinde engelleyip
 bunu doğruluyor. "Çekirdek ortamda fastapi yok" iddiası ise **yanlış olur**.
 
-**Planned fix:** yok — `chromadb` bağımlılığı sürdükçe çözülemez. Faz 4'te
-vektör katmanı ele alınırken daha hafif bir istemci değerlendirilirse bu da
-kendiliğinden düzelir.
+**Follow-up (Faz 2 kapanışı):** ilk halinde `requirements-webhook.txt` bu dört
+paketi `==` ile sabitliyordu ve Docker build'i onları iki kez kuruyordu:
+`chromadb` en güncelini çekiyor (fastapi 0.141.1, pydantic 2.13.4,
+starlette 1.6.0, uvicorn 0.52.1), ardından ikinci `pip install` bunları
+kaldırıp eski pinleri geri koyuyordu. Tesadüfen çalışıyordu çünkü
+0.115.6 ≥ 0.95.2; `chromadb` tabanını yükseltseydi sessizce uyumsuz hale
+gelirdi. Düzeltildi: pinler alt sınıra çevrildi ve iki dosya **tek bir pip
+çağrısında** kuruluyor, böylece çözümleme bir kez yapılıyor ve gerçek bir
+çakışma build'i sessizce geçmek yerine düşürüyor.
+
+**Planned fix:** yok — `chromadb` bağımlılığı sürdükçe paket düzeyinde ayrım
+çözülemez. Faz 4'te vektör katmanı ele alınırken daha hafif bir istemci
+değerlendirilirse bu da kendiliğinden düzelir. Alt sınırlar sabitleme
+sağlamadığı için, yeni bir fastapi sürümünün `api.py`'yi bozmasına karşı asıl
+koruma Faz 3'teki testler olacak.
 
 ---
 

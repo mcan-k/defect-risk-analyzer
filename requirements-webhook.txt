@@ -9,9 +9,21 @@
 # the CI analyzer call the analysis service directly and never import these.
 # =============================================================================
 
-fastapi==0.115.6
-uvicorn[standard]==0.34.0
-pydantic==2.10.4
+# Lower bounds, not exact pins, on purpose.
+#
+# chromadb already requires all four of these (fastapi>=0.95.2, pydantic>=1.9,
+# uvicorn[standard]>=0.18.3, httpx>=0.27.0) with no upper bound, so it is the
+# resolver that decides the versions. Pinning `==` here did not change that —
+# it just uninstalled what chromadb had installed and put an older build back,
+# and would have become a hard conflict the moment chromadb raised its floor.
+#
+# These bounds record the oldest versions the code is known to work with.
+# Install both files in ONE pip invocation so the resolver sees every
+# constraint at once:  pip install -r requirements.txt -r requirements-webhook.txt
+
+fastapi>=0.115.6
+uvicorn[standard]>=0.34.0
+pydantic>=2.10.4
 
 # Required by fastapi.testclient.TestClient; not imported by the application.
-httpx==0.28.1
+httpx>=0.28.1

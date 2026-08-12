@@ -31,11 +31,19 @@ RUN apt-get update && \
 # Build a dashboard-only image with:  docker build --build-arg INSTALL_WEBHOOK=false .
 ARG INSTALL_WEBHOOK=true
 
+#
+# Both requirement files go into ONE pip invocation. Installing them in
+# sequence made pip resolve twice: chromadb pulled the newest fastapi,
+# pydantic, starlette and uvicorn, and the second command then uninstalled
+# them and put older pinned builds back. One call, one resolution, each
+# package installed once — and a genuine conflict fails the build instead of
+# silently downgrading.
 COPY requirements.txt requirements-webhook.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
     if [ "$INSTALL_WEBHOOK" = "true" ]; then \
-        pip install --no-cache-dir -r requirements-webhook.txt; \
+        pip install --no-cache-dir -r requirements.txt -r requirements-webhook.txt; \
+    else \
+        pip install --no-cache-dir -r requirements.txt; \
     fi
 
 # Copy application code
