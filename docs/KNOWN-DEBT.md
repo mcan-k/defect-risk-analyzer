@@ -202,3 +202,104 @@ senkronizasyonunu tek taraftan yapın.
 diff-sync (`collection.get` → karşılaştır → `delete` + `upsert`) ve
 `defect_history_mock` / `defect_history_live` ayrı koleksiyonları geliyor;
 ikisi de bu yarışı büyük ölçüde ortadan kaldırır.
+
+---
+
+## Retiring `compare_service.py` drops three regression checks
+
+**Where:** [`tests/test_scoring_regression.py`](../tests/test_scoring_regression.py),
+[`tests/test_analysis_service_breaker.py`](../tests/test_analysis_service_breaker.py)
+
+Faz 3, `baseline/compare_service.py`'yi emekli etti. O script beş bölümü
+refactor öncesi `RiskAnalyzer` ile karşılaştırıyordu; yeni test paketi bunların
+ikisini devraldı, biri kısmen karşılandı, **üçü karşılıksız kaldı**.
+
+**Detail:** devralınanlar `module_stats` ve `risk_scores` — ikisi de
+`test_scoring_regression.py` içinde, `tests/data/` altındaki aff55c6
+snapshot'larına karşı. Devre kesici davranışı `test_analysis_service_breaker.py`
+ile kısmen karşılandı (dört eski senaryonun tamamı değil). Karşılıksız kalanlar:
+`risk_for_query`, `defect_density`, `blind_spots`.
+
+Emekli etmek yine de doğruydu: script eski `RiskAnalyzer`'ı
+`git show <ref>:...` ile git geçmişinden yüklüyordu, yani geçmiş yaşlandıkça
+çürüyor ve CI'da hiç koşamıyordu.
+
+**Impact:** bu üç bölümdeki bir davranış değişikliği CI'dan sessizce geçer.
+En keskin risk `blind_spots`: Faz 5 bu fonksiyonun dönüş tipini yapısal veriye
+çevirmeyi planlıyor ve bunun API kontratını kırdığı açıkça biliniyor — ama artık
+mevcut şekli sabitleyen hiçbir test yok.
+
+**Planned fix (Phase 5):** üçünü snapshot testi olarak geri getir; sırayla
+`blind_spot_detector` yeniden yazımından **önce**, sonra değil.
+
+---
+
+## ROADMAP Faz 3'te olup Faz 3'e alınmayanlar
+
+**Where:** [`docs/ROADMAP-v2.md`](ROADMAP-v2.md), [`tests/`](../tests/)
+
+Faz 3'ün kapsamı, ROADMAP-v2'nin "Faz 3 — Testler" başlığından dardı. Aşağıdakiler
+teknik bir engelden değil, faz kapsamında olmadıkları için yapılmadı. Belge ile
+gerçeğin sessizce ayrışmaması için buraya yazıldı.
+
+**Detail:**
+
+- **`tests/test_adf_parser.py`** — `parse_adf_to_text`
+  ([`jira_client.py:25`](../src/defect_risk_analyzer/jira_client.py)) saf ve
+  özyinelemeli; ROADMAP'in kendi deyimiyle "en yüksek getiri". Buradaki en ucuz
+  gerçek boşluk.
+- **`tests/test_anonymizer.py`** — round-trip **ve telefon regex'i düzeltmesi**
+  (sürüm numarası, sipariş kodu ve tarih maskelenmemeli). Dikkat: bu eksik bir
+  test değil, **yaşayan bir hata**; test yazmak tek başına yetmez.
+- **`pattern_detector.py`, `blind_spot_detector.py`, `component_classifier.py`**
+  — hiç testleri yok.
+- **`pip-audit`** — ROADMAP hem `requirements-dev.txt` hem CI için istiyor;
+  ikisinde de yok. Faz 3 CI'a `pytest` + `ruff` ekledi, bunu eklemedi.
+- **Kapsam rozeti / `pytest-cov` eşiği** — **bilerek reddedildi**, ertelenmedi.
+  Yüzde hedefi, kapsamı yükseltmek için zayıf test yazma baskısı yaratır; ölçüt
+  testin gerçekten bir şeyi kontrol etmesidir. `pytest-cov` kurulu kalıyor,
+  isteyen elle çalıştırabilir. Sonradan gözden kaçmış bir eksik sanılmasın diye
+  buraya yazıldı.
+
+**Planned fix (Phase 5):** `test_adf_parser.py` ve `test_anonymizer.py`
+(regex düzeltmesiyle birlikte) önce; detektör testleri `blind_spot_detector`
+yeniden yazımıyla aynı fazda.
+
+---
+
+## `ruff check .` 70 hatayla düşüyordu; per-file-ignores ile karantinada
+
+**Where:** [`pyproject.toml`](../pyproject.toml)
+
+Faz 3 CI'a `ruff check .` eklerken, deponun bu komutu **hiç geçmediği** ortaya
+çıktı: 70 ihlal. README (`### Development`) komutu geçiyormuş gibi belgeliyordu.
+
+**Detail:** dağılım — 54 `E501` (uzun satır), 15 `B904`
+(`raise ... from` yok), 1 `F841` (kullanılmayan yerel):
+
+| dosya | kural | adet |
+|---|---|---|
+| `dashboard.py` | E501 / F841 | 37 / 1 |
+| `api.py` | B904 | 9 |
+| `llm_provider.py` | B904 | 6 |
+| `ci_analyzer.py` | E501 | 5 |
+| `api_models.py` | E501 | 4 |
+| `prompt_templates.py` | E501 | 3 |
+| `blind_spot_detector.py`, `pattern_detector.py` | E501 | 2 + 2 |
+| `anonymizer.py` | E501 | 1 |
+
+Genel bir `ignore` listesi yerine `[tool.ruff.lint.per-file-ignores]` kullanıldı:
+kurallar depo genelinde açık kalıyor, yani `src/` altına eklenen **yeni** kod —
+aynı paketteki diğer dosyalar dahil — hâlâ denetleniyor. Doğrulandı: karantinada
+olmayan bir dosyaya eklenen E501 ve yalnız E501 için karantinaya alınmış bir
+dosyaya eklenen B904 hâlâ yakalanıyor.
+
+**Impact:** ödünleşim gerçek — karantinaya alınmış bir dosyada, karantinaya
+alınmış kuralın **yeni** bir ihlali de gözden kaçar. Girdiler bunu sınırlamak
+için olabildiğince dar tutuldu.
+
+**Planned fix:** girdiler dosya bazında ve fazı yazılı olarak konuldu;
+`pyproject.toml`'daki her satırın üstünde hangi fazda kalkacağı yazıyor
+(dashboard.py → Faz 5, api.py → Faz 5, llm_provider.py → Faz 6,
+ci_analyzer.py → Faz 4, kalanlar sahipsiz). Silinmek için konuldular,
+büyütülmek için değil.

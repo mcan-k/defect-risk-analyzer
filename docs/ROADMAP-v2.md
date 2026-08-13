@@ -79,13 +79,48 @@ Projenin en kritik adımı. `ui/` ile `server/` arasındaki HTTP bağımlılığ
 - [ ] LLM provider'ı `analysis_service` constructor'ından enjekte et
 - [ ] `docker-compose.yml`'ı tek servise indir; `API_URL` / paylaşılan `API_KEY` sorunu ortadan kalkar
 
-### Faz 3 — Testler (yarım gün)
+### Faz 3 — Testler (tamamlandı)
+Kapsam bu bölümün ilk halinden dardı. Yapılanlar, yapılmayanlar ve nedenleri
+aşağıda; ayrıntı `docs/KNOWN-DEBT.md`'de.
+
+Yapıldı:
+- [x] `pyproject.toml`'a pytest yapılandırması (`testpaths`, `pythonpath = ["src"]`)
+- [x] `tests/test_scoring_regression.py` — silinmiş `risk_analyzer.py`'nin
+      çıktısına karşı regresyon; snapshot'lar `tests/data/` altında commit'li
+      (`aff55c6`, mode A). Faz 2'nin davranış-koruyan olduğunun tek kanıtı.
+- [x] `tests/test_scoring_units.py` — `calculate_risk_score` /
+      `calculate_module_stats` (ROADMAP'teki `test_scoring.py` bu ikiye bölündü:
+      biri snapshot'a, diğeri elle türetilmiş değerlere dayanıyor)
+- [x] `tests/test_llm_provider.py` — 429 → `RateLimitError`, diğer hatalar →
+      `LLMError`; iki tipin birbirinin alt sınıfı **olmadığı** da sabitlendi
+- [x] `tests/test_analysis_service_breaker.py` — `analyze_bulk` devre kesicisi.
+      Asıl sıralama tehlikesi `llm_provider.py`'de değil burada:
+      `except RateLimitError` sondaki `except Exception`'ın altına taşınırsa
+      kesici sessizce hiç tetiklenmez.
+- [x] `tests/test_config_init.py` — `init()` çağrılmadığında sessizce
+      default'lara düşen davranışı **belgeliyor** (düzeltme Faz 6)
+- [x] `tests/test_core_boundary.py` — `baseline/check_core_boundary.py` buraya
+      taşındı; **alt süreçte** koşuyor (aynı süreçte `sys.modules` önbelleği
+      yüzünden boşuna geçerdi) ve CI'da koşuyor
+- [x] `tests/test_dashboard_pages.py` — `baseline/walk_pages.py` portu, 7 sayfa
+      `streamlit.testing.v1.AppTest` ile headless; üretilen geçici `.env` ve
+      stub vector store sayesinde ChromaDB/Jira/ağ gerektirmiyor
+- [x] CI'a `pytest` + `ruff` adımları (`.github/workflows/tests.yml`)
+
+Yapılmadı — Faz 5'e taşındı (gerekçeleri `KNOWN-DEBT.md`'de):
 - [ ] `tests/test_adf_parser.py` — saf fonksiyon, en yüksek getiri
-- [ ] `tests/test_scoring.py` — `calculate_risk_score`, `calculate_module_stats`
 - [ ] `tests/test_anonymizer.py` — round-trip + **telefon regex'i düzeltmesi**
-      (sürüm numarası, sipariş kodu, tarih maskelenmemeli)
-- [ ] CI'a `pytest` + `ruff` + `pip-audit` adımları
-- [ ] Kapsam rozeti — gerçek olsun, sahte rozet koyma
+      (sürüm numarası, sipariş kodu, tarih maskelenmemeli). Eksik test değil,
+      yaşayan hata.
+- [ ] `pattern_detector` / `blind_spot_detector` / `component_classifier` testleri
+- [ ] `compare_service.py` emekliye ayrılırken kaybedilen üç regresyon bölümü:
+      `risk_for_query`, `defect_density`, `blind_spots`
+- [ ] CI'a `pip-audit` adımı
+
+Reddedildi (ertelenmedi):
+- ~~Kapsam rozeti~~ — yüzde hedefi, kapsamı yükseltmek için zayıf test yazma
+  baskısı yaratır. Ölçüt testin gerçekten bir şeyi kontrol etmesi.
+  `pytest-cov` kurulu, isteyen elle çalıştırır. Bkz. `KNOWN-DEBT.md`.
 
 ### Faz 4 — Veri katmanı (yarım gün)
 - [ ] ChromaDB toptan silme yerine diff-sync (`collection.get` → karşılaştır → `delete` + `upsert`)

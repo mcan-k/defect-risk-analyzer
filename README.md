@@ -329,7 +329,19 @@ limits of that last fallback.
 pip install -r requirements-dev.txt
 pip install -e .
 ruff check .
+pytest
 ```
+
+The test suite needs no network, ChromaDB, Jira or LLM credentials, and never
+writes into the working tree — `tests/conftest.py` redirects every data path to
+a temporary directory and fails the run if that redirection does not take
+effect. The `pip install -e .` above is optional for the tests alone:
+`pythonpath = ["src"]` makes them run from a bare checkout.
+
+The streamlit page walk is the slow part; skip it with `pytest -m "not slow"`.
+
+Both commands run in CI on every push and pull request
+([`.github/workflows/tests.yml`](.github/workflows/tests.yml)).
 
 ---
 
