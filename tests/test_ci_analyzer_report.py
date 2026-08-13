@@ -22,7 +22,12 @@ from typing import Any
 
 import pytest
 
-from defect_risk_analyzer.ci_analyzer import generate_risk_report
+from defect_risk_analyzer.ci_analyzer import (
+    extract_changed_files,
+    generate_risk_report,
+    infer_module_provenance,
+    select_analyzable_files,
+)
 from defect_risk_analyzer.core import scoring
 
 SNAPSHOT = (
@@ -106,3 +111,186 @@ def test_generated_timestamp_defaults_to_now():
         stamped[0].removeprefix("**Generated:** "), "%Y-%m-%d %H:%M:%S"
     )
     assert before <= printed <= after
+
+
+# ===========================================================================
+# Matched, with history — the scored path
+# ===========================================================================
+
+def test_module_with_history_is_scored(authentication):
+    """The score and level come from the snapshot, not from this file.
+
+    79 / HIGH is also what the PR #3 probe printed. The probe was wrong about
+    *which module* was affected, never about the arithmetic.
+    """
+    report = generate_risk_report(
+        StubAnalyzer({"Authentication": authentication["stats"]}),
+        ["src/auth/login.py"],
+        ["Authentication"],
+        now=FROZEN_NOW,
+    )
+
+    assert f"| Authentication | {authentication['score']}/100 |" in report
+    assert authentication["level"] in report
+    assert "HIGH RISK — `Authentication` module has elevated defect density." in report
+
+
+# ===========================================================================
+# Matched, without history — not the same thing as low risk
+# ===========================================================================
+
+def test_matched_module_without_history_gets_no_risk_row():
+    """Inventory is a real module name; this analyzer just has no bugs for it.
+
+    Before this commit the report printed "| Inventory | N/A | No Data | 0 | 0 |"
+    and then, because max_risk had stayed 0, concluded "LOW RISK — No
+    significant defect patterns detected". That is a claim about the change.
+    The truth is that nothing was measured.
+    """
+    report = generate_risk_report(
+        StubAnalyzer({}), ["src/inventory/stock.py"], ["Inventory"], now=FROZEN_NOW
+    )
+
+    assert "**Matched, no historical data:** Inventory" in report
+    assert "NOT ASSESSED — Inventory matched" in report
+    assert "Risk was not assessed" in report
+
+    assert "## Risk Summary" not in report
+    assert "No Data" not in report
+    assert "LOW RISK" not in report
+    assert "No significant defect patterns" not in report
+
+
+def test_mixed_matched_modules(authentication):
+    """One scored, one not. The unscored one must not touch the verdict."""
+    report = generate_risk_report(
+        StubAnalyzer({"Authentication": authentication["stats"]}),
+        ["src/auth/payment_view.py", "src/inventory/stock.py"],
+        ["Authentication", "Inventory"],
+        now=FROZEN_NOW,
+    )
+
+    table_rows = [ln for ln in report.splitlines() if ln.startswith("| Authentication")]
+    assert len(table_rows) == 1
+    assert not any(ln.startswith("| Inventory") for ln in report.splitlines())
+
+    assert "**Matched, no historical data:** Inventory" in report
+    # The verdict comes from the module that was actually scored.
+    assert "HIGH RISK — `Authentication`" in report
+    assert "NOT ASSESSED" not in report
+
+
+# ===========================================================================
+# Nothing matched — the probe #2 outcome
+# ===========================================================================
+
+def test_no_module_match_is_not_assessed():
+    report = generate_risk_report(
+        StubAnalyzer({}),
+        ["docs/probe/notes.md"],
+        [],
+        analyzed_files=[],
+        now=FROZEN_NOW,
+    )
+
+    assert "**Affected Modules:** — none matched" in report
+    assert "NOT ASSESSED — changed files did not map to any known module." in report
+    assert "**Analyzed Files:** 0  (1 skipped: documentation, config or asset)" in report
+
+    assert "## Risk Summary" not in report
+    assert "LOW RISK" not in report
+    assert "General" not in report
+
+
+# ===========================================================================
+# Provenance in the rendered report
+# ===========================================================================
+
+def test_report_shows_why_these_modules():
+    """The evidence for the false positive this phase leaves open."""
+    changed = ["tests/test_ci_analyzer_report.py"]
+    report = generate_risk_report(
+        StubAnalyzer({}),
+        changed,
+        ["Reporting"],
+        provenance=infer_module_provenance(changed),
+        now=FROZEN_NOW,
+    )
+
+    assert "## Why these modules" in report
+    assert (
+        "- **Reporting** ← token `report` in `tests/test_ci_analyzer_report.py`"
+        in report
+    )
+
+
+def test_provenance_section_is_omitted_when_not_supplied():
+    report = generate_risk_report(
+        StubAnalyzer({}), ["src/inventory/stock.py"], ["Inventory"], now=FROZEN_NOW
+    )
+
+    assert "## Why these modules" not in report
+
+
+# ===========================================================================
+# End to end — the two PR #3 probes, from raw diff to rendered report
+# ===========================================================================
+
+def _probe_diff(path: str) -> str:
+    """A one-line documentation change, in the shape git actually emits."""
+    return (
+        f"diff --git a/{path} b/{path}\n"
+        "new file mode 100644\n"
+        "index 0000000..1111111\n"
+        "--- /dev/null\n"
+        f"+++ b/{path}\n"
+        "@@ -0,0 +1 @@\n"
+        "+Bu dosya yalnizca CI kanit probe'u icin eklendi.\n"
+    )
+
+
+def _report_for(diff: str, analyzer: StubAnalyzer) -> str:
+    """The exact chain main() runs, minus the file I/O."""
+    changed_files = extract_changed_files(diff)
+    provenance = infer_module_provenance(changed_files)
+
+    return generate_risk_report(
+        analyzer,
+        changed_files,
+        sorted(provenance),
+        analyzed_files=select_analyzable_files(changed_files),
+        provenance=provenance,
+        now=FROZEN_NOW,
+    )
+
+
+def test_doc_only_diff_produces_no_risk_end_to_end(authentication):
+    """The full PR #3 regression, through every link in the chain.
+
+    The analyzer is loaded with Authentication history on purpose: the bug was
+    never that the data was missing, it was that a documentation file reached
+    that data at all.
+    """
+    analyzer = StubAnalyzer({"Authentication": authentication["stats"]})
+
+    report = _report_for(_probe_diff("docs/probe/auth-probe.md"), analyzer)
+
+    assert "Authentication" not in report
+    assert "HIGH RISK" not in report
+    assert str(authentication["score"]) not in report
+    assert "NOT ASSESSED" in report
+
+
+def test_report_does_not_depend_on_a_doc_filename(authentication):
+    """The two probes, side by side — the difference that exposed the bug.
+
+    Both files hold the same one-line note. With the clock frozen the reports
+    must be identical once the filename itself is substituted; any remaining
+    difference means the filename leaked into the analysis again.
+    """
+    analyzer = StubAnalyzer({"Authentication": authentication["stats"]})
+
+    keyword_named = _report_for(_probe_diff("docs/probe/auth-probe.md"), analyzer)
+    neutral_named = _report_for(_probe_diff("docs/probe/notes.md"), analyzer)
+
+    assert keyword_named.replace("auth-probe", "notes") == neutral_named

@@ -263,15 +263,29 @@ def generate_risk_report(
     changed_files: list[str],
     affected_modules: list[str],
     *,
+    analyzed_files: list[str] | None = None,
+    provenance: dict[str, list[tuple[str, str]]] | None = None,
     now: datetime | None = None,
 ) -> str:
     """
     Generate a markdown risk report for a PR.
 
+    Three outcomes are reported distinctly, because conflating them is what
+    made the PR #3 probe print "LOW RISK" for a diff it had not assessed:
+
+        module matched, history exists  -> a scored row in the risk table
+        module matched, no history      -> named, but no row and no score
+        nothing matched                 -> NOT ASSESSED, and no verdict at all
+
     Args:
         analyzer: Initialized AnalysisService with loaded bugs.
         changed_files: List of changed file paths.
-        affected_modules: Inferred module names.
+        affected_modules: Inferred module names. Empty means nothing matched.
+        analyzed_files: The subset of changed_files that reached inference, from
+            select_analyzable_files. Used only for the "N skipped" count, which
+            is what tells a reader why a docs-only PR matched nothing.
+        provenance: Module -> (file, token) evidence from
+            infer_module_provenance. Omitted means the section is not printed.
         now: Timestamp for the report header. Defaults to the current time.
             Passing it explicitly makes the output reproducible, which is what
             lets a test compare two reports for equality.
@@ -283,64 +297,137 @@ def generate_risk_report(
     # value at import time. Same reasoning as core/scoring.py:92-94.
     now = now or datetime.now()
 
+    module_stats = analyzer.calculate_module_stats()
+
+    # A module is scored only if the bug history actually knows it. The rest are
+    # named separately — being unable to score a module is not a low score.
+    scored = [m for m in affected_modules if module_stats.get(m)]
+    unscored = [m for m in affected_modules if not module_stats.get(m)]
+
     report_lines = []
     report_lines.append("# 🔍 Defect Risk Analysis Report")
     report_lines.append("")
     report_lines.append(f"**Generated:** {now.strftime('%Y-%m-%d %H:%M:%S')}")
     report_lines.append(f"**Changed Files:** {len(changed_files)}")
-    report_lines.append(f"**Affected Modules:** {', '.join(affected_modules)}")
-    report_lines.append("")
 
-    # Module statistics
-    module_stats = analyzer.calculate_module_stats()
+    if analyzed_files is not None:
+        skipped = len(changed_files) - len(analyzed_files)
+        line = f"**Analyzed Files:** {len(analyzed_files)}"
+        if skipped:
+            line += f"  ({skipped} skipped: documentation, config or asset)"
+        report_lines.append(line)
 
-    # Overall risk assessment
-    report_lines.append("## Risk Summary")
+    modules_line = ", ".join(affected_modules) if affected_modules else "— none matched"
+    report_lines.append(f"**Affected Modules:** {modules_line}")
     report_lines.append("")
-    report_lines.append("| Module | Risk Score | Risk Level | Total Bugs | Open Bugs | Trend |")
-    report_lines.append("|--------|-----------|------------|------------|-----------|-------|")
 
     max_risk = 0
     max_risk_module = ""
 
-    for module in affected_modules:
-        stats = module_stats.get(module, {})
-        if stats:
+    # Only scored modules get a table. A row reading "N/A | No Data | 0 | 0" said
+    # nothing except that the tool had been asked a question it could not answer.
+    if scored:
+        report_lines.append("## Risk Summary")
+        report_lines.append("")
+        report_lines.append(
+            "| Module | Risk Score | Risk Level | Total Bugs | Open Bugs | Trend |"
+        )
+        report_lines.append(
+            "|--------|-----------|------------|------------|-----------|-------|"
+        )
+
+        for module in scored:
+            stats = module_stats[module]
             score = analyzer.calculate_risk_score(module, stats)
             level = scoring.get_risk_level(score)
             total = stats.get("total_bugs", 0)
             open_bugs = stats.get("open_bugs", 0)
             trend = stats.get("trend", "stable")
 
-            emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(level, "⚪")
-            trend_emoji = {"increasing": "📈", "decreasing": "📉", "stable": "➡️"}.get(trend, "➡️")
+            emoji = {
+                "CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢",
+            }.get(level, "⚪")
+            trend_emoji = {
+                "increasing": "📈", "decreasing": "📉", "stable": "➡️",
+            }.get(trend, "➡️")
 
             report_lines.append(
-                f"| {module} | {score}/100 | {emoji} {level} | {total} | {open_bugs} | {trend_emoji} {trend} |"
+                f"| {module} | {score}/100 | {emoji} {level} | {total} "
+                f"| {open_bugs} | {trend_emoji} {trend} |"
             )
 
             if score > max_risk:
                 max_risk = score
                 max_risk_module = module
+
+        report_lines.append("")
+
+    if unscored:
+        report_lines.append(f"**Matched, no historical data:** {', '.join(unscored)}")
+        report_lines.append("")
+        report_lines.append(
+            "*A path token named these modules, but the bug history has no record "
+            "of them, so no risk was calculated.*"
+        )
+        report_lines.append("")
+
+    if provenance:
+        report_lines.append("## Why these modules")
+        report_lines.append("")
+        for module in sorted(provenance):
+            pairs = provenance[module]
+            first_file, first_token = pairs[0]
+            others = len({path for path, _ in pairs}) - 1
+            more = f" (+{others} more file{'s' if others > 1 else ''})" if others else ""
+            report_lines.append(
+                f"- **{module}** ← token `{first_token}` in `{first_file}`{more}"
+            )
+        report_lines.append("")
+
+    # Overall verdict. Computed from the scored modules only — an unscored module
+    # must not drag the verdict down to LOW, which is a claim about risk rather
+    # than an admission that none was measured.
+    if not scored:
+        if unscored:
+            named = ", ".join(unscored)
+            report_lines.append(
+                f"### ⚪ NOT ASSESSED — {named} matched, but the bug history has "
+                "no record of them."
+            )
         else:
-            report_lines.append(f"| {module} | N/A | ⚪ No Data | 0 | 0 | ➡️ N/A |")
-
-    report_lines.append("")
-
-    # Overall verdict
-    overall_level = scoring.get_risk_level(max_risk)
-    if overall_level == "CRITICAL":
-        report_lines.append(f"### ⚠️ CRITICAL RISK — `{max_risk_module}` module requires immediate attention!")
+            report_lines.append(
+                "### ⚪ NOT ASSESSED — changed files did not map to any known module."
+            )
         report_lines.append("")
-        report_lines.append("**Recommendation:** Request thorough code review and additional QA testing before merge.")
-    elif overall_level == "HIGH":
-        report_lines.append(f"### 🟠 HIGH RISK — `{max_risk_module}` module has elevated defect density.")
+        report_lines.append(
+            "**Recommendation:** Risk was not assessed; review the change on its "
+            "own merits."
+        )
+    elif scoring.get_risk_level(max_risk) == "CRITICAL":
+        report_lines.append(
+            f"### ⚠️ CRITICAL RISK — `{max_risk_module}` module requires "
+            "immediate attention!"
+        )
         report_lines.append("")
-        report_lines.append("**Recommendation:** Ensure targeted testing for the affected module.")
-    elif overall_level == "MEDIUM":
+        report_lines.append(
+            "**Recommendation:** Request thorough code review and additional QA "
+            "testing before merge."
+        )
+    elif scoring.get_risk_level(max_risk) == "HIGH":
+        report_lines.append(
+            f"### 🟠 HIGH RISK — `{max_risk_module}` module has elevated defect density."
+        )
+        report_lines.append("")
+        report_lines.append(
+            "**Recommendation:** Ensure targeted testing for the affected module."
+        )
+    elif scoring.get_risk_level(max_risk) == "MEDIUM":
         report_lines.append("### 🟡 MEDIUM RISK — Standard review recommended.")
         report_lines.append("")
-        report_lines.append("**Recommendation:** Follow normal review process with attention to edge cases.")
+        report_lines.append(
+            "**Recommendation:** Follow normal review process with attention to "
+            "edge cases."
+        )
     else:
         report_lines.append("### 🟢 LOW RISK — No significant defect patterns detected.")
         report_lines.append("")
@@ -432,10 +519,14 @@ def main():
 
     # Parse diff
     changed_files = extract_changed_files(diff_text)
-    affected_modules = infer_modules_from_files(changed_files)
+    analyzed_files = select_analyzable_files(changed_files)
+    provenance = infer_module_provenance(changed_files)
+    affected_modules = sorted(provenance)
 
-    logger.info("Changed files: %d", len(changed_files))
-    logger.info("Affected modules: %s", affected_modules)
+    logger.info(
+        "Changed files: %d (%d analyzed)", len(changed_files), len(analyzed_files)
+    )
+    logger.info("Affected modules: %s", affected_modules or "none matched")
 
     # Initialize analyzer
     analyzer = AnalysisService()
@@ -447,7 +538,13 @@ def main():
         logger.warning("No bug data available. Report will have limited risk data.")
 
     # Generate report
-    report = generate_risk_report(analyzer, changed_files, affected_modules)
+    report = generate_risk_report(
+        analyzer,
+        changed_files,
+        affected_modules,
+        analyzed_files=analyzed_files,
+        provenance=provenance,
+    )
 
     # Write output
     output_path = Path(args.output)
