@@ -16,7 +16,7 @@ import logging
 import re
 import sys
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from defect_risk_analyzer import config
 from defect_risk_analyzer.core import scoring
@@ -60,60 +60,157 @@ def extract_changed_files(diff_text: str) -> list[str]:
     return sorted(files)
 
 
+# =============================================================================
+# Module Inference
+# =============================================================================
+# Inference runs in two layers, and both are load-bearing. See
+# tests/test_ci_analyzer_inference.py for the production measurement (PR #3)
+# that produced them.
+#
+# Layer 1 drops paths that carry no product behaviour. It is the only thing
+# that stops docs/probe/auth-probe.md: "auth" is a genuine path token there,
+# so no amount of token-boundary work removes it.
+#
+# Layer 2 matches keywords at token boundaries on whatever survives layer 1.
+# It is what stops "ui" inside "requirements".
+
+# A denylist, not an allowlist: an extension we failed to enumerate is likelier
+# to be source we did not think of than documentation. A missed module produces
+# an honest "no mapping" report; a spurious one fabricates a risk score against
+# a module the diff never touched. The first failure mode is the cheap one.
+EXCLUDED_DIRS = frozenset({"docs", "doc", ".github"})
+
+EXCLUDED_SUFFIXES = frozenset({
+    ".md", ".rst", ".adoc",                             # documentation
+    ".txt",                                             # requirements*.txt et al
+    ".cfg", ".toml", ".ini",                            # project configuration
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico",    # assets
+    ".webp", ".pdf",
+})
+
+EXCLUDED_NAMES = frozenset({"LICENSE", "LICENSE.md", "NOTICE", "CODEOWNERS"})
+
+# Path token -> module name. Faz 4(b) Bölüm B moves this to module-map.json;
+# the matching rule below is what B has to preserve, not the literal.
+MODULE_KEYWORDS: dict[str, str] = {
+    "auth": "Authentication",
+    "authentication": "Authentication",
+    "login": "Authentication",
+    "session": "Authentication",
+    "token": "Authentication",
+    "password": "Authentication",
+    "payment": "Payment",
+    "billing": "Payment",
+    "invoice": "Payment",
+    "checkout": "Payment",
+    "cart": "Frontend",
+    "ui": "Frontend",
+    "frontend": "Frontend",
+    "component": "Frontend",
+    "view": "Frontend",
+    "template": "Frontend",
+    "report": "Reporting",
+    "reporting": "Reporting",
+    "export": "Reporting",
+    "dashboard": "Reporting",
+    "analytics": "Reporting",
+    "inventory": "Inventory",
+    "stock": "Inventory",
+    "warehouse": "Inventory",
+    "notification": "Notifications",
+    "email": "Notifications",
+    "sms": "Notifications",
+    "push": "Notifications",
+    "api": "API",
+    "endpoint": "API",
+    "route": "API",
+    "database": "Database",
+    "migration": "Database",
+    "model": "Database",
+    "schema": "Database",
+}
+
+# Separators between path tokens: "/", "_", "-", "." and anything else that is
+# not alphanumeric.
+_TOKEN_SEPARATORS = re.compile(r"[^a-z0-9]+")
+
+
+def select_analyzable_files(changed_files: list[str]) -> list[str]:
+    """
+    Layer 1 — drop paths that cannot carry product behaviour.
+
+    Documentation, dependency lists, project configuration and binary assets
+    never reach module inference. A module name appearing inside one of them is
+    a coincidence, not a signal.
+
+    Args:
+        changed_files: All file paths from the diff.
+
+    Returns:
+        The subset worth analyzing, in the order given.
+    """
+    analyzable = []
+
+    for file_path in changed_files:
+        path = PurePosixPath(file_path)
+
+        if path.name in EXCLUDED_NAMES:
+            continue
+        if path.suffix.lower() in EXCLUDED_SUFFIXES:
+            continue
+        # parts[:-1] is the directory chain — a file literally named "docs" is
+        # not the same thing as a file inside docs/.
+        if any(part in EXCLUDED_DIRS for part in path.parts[:-1]):
+            continue
+
+        analyzable.append(file_path)
+
+    return analyzable
+
+
+def _path_tokens(file_path: str) -> set[str]:
+    """Split a path into lowercase tokens, dropping the file extension.
+
+    The suffix names a file format, not a product module, so it is discarded
+    before splitting — otherwise "form.ui" and "main.py" would contribute "ui"
+    and "py" on equal footing.
+    """
+    path = PurePosixPath(file_path)
+    parts = [*path.parts[:-1], path.stem]
+
+    return {
+        token
+        for part in parts
+        for token in _TOKEN_SEPARATORS.split(part.lower())
+        if token
+    }
+
+
 def infer_modules_from_files(changed_files: list[str]) -> list[str]:
     """
-    Infer affected modules/components from changed file paths.
+    Infer affected modules from changed file paths.
 
-    Uses common directory naming conventions to map files to modules.
+    Returns:
+        Sorted module names, or an empty list when nothing matched. Empty means
+        "no mapping could be made" — it is NOT the same as "this module has no
+        recorded defects", and generate_risk_report says which of the two it is
+        rather than inventing a "General" module that no bug is filed against.
     """
     modules = set()
 
-    module_keywords = {
-        "auth": "Authentication",
-        "login": "Authentication",
-        "session": "Authentication",
-        "token": "Authentication",
-        "password": "Authentication",
-        "pay": "Payment",
-        "billing": "Payment",
-        "invoice": "Payment",
-        "checkout": "Payment",
-        "cart": "Frontend",
-        "ui": "Frontend",
-        "frontend": "Frontend",
-        "component": "Frontend",
-        "view": "Frontend",
-        "template": "Frontend",
-        "report": "Reporting",
-        "export": "Reporting",
-        "dashboard": "Reporting",
-        "analytics": "Reporting",
-        "inventory": "Inventory",
-        "stock": "Inventory",
-        "warehouse": "Inventory",
-        "notification": "Notifications",
-        "email": "Notifications",
-        "sms": "Notifications",
-        "push": "Notifications",
-        "api": "API",
-        "endpoint": "API",
-        "route": "API",
-        "database": "Database",
-        "migration": "Database",
-        "model": "Database",
-        "schema": "Database",
-    }
+    for file_path in select_analyzable_files(changed_files):
+        tokens = _path_tokens(file_path)
 
-    for file_path in changed_files:
-        path_lower = file_path.lower()
-        for keyword, module in module_keywords.items():
-            if keyword in path_lower:
+        for keyword, module in MODULE_KEYWORDS.items():
+            # Exact token, or its regular plural. Prefix matching would let
+            # "pay" match "payload" — a narrower copy of the bug being fixed —
+            # while exact-only would drop "payments", "migrations", "models",
+            # which is how those directories are ordinarily named.
+            if keyword in tokens or f"{keyword}s" in tokens:
+                # No `break`: a path that names three modules affects three
+                # modules. Stopping at the first hit made dictionary insertion
+                # order decide the answer, silently.
                 modules.add(module)
-                break
-
-    # If no modules detected, use "General"
-    if not modules:
-        modules.add("General")
 
     return sorted(modules)
 
