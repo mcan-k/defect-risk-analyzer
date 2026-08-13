@@ -37,10 +37,32 @@ half regressed.
 import pytest
 
 from defect_risk_analyzer.ci_analyzer import (
+    MODULE_KEYWORDS,
+    _matched_token,
+    _path_tokens,
     extract_changed_files,
     infer_module_provenance,
     infer_modules_from_files,
 )
+
+
+def modules_ignoring_scope(path: str) -> list[str]:
+    """Layer 2 alone — what the path would map to if layer 1 did not exist.
+
+    The private helpers are imported on purpose. Reimplementing the token rule
+    here would let the two drift apart, and this function exists precisely to
+    prove that a scope-filter test case is load-bearing: if it maps to nothing
+    even without the filter, the case proves nothing about the filter.
+    """
+    tokens = _path_tokens(path)
+
+    return sorted(
+        {
+            module
+            for keyword, module in MODULE_KEYWORDS.items()
+            if _matched_token(keyword, tokens)
+        }
+    )
 
 # ===========================================================================
 # The two probes — the observed bug, verbatim
@@ -104,19 +126,36 @@ def test_substring_inside_a_token_does_not_match(path: str, reason: str):
 # ===========================================================================
 
 @pytest.mark.parametrize(
-    "path",
+    ("rule", "path", "would_match"),
     [
-        "docs/probe/auth-probe.md",   # excluded directory AND extension
-        "docs/architecture.md",
-        "README.md",                  # extension alone, at the repo root
-        ".github/workflows/tests.yml",
-        "pyproject.toml",
-        "setup.cfg",
-        "LICENSE",
-        "assets/auth-icon.png",       # an asset named after a module
+        # Documentation
+        (".md", "notes/payment-flow.md", ["Payment"]),
+        (".rst", "manual/checkout.rst", ["Payment"]),
+        (".adoc", "manual/dashboard.adoc", ["Reporting"]),
+        # Dependency lists and project configuration
+        (".txt", "requirements-api.txt", ["API"]),
+        (".cfg", "deploy/inventory.cfg", ["Inventory"]),
+        (".ini", "config/login.ini", ["Authentication"]),
+        (".toml", "config/report.toml", ["Reporting"]),
+        # Assets
+        (".png", "assets/auth-icon.png", ["Authentication"]),
+        (".jpg", "assets/cart.jpg", ["Frontend"]),
+        (".jpeg", "assets/invoice.jpeg", ["Payment"]),
+        (".gif", "assets/notification.gif", ["Notifications"]),
+        (".svg", "assets/dashboard.svg", ["Reporting"]),
+        (".ico", "assets/stock.ico", ["Inventory"]),
+        (".webp", "assets/template.webp", ["Frontend"]),
+        (".pdf", "spec/billing.pdf", ["Payment"]),
+        # Directories — a suffix that is NOT excluded, so the directory rule is
+        # the only thing that can stop these.
+        ("docs/", "docs/examples/payment_api.py", ["API", "Payment"]),
+        ("doc/", "doc/samples/login_flow.py", ["Authentication"]),
+        (".github/", ".github/workflows/auth-deploy.yml", ["Authentication"]),
+        # Both rules at once — the file from PR #3.
+        ("docs/ + .md", "docs/probe/auth-probe.md", ["Authentication"]),
     ],
 )
-def test_excluded_scope_is_not_analyzed(path: str):
+def test_excluded_scope_is_not_analyzed(rule: str, path: str, would_match: list[str]):
     """Layer 1. Documentation, configuration and assets carry no behaviour.
 
     A denylist rather than an allowlist: an extension we failed to enumerate is
@@ -124,7 +163,19 @@ def test_excluded_scope_is_not_analyzed(path: str):
     module produces an honest "no mapping" report rather than a fabricated risk
     score. The asymmetry is the design — a false negative is cheap here, a
     false positive is what shipped to PR #3.
+
+    Every case carries its own weight. The first assertion is not decoration:
+    an earlier version of this test listed paths like "README.md" and
+    "pyproject.toml", which map to nothing under the token rule anyway. Deleting
+    ".md" from EXCLUDED_SUFFIXES left the whole suite green — the cases were
+    passing for a reason that had nothing to do with the rule they named.
     """
+    assert modules_ignoring_scope(path) == would_match, (
+        f"{path} maps to nothing even with layer 1 disabled, so it cannot "
+        f"demonstrate anything about the {rule} rule. Pick a path that contains "
+        "a module keyword."
+    )
+
     assert infer_modules_from_files([path]) == []
 
 

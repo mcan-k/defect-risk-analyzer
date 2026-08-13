@@ -88,8 +88,6 @@ EXCLUDED_SUFFIXES = frozenset({
     ".webp", ".pdf",
 })
 
-EXCLUDED_NAMES = frozenset({"LICENSE", "LICENSE.md", "NOTICE", "CODEOWNERS"})
-
 # Path token -> module name. Faz 4(b) Bölüm B moves this to module-map.json;
 # the matching rule below is what B has to preserve, not the literal.
 MODULE_KEYWORDS: dict[str, str] = {
@@ -154,8 +152,6 @@ def select_analyzable_files(changed_files: list[str]) -> list[str]:
     for file_path in changed_files:
         path = PurePosixPath(file_path)
 
-        if path.name in EXCLUDED_NAMES:
-            continue
         if path.suffix.lower() in EXCLUDED_SUFFIXES:
             continue
         # parts[:-1] is the directory chain — a file literally named "docs" is
