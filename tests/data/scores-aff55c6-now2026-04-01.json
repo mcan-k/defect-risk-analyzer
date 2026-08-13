@@ -1,0 +1,106 @@
+{
+  "_baseline_now": "2026-04-01T12:00:00",
+  "_bug_count": 20,
+  "_bugs_file": "sample_bugs.json",
+  "_mode": "A",
+  "_scoring_module": "(none — RiskAnalyzer)",
+  "modules": {
+    "Authentication": {
+      "bug_density": 0.3,
+      "closed_bugs": 0,
+      "open_bugs": 6,
+      "open_ratio": 1.0,
+      "priority_distribution": {
+        "High": 3,
+        "Highest": 3
+      },
+      "recent_bug_count": 6,
+      "risk_level": "CRITICAL",
+      "risk_score": 100,
+      "total_bugs": 6,
+      "trend": "increasing",
+      "weighted_priority_score": 27.0
+    },
+    "Frontend": {
+      "bug_density": 0.2,
+      "closed_bugs": 3,
+      "open_bugs": 1,
+      "open_ratio": 0.25,
+      "priority_distribution": {
+        "High": 1,
+        "Low": 1,
+        "Medium": 2
+      },
+      "recent_bug_count": 1,
+      "risk_level": "MEDIUM",
+      "risk_score": 40,
+      "total_bugs": 4,
+      "trend": "decreasing",
+      "weighted_priority_score": 12.0
+    },
+    "Inventory": {
+      "bug_density": 0.1,
+      "closed_bugs": 1,
+      "open_bugs": 1,
+      "open_ratio": 0.5,
+      "priority_distribution": {
+        "High": 1,
+        "Medium": 1
+      },
+      "recent_bug_count": 0,
+      "risk_level": "LOW",
+      "risk_score": 32,
+      "total_bugs": 2,
+      "trend": "decreasing",
+      "weighted_priority_score": 7.0
+    },
+    "Notifications": {
+      "bug_density": 0.15,
+      "closed_bugs": 3,
+      "open_bugs": 0,
+      "open_ratio": 0.0,
+      "priority_distribution": {
+        "Low": 2,
+        "Medium": 1
+      },
+      "recent_bug_count": 0,
+      "risk_level": "LOW",
+      "risk_score": 23,
+      "total_bugs": 3,
+      "trend": "decreasing",
+      "weighted_priority_score": 7.0
+    },
+    "Payment": {
+      "bug_density": 0.15,
+      "closed_bugs": 0,
+      "open_bugs": 3,
+      "open_ratio": 1.0,
+      "priority_distribution": {
+        "High": 1,
+        "Highest": 1,
+        "Medium": 1
+      },
+      "recent_bug_count": 2,
+      "risk_level": "CRITICAL",
+      "risk_score": 90,
+      "total_bugs": 3,
+      "trend": "increasing",
+      "weighted_priority_score": 12.0
+    },
+    "Reporting": {
+      "bug_density": 0.1,
+      "closed_bugs": 0,
+      "open_bugs": 2,
+      "open_ratio": 1.0,
+      "priority_distribution": {
+        "Medium": 2
+      },
+      "recent_bug_count": 1,
+      "risk_level": "MEDIUM",
+      "risk_score": 42,
+      "total_bugs": 2,
+      "trend": "stable",
+      "weighted_priority_score": 6.0
+    }
+  }
+}

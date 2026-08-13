@@ -1,0 +1,50 @@
+# =============================================================================
+# Predictive Defect Analysis Engine — Lint & Test Workflow
+# =============================================================================
+# Runs ruff and the pytest suite. Separate from pr-risk-analysis.yml, which
+# analyzes the PR diff and posts a comment; the two do not interact.
+#
+# No .env step: tests/conftest.py points DRA_BASE_DIR at a temporary directory
+# and each test generates whatever configuration it needs, so the suite never
+# reads repository configuration or writes into the working tree.
+# =============================================================================
+
+name: Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # requirements-dev.txt starts with `-r requirements.txt`, so this
+          # installs the runtime deps plus pytest and the pinned ruff.
+          pip install -r requirements-dev.txt
+          pip install -e . --no-deps
+
+      # Lint first: a formatting failure is cheaper to report than a test run.
+      - name: Ruff
+        run: ruff check .
+
+      - name: Pytest
+        run: pytest

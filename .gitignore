@@ -28,6 +28,10 @@ data/webhook_results.json
 # Faz 2 refactor baseline — local-only scoring snapshots, never committed
 baseline/
 
+# Scratch snapshots from tests/tools/make_baseline.py (root-level only).
+# The committed fixtures live in tests/data/ and are NOT matched by this.
+/scores-*.json
+
 # IDE
 .vscode/
 .idea/
