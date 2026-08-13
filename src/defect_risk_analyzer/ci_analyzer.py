@@ -262,6 +262,8 @@ def generate_risk_report(
     analyzer: AnalysisService,
     changed_files: list[str],
     affected_modules: list[str],
+    *,
+    now: datetime | None = None,
 ) -> str:
     """
     Generate a markdown risk report for a PR.
@@ -270,14 +272,21 @@ def generate_risk_report(
         analyzer: Initialized AnalysisService with loaded bugs.
         changed_files: List of changed file paths.
         affected_modules: Inferred module names.
+        now: Timestamp for the report header. Defaults to the current time.
+            Passing it explicitly makes the output reproducible, which is what
+            lets a test compare two reports for equality.
 
     Returns:
         Markdown-formatted report string.
     """
+    # Resolved here rather than in the signature default, which would freeze the
+    # value at import time. Same reasoning as core/scoring.py:92-94.
+    now = now or datetime.now()
+
     report_lines = []
     report_lines.append("# 🔍 Defect Risk Analysis Report")
     report_lines.append("")
-    report_lines.append(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    report_lines.append(f"**Generated:** {now.strftime('%Y-%m-%d %H:%M:%S')}")
     report_lines.append(f"**Changed Files:** {len(changed_files)}")
     report_lines.append(f"**Affected Modules:** {', '.join(affected_modules)}")
     report_lines.append("")
