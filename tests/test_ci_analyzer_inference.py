@@ -38,6 +38,7 @@ import pytest
 
 from defect_risk_analyzer.ci_analyzer import (
     extract_changed_files,
+    infer_module_provenance,
     infer_modules_from_files,
 )
 
@@ -206,6 +207,83 @@ def test_no_match_returns_an_empty_list(changed_files: list[str]):
     list lets the report say which of the two it means.
     """
     assert infer_modules_from_files(changed_files) == []
+
+
+# ===========================================================================
+# Provenance — which file, and which token, produced each module
+# ===========================================================================
+
+def test_provenance_names_the_file_and_the_token():
+    """The evidence line for a match that does not survive inspection.
+
+    This test file is itself the example: "report" is a genuine token of
+    "test_ci_analyzer_report", so the tool credits Reporting — a module with
+    real bug history, which therefore gets a real score. The scope filter does
+    not catch it and the "no historical data" branch does not catch it either.
+    What the report can do is show the reason, so a reader sees the match is
+    about a test filename rather than the Reporting module.
+
+    Narrowing the directory scope is Bölüm B's call. Making the reason visible
+    is this commit's.
+    """
+    provenance = infer_module_provenance(["tests/test_ci_analyzer_report.py"])
+
+    assert provenance == {
+        "Reporting": [("tests/test_ci_analyzer_report.py", "report")],
+    }
+
+
+def test_provenance_reports_the_token_present_in_the_path():
+    """"payments" is quoted, not the "payment" key that matched it.
+
+    An evidence line naming a token the reader cannot find in the path is worse
+    than no evidence line: it looks like a typo in the tool.
+    """
+    provenance = infer_module_provenance(["src/payments/checkout_service.py"])
+
+    assert provenance == {
+        "Payment": [
+            ("src/payments/checkout_service.py", "checkout"),
+            ("src/payments/checkout_service.py", "payments"),
+        ],
+    }
+
+
+def test_provenance_is_deterministic():
+    """Pairs are sorted by (file, token), never by dict iteration order.
+
+    The report prints the first pair and counts the rest, so an unstable order
+    would make the same diff produce different evidence between runs.
+    """
+    changed = [
+        "src/views/dashboard.py",
+        "src/auth/login.py",
+    ]
+
+    assert infer_module_provenance(changed) == {
+        "Authentication": [
+            ("src/auth/login.py", "auth"),
+            ("src/auth/login.py", "login"),
+        ],
+        "Frontend": [("src/views/dashboard.py", "views")],
+        "Reporting": [("src/views/dashboard.py", "dashboard")],
+    }
+
+
+@pytest.mark.parametrize(
+    "changed_files",
+    [
+        pytest.param([], id="empty"),
+        pytest.param(["README.md"], id="filtered-out"),
+        pytest.param(["src/auth/payment_view.py"], id="three-modules"),
+        pytest.param(["src/payments/checkout_service.py"], id="two-tokens-one-module"),
+    ],
+)
+def test_modules_are_exactly_the_provenance_keys(changed_files: list[str]):
+    """The two entry points cannot drift apart — one is defined by the other."""
+    assert infer_modules_from_files(changed_files) == sorted(
+        infer_module_provenance(changed_files)
+    )
 
 
 # ===========================================================================

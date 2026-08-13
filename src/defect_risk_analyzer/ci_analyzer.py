@@ -186,6 +186,61 @@ def _path_tokens(file_path: str) -> set[str]:
     }
 
 
+def _matched_token(keyword: str, tokens: set[str]) -> str | None:
+    """The token that matched `keyword`, as it appears in the path, or None.
+
+    Exact token or its regular plural. Prefix matching would let "pay" match
+    "payload" — a narrower copy of the bug being fixed — while exact-only would
+    drop "payments", "migrations", "models", which is how those directories are
+    ordinarily named.
+
+    The token is returned rather than the keyword so the report can quote text
+    that is actually in the path, which a reader can check by eye.
+    """
+    if keyword in tokens:
+        return keyword
+
+    plural = f"{keyword}s"
+    if plural in tokens:
+        return plural
+
+    return None
+
+
+def infer_module_provenance(changed_files: list[str]) -> dict[str, list[tuple[str, str]]]:
+    """
+    Infer affected modules, keeping the evidence for each one.
+
+    Args:
+        changed_files: All file paths from the diff.
+
+    Returns:
+        Module name -> sorted (file_path, matched_token) pairs. Empty dict when
+        nothing matched.
+
+    The evidence is printed next to the risk table so a reader can see *why* a
+    module was named. Some of those reasons do not survive inspection:
+    tests/test_ci_analyzer_report.py matches the token "report" and is credited
+    to Reporting, which has real bug history and therefore gets a real score.
+    Making that visible is the point of this function — narrowing the directory
+    scope is Bölüm B's decision, not this one's.
+    """
+    provenance: dict[str, set[tuple[str, str]]] = {}
+
+    for file_path in select_analyzable_files(changed_files):
+        tokens = _path_tokens(file_path)
+
+        for keyword, module in MODULE_KEYWORDS.items():
+            matched = _matched_token(keyword, tokens)
+            if matched is not None:
+                # No `break`: a path that names three modules affects three
+                # modules. Stopping at the first hit made dictionary insertion
+                # order decide the answer, silently.
+                provenance.setdefault(module, set()).add((file_path, matched))
+
+    return {module: sorted(pairs) for module, pairs in sorted(provenance.items())}
+
+
 def infer_modules_from_files(changed_files: list[str]) -> list[str]:
     """
     Infer affected modules from changed file paths.
@@ -196,23 +251,7 @@ def infer_modules_from_files(changed_files: list[str]) -> list[str]:
         recorded defects", and generate_risk_report says which of the two it is
         rather than inventing a "General" module that no bug is filed against.
     """
-    modules = set()
-
-    for file_path in select_analyzable_files(changed_files):
-        tokens = _path_tokens(file_path)
-
-        for keyword, module in MODULE_KEYWORDS.items():
-            # Exact token, or its regular plural. Prefix matching would let
-            # "pay" match "payload" — a narrower copy of the bug being fixed —
-            # while exact-only would drop "payments", "migrations", "models",
-            # which is how those directories are ordinarily named.
-            if keyword in tokens or f"{keyword}s" in tokens:
-                # No `break`: a path that names three modules affects three
-                # modules. Stopping at the first hit made dictionary insertion
-                # order decide the answer, silently.
-                modules.add(module)
-
-    return sorted(modules)
+    return sorted(infer_module_provenance(changed_files))
 
 
 # =============================================================================
