@@ -126,8 +126,33 @@ Reddedildi (ertelenmedi):
 - [ ] ChromaDB toptan silme yerine diff-sync (`collection.get` → karşılaştır → `delete` + `upsert`)
 - [ ] `defect_history_mock` / `defect_history_live` ayrı koleksiyonlar
 - [ ] `data/chroma_db` içindeki 9 yetim HNSW segment klasörünü temizle
-- [ ] `ci_analyzer` modül isimlerini `component_classifier` ile hizala
-      (`API`/`Backend API`, `General`/`Genel` uyuşmazlığı — CI çıktısı şu an boş)
+- [x] **Faz 4(b) Bölüm A** — `ci_analyzer` yanlış pozitif modül eşleşmesi.
+      `infer_modules_from_files` yol içinde çıplak alt dizgi arıyordu, bu yüzden
+      değişmemiş bir modül hakkında geçmiş bug verisinden risk uyduruyordu:
+      `auth` ∈ `docs/probe/auth-probe.md` → Authentication `79/100 HIGH RISK`,
+      `ui` ∈ `req**ui**rements.txt` → Frontend. Aynı içerikli ikinci probe
+      (`docs/probe/notes.md`) `General` + `No Data` + `LOW RISK` veriyordu, yani
+      verdict dosya adına bağlıydı. Düzeltme iki katmanlı: kapsam filtresi
+      (`docs/`, `.github/`, `*.md`, `*.txt`, `*.toml`, `*.cfg`, asset uzantıları
+      modül çıkarımına hiç girmiyor) ve token sınırı eşleşmesi (anahtar bir yol
+      token'ına ya da düzenli çoğuluna eşit olmalı). Eşleşme yoksa rapor artık
+      `NOT ASSESSED` yazıyor, `LOW RISK` değil; eşleşen her modülün yanında onu
+      üreten dosya ve token gösteriliyor. PR #3'te iki probe ile ölçüldü.
+- [ ] **Faz 4(b) Bölüm B** — eşleme tablosunun (`MODULE_KEYWORDS`)
+      `module-map.json`'a taşınması + dizin kapsamı politikası. Bugün açık kalan
+      yanlış pozitif sınıfı: `tests/test_ci_analyzer_report.py` → token `report`
+      → Reporting (2 bug, `34/100`), `prompt_templates.py` → `templates` →
+      Frontend (`40/100`). Provenance satırı bunu görünür kılıyor ama
+      engellemiyor; `tests/` ve `src/` kapsamı B'nin kararı.
+
+  > Eski madde ("`ci_analyzer` modül isimlerini `component_classifier` ile
+  > hizala — `API`/`Backend API`, `General`/`Genel` uyuşmazlığı, CI çıktısı şu an
+  > boş") yanlış teşhisti ve gözleme dayanmıyordu. CI çıktısı boş değildi,
+  > uydurmaydı. Hizalama da yapılmadı: `component_classifier.classify_bugs`
+  > yalnızca `component` alanı boş ya da `Unknown` olan bug'a yazıyor,
+  > `data/sample_bugs.json`'da 20/20 bug'ın component'i dolu — yani
+  > `component_classifier` bu kod yolunda hiç çalışmıyor ve isimlerini hizalamak
+  > CI raporunu değiştirmezdi.
 
 ### Faz 5 — UI + i18n (2 gün)
 - [ ] `blind_spot_detector` yapısal veri dönsün (API kontratını kıran adım, önce yapılmalı)
