@@ -39,6 +39,7 @@ import pytest
 from defect_risk_analyzer.ci_analyzer import (
     MODULE_KEYWORDS,
     _matched_token,
+    _matches,
     _path_tokens,
     extract_changed_files,
     infer_module_provenance,
@@ -371,3 +372,99 @@ def test_extract_changed_files_reads_both_marker_styles():
 
 def test_extract_changed_files_on_empty_input():
     assert extract_changed_files("") == []
+
+
+# ===========================================================================
+# Pattern semantics — the rule that replaces token matching
+# ===========================================================================
+# Bölüm B replaces MODULE_KEYWORDS with path globs the user writes in
+# module-map.json. The matcher is hand-rolled on purpose; every candidate in
+# the standard library is wrong for this job in a way that would be invisible
+# until it produced a bad PR comment:
+#
+#   fnmatch          "*" crosses "/", so src/*.py would match src/a/b/c.py.
+#                    It also normcases on Windows -> silently case-insensitive.
+#   PurePath.match   matches from the RIGHT, unanchored, and "**" is not
+#                    recursive before 3.13 (it behaves like "*").
+#   PurePath.full_match / glob.translate
+#                    exactly the semantics wanted, but Python 3.13+. This
+#                    project is ">=3.11" and both workflows pin 3.11.
+#
+# So the semantics are defined here rather than inherited, and these tests are
+# the definition. Paths are matched as raw strings: git emits POSIX separators
+# on every platform, and routing them through Path() would reintroduce "\" and
+# platform-dependent case folding into a tool whose output goes into a PR.
+
+
+@pytest.mark.parametrize(
+    ("pattern", "path", "expected", "rule"),
+    [
+        ("src/**", "src/a/b.py", True, "** spans any depth"),
+        ("src/**", "src/a.py", True, "** spans one segment too"),
+        ("src/**", "srcx/a.py", False, "literal segments are not prefixes"),
+        ("src/*.py", "src/a.py", True, "* within a segment"),
+        ("**/*.md", "docs/a/b.md", True, "leading ** plus a suffix match"),
+        ("**/*.md", "docs/b.mdx", False, "the suffix is anchored at the end"),
+        ("**/api*.py", "src/pkg/api_auth.py", True, "* is a partial segment"),
+        ("src/**/test_*.py", "src/x/y/test_a.py", True, "** in the middle"),
+    ],
+)
+def test_pattern_matching_table(pattern: str, path: str, expected: bool, rule: str):
+    """The ordinary cases, stated once so the named tests below stay narrow."""
+    assert _matches(pattern, path) is expected, rule
+
+
+def test_star_does_not_cross_a_separator():
+    """"*" is a segment-local wildcard, which is what makes a pattern readable.
+
+    Under fnmatch semantics "src/*.py" also matches "src/a/b/c.py", so a user
+    who writes a deliberately shallow pattern silently gets a recursive one.
+    That is the same failure shape as Bölüm A's substring bug: the rule the
+    user believes they wrote is narrower than the rule that runs.
+    """
+    assert _matches("src/*.py", "src/a.py") is True
+    assert _matches("src/*.py", "src/a/b.py") is False
+
+
+def test_pattern_is_anchored_at_the_repo_root():
+    """Patterns match the whole path, never a suffix of it.
+
+    This is where the matcher parts company with pathlib.PurePath.match, which
+    matches from the right: there, "auth/**" would claim src/auth/login.py and
+    a user could never write a pattern that means "only at the top level".
+    """
+    assert _matches("auth/**", "src/auth/login.py") is False
+    assert _matches("src/auth/**", "src/auth/login.py") is True
+
+
+def test_double_star_matches_zero_segments():
+    """"**/" means "at any depth, including none".
+
+    Without this, "**/*.md" would miss README.md at the repo root — the single
+    most likely thing a user wants that pattern to catch.
+    """
+    assert _matches("**/*.md", "README.md") is True
+    assert _matches("**/*.md", "docs/a/b.md") is True
+
+
+def test_matching_is_case_sensitive_on_every_platform():
+    """The verdict must not depend on which OS the runner happens to use.
+
+    fnmatch applies os.path.normcase, so the same map would exclude different
+    files on Windows and Linux. A PR comment that differs by runner is worse
+    than one that is wrong consistently.
+    """
+    assert _matches("SRC/**", "src/a.py") is False
+    assert _matches("src/**", "SRC/a.py") is False
+
+
+def test_directory_pattern_does_not_match_a_file_of_the_same_name():
+    """"docs/**" is about the directory, not about a file called "docs".
+
+    Bölüm A made this distinction with `path.parts[:-1]` (ci_analyzer.py:159)
+    and left it untested — the comment claimed it, nothing checked it. Here the
+    rule comes from the pattern itself: "docs/**" requires the separator.
+    """
+    assert _matches("docs/**", "docs/probe/notes.md") is True
+    assert _matches("docs/**", "docs") is False
+    assert _matches("docs/**", "docsx/a.py") is False
