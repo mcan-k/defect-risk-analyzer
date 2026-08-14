@@ -24,10 +24,12 @@ import pytest
 
 from defect_risk_analyzer.ci_analyzer import (
     ModuleMap,
+    ModuleMapError,
     _matches,
     extract_changed_files,
     generate_risk_report,
     infer_module_provenance,
+    load_module_map,
     select_analyzable_files,
 )
 from defect_risk_analyzer.core import scoring
@@ -253,6 +255,71 @@ def test_report_shows_why_these_modules():
         "- **Reporting** ← pattern `**/*report*` matched "
         "`src/reporting/export_report.py`" in report
     )
+
+
+# ===========================================================================
+# No usable map — a fourth outcome, distinct from "nothing matched"
+# ===========================================================================
+
+@pytest.mark.parametrize(
+    ("payload", "marker"),
+    [
+        pytest.param(None, "Create it", id="missing"),
+        pytest.param("{", "not valid JSON", id="unreadable"),
+        pytest.param('{"modules": {}}', "no patterns", id="empty"),
+    ],
+)
+def test_module_map_error_reaches_the_report(tmp_path, payload, marker: str):
+    """Three causes, three messages, none of them collapsed into the others.
+
+    The messages are not written here — they are produced by load_module_map
+    and carried through, so a test cannot drift from what a user actually sees.
+    Each `marker` is the part that distinguishes one cause from the other two,
+    which is what makes the three parameters different tests rather than three
+    spellings of one.
+
+    The distinction that matters most is against the existing "nothing matched"
+    branch. Both end with no modules, but one means "your diff touched nothing
+    the map names" and the other means "there was no map to consult". Printing
+    the first when the second is true is the same class of error as PR #3's
+    LOW RISK: a statement about the change, standing in for an admission that
+    nothing was examined.
+    """
+    path = tmp_path / "module-map.json"
+    if payload is not None:
+        path.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(ModuleMapError) as excinfo:
+        load_module_map(path)
+    message = str(excinfo.value)
+    assert marker in message
+
+    report = generate_risk_report(
+        StubAnalyzer({}),
+        ["src/auth/login.py"],
+        [],
+        module_map_error=message,
+        now=FROZEN_NOW,
+    )
+
+    assert "NOT ASSESSED — no usable module map." in report
+    assert message in report
+    assert "**Affected Modules:** — not inferred (no module map)" in report
+    assert "Risk was not assessed" in report
+
+    assert "did not map to any known module" not in report
+    assert "## Risk Summary" not in report
+    assert "LOW RISK" not in report
+
+
+def test_a_usable_map_does_not_print_the_map_error_branch():
+    """The default keeps every other report in this file unchanged."""
+    report = generate_risk_report(
+        StubAnalyzer({}), ["docs/probe/notes.md"], [], analyzed_files=[], now=FROZEN_NOW
+    )
+
+    assert "no usable module map" not in report
+    assert "NOT ASSESSED — changed files did not map to any known module." in report
 
 
 def test_provenance_section_is_omitted_when_not_supplied():
