@@ -282,7 +282,7 @@ Faz 3 CI'a `ruff check .` eklerken, deponun bu komutu **hiç geçmediği** ortay
 | `dashboard.py` | E501 / F841 | 37 / 1 |
 | `api.py` | B904 | 9 |
 | `llm_provider.py` | B904 | 6 |
-| `ci_analyzer.py` | E501 | 5 |
+| `ci_analyzer.py` — Faz 4(b)'de temizlendi | E501 | 5 |
 | `api_models.py` | E501 | 4 |
 | `prompt_templates.py` | E501 | 3 |
 | `blind_spot_detector.py`, `pattern_detector.py` | E501 | 2 + 2 |
@@ -300,6 +300,15 @@ için olabildiğince dar tutuldu.
 
 **Planned fix:** girdiler dosya bazında ve fazı yazılı olarak konuldu;
 `pyproject.toml`'daki her satırın üstünde hangi fazda kalkacağı yazıyor
-(dashboard.py → Faz 5, api.py → Faz 5, llm_provider.py → Faz 6,
-ci_analyzer.py → Faz 4, kalanlar sahipsiz). Silinmek için konuldular,
-büyütülmek için değil.
+(dashboard.py → Faz 5, api.py → Faz 5, llm_provider.py → Faz 6, kalanlar
+sahipsiz). Silinmek için konuldular, büyütülmek için değil.
+
+**Kapanan:** `ci_analyzer.py` → Faz 4(b) Bölüm A'da temizlendi (5 E501). Satır
+sarma gerekmedi: rapor gövdesi yanlış pozitif düzeltmesi sırasında yeniden
+yazıldığı için uzun satırlar zaten kalmamıştı, `pyproject.toml` girdisi silindi.
+Girdinin üstündeki yorum da yanlış teşhisi tekrar ediyordu ("Faz 4 aligns this
+module's component names with component_classifier"); bkz. `ROADMAP-v2.md` Faz 4.
+
+Yukarıdaki 70 / 54 / 5 sayıları Faz 3 anındaki ölçümdür ve geriye dönük
+düzeltilmiyor — tarihsel kayıt. Bugünkü bakiye ayrı bir sayıdır: **65 açık**
+(49 E501 + 15 B904 + 1 F841).

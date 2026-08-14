@@ -95,10 +95,6 @@ select = ["E", "F", "I", "UP", "B"]
 # message worded for one provider misses the other's branch. Fix together.
 "src/defect_risk_analyzer/llm_provider.py" = ["B904"]
 
-# 5 long lines. Faz 4 aligns this module's component names with
-# component_classifier, which touches the same report-building code.
-"src/defect_risk_analyzer/ci_analyzer.py" = ["E501"]
-
 # Long lines in files with no scheduled rewrite. No phase owns these; clear
 # them opportunistically the next time each file is edited.
 "src/defect_risk_analyzer/api_models.py" = ["E501"]          # 4
