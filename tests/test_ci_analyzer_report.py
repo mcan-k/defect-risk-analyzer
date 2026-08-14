@@ -388,6 +388,57 @@ def test_doc_only_diff_produces_no_risk_end_to_end(authentication):
     assert "NOT ASSESSED" in report
 
 
+def test_scored_report_end_to_end_from_a_map_on_disk(authentication, tmp_path):
+    """The full chain, from a JSON file to a filled risk table.
+
+    Everything else in this file feeds generate_risk_report a ModuleMap built
+    in memory, and this repository's own module-map.json deliberately names
+    components the demo bug data has never heard of — so no test and no live CI
+    run exercises a map that actually produces a score. That gap is the price
+    of keeping the shipped map honest, and this test is what pays it: a map
+    written to disk, loaded through load_module_map, and run end to end into a
+    scored row.
+
+    79 / HIGH is not written here. It comes from the `authentication` fixture,
+    which reads tests/data/scores-aff55c6-now2026-08-11.json — the same
+    snapshot test_scoring_regression.py pins core/scoring.py against, and the
+    same number the PR #3 probe printed. tests/test_scoring_units.py:8 shows
+    the derivation: (0.9*60 + 0.3*40) * 1.5 * 0.8 * 1.0 = 79.2 -> 79.
+
+    The docs file in the diff is not decoration either: it is what makes the
+    "excluded" count and the scored row appear in the same report, which is
+    the combination PR #3 got wrong in both halves at once.
+    """
+    path = tmp_path / "module-map.json"
+    path.write_text(
+        json.dumps(
+            {
+                "modules": {"src/auth/**": "Authentication"},
+                "exclude": ["docs/**", "**/*.md"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    module_map = load_module_map(path)
+
+    diff = _probe_diff("src/auth/login.py") + _probe_diff("docs/notes.md")
+    analyzer = StubAnalyzer({"Authentication": authentication["stats"]})
+
+    report = _report_for(diff, analyzer, module_map)
+
+    assert f"| Authentication | {authentication['score']}/100 |" in report
+    assert authentication["level"] in report
+    assert "HIGH RISK — `Authentication` module has elevated defect density." in report
+    assert (
+        "- **Authentication** ← pattern `src/auth/**` matched `src/auth/login.py`"
+        in report
+    )
+    assert "**Analyzed Files:** 1  (1 excluded by module-map.json)" in report
+
+    assert "NOT ASSESSED" not in report
+    assert "Matched, no historical data" not in report
+
+
 def test_report_does_not_depend_on_a_doc_filename(authentication):
     """The two probes, side by side — the difference that exposed the bug.
 
