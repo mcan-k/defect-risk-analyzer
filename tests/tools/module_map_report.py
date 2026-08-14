@@ -20,38 +20,18 @@ Usage: python tests/tools/module_map_report.py [path/to/module-map.json]
 
 import subprocess
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 sys.path.insert(0, str(REPO_ROOT / "src"))
 
 from defect_risk_analyzer.ci_analyzer import (  # noqa: E402  (needs the path above)
-    ModuleMap,
     ModuleMapError,
     _matches,
+    infer_module_provenance,
     load_module_map,
+    select_analyzable_files,
 )
-
-# The two loops below duplicate select_analyzable_files and
-# infer_module_provenance, which still take the keyword table rather than a
-# map. They collapse into calls to those functions in the commit that swaps the
-# rule; until then the shared part — _matches — is the production matcher, so
-# the numbers are measured against the real rule and not a second copy of it.
-
-
-def analyzable(files: list[str], module_map: ModuleMap) -> list[str]:
-    return [f for f in files if not any(_matches(p, f) for p in module_map.exclude)]
-
-
-def mapped_modules(files: list[str], module_map: ModuleMap) -> dict[str, list[str]]:
-    per_module: dict[str, list[str]] = defaultdict(list)
-    for file_path in files:
-        for pattern, module in module_map.modules.items():
-            if _matches(pattern, file_path):
-                per_module[module].append(file_path)
-
-    return {module: sorted(set(paths)) for module, paths in per_module.items()}
 
 
 def tracked_files() -> list[str]:
@@ -77,7 +57,7 @@ def main() -> int:
         return 1
 
     files = tracked_files()
-    in_scope = analyzable(files, module_map)
+    in_scope = select_analyzable_files(files, module_map)
     excluded = [f for f in files if f not in set(in_scope)]
 
     print(
@@ -103,7 +83,11 @@ def main() -> int:
         print(f"  0 hits ({len(dead)} patterns)     {' '.join(dead)}")
     print()
 
-    per_module = mapped_modules(in_scope, module_map)
+    provenance = infer_module_provenance(files, module_map)
+    per_module = {
+        module: sorted({file_path for file_path, _ in pairs})
+        for module, pairs in provenance.items()
+    }
     mapped = {f for paths in per_module.values() for f in paths}
     py_files = [f for f in files if f.endswith(".py")]
     py_mapped = [f for f in mapped if f.endswith(".py")]
