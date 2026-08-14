@@ -404,17 +404,23 @@ def generate_risk_report(
     *,
     analyzed_files: list[str] | None = None,
     provenance: dict[str, list[tuple[str, str]]] | None = None,
+    module_map_error: str | None = None,
     now: datetime | None = None,
 ) -> str:
     """
     Generate a markdown risk report for a PR.
 
-    Three outcomes are reported distinctly, because conflating them is what
+    Four outcomes are reported distinctly, because conflating them is what
     made the PR #3 probe print "LOW RISK" for a diff it had not assessed:
 
         module matched, history exists  -> a scored row in the risk table
         module matched, no history      -> named, but no row and no score
         nothing matched                 -> NOT ASSESSED, and no verdict at all
+        no usable module map            -> NOT ASSESSED, plus the reason
+
+    The last two both end with no modules and they are not the same thing. One
+    says the diff touched nothing the map names; the other says there was no
+    map to consult.
 
     Args:
         analyzer: Initialized AnalysisService with loaded bugs.
@@ -425,6 +431,11 @@ def generate_risk_report(
             is what tells a reader why a docs-only PR matched nothing.
         provenance: Module -> (file, pattern) evidence from
             infer_module_provenance. Omitted means the section is not printed.
+        module_map_error: Why the module map could not be used, as the loader
+            phrased it. Set means no inference ran at all, and the message is
+            printed verbatim — it already distinguishes a missing file from an
+            unreadable one from an empty one, so the report does not re-classify
+            what the loader has already diagnosed.
         now: Timestamp for the report header. Defaults to the current time.
             Passing it explicitly makes the output reproducible, which is what
             lets a test compare two reports for equality.
@@ -459,7 +470,12 @@ def generate_risk_report(
             line += f"  ({skipped} excluded by module-map.json)"
         report_lines.append(line)
 
-    modules_line = ", ".join(affected_modules) if affected_modules else "— none matched"
+    if module_map_error:
+        modules_line = "— not inferred (no module map)"
+    elif affected_modules:
+        modules_line = ", ".join(affected_modules)
+    else:
+        modules_line = "— none matched"
     report_lines.append(f"**Affected Modules:** {modules_line}")
     report_lines.append("")
 
@@ -530,7 +546,19 @@ def generate_risk_report(
     # Overall verdict. Computed from the scored modules only — an unscored module
     # must not drag the verdict down to LOW, which is a claim about risk rather
     # than an admission that none was measured.
-    if not scored:
+    # Ordered before the "nothing matched" branch, not after: with no map there
+    # are no modules either, so the generic text would fire first and report a
+    # diff that missed the map as a diff that missed every module.
+    if module_map_error:
+        report_lines.append("### ⚪ NOT ASSESSED — no usable module map.")
+        report_lines.append("")
+        report_lines.append(module_map_error)
+        report_lines.append("")
+        report_lines.append(
+            "**Recommendation:** Risk was not assessed; review the change on its "
+            "own merits."
+        )
+    elif not scored:
         if unscored:
             named = ", ".join(unscored)
             report_lines.append(
@@ -669,9 +697,11 @@ def main():
     # leaving the user with no comment and no idea why.
     analyzed_files: list[str] | None = None
     provenance: dict[str, list[tuple[str, str]]] = {}
+    map_error: str | None = None
     try:
         module_map = load_module_map()
     except ModuleMapError as exc:
+        map_error = str(exc)
         logger.error("Module inference disabled: %s", exc)
     else:
         analyzed_files = select_analyzable_files(changed_files, module_map)
@@ -699,6 +729,7 @@ def main():
         affected_modules,
         analyzed_files=analyzed_files,
         provenance=provenance,
+        module_map_error=map_error,
     )
 
     # Write output
