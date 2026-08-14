@@ -12,6 +12,7 @@ No API server needed — calls analysis logic directly.
 """
 
 import argparse
+import functools
 import logging
 import re
 import sys
@@ -131,6 +132,63 @@ MODULE_KEYWORDS: dict[str, str] = {
 # Separators between path tokens: "/", "_", "-", "." and anything else that is
 # not alphanumeric.
 _TOKEN_SEPARATORS = re.compile(r"[^a-z0-9]+")
+
+
+# =============================================================================
+# Path patterns
+# =============================================================================
+# The matching rule for module-map.json, hand-rolled because every standard
+# library candidate is wrong here in a way that stays invisible until it
+# produces a bad PR comment. See tests/test_ci_analyzer_inference.py
+# ("Pattern semantics") for the rejected alternatives and the pinned rules.
+#
+# Paths are matched as raw strings. Git emits POSIX separators on every
+# platform, and routing a path through Path() would reintroduce "\" and
+# platform-dependent case folding into a tool whose output goes into a PR
+# comment — a verdict that differs by runner is worse than one that is wrong
+# consistently.
+
+@functools.cache
+def _pattern_to_regex(pattern: str) -> re.Pattern[str]:
+    """Compile a path glob into an anchored regex.
+
+    "*" and "?" are segment-local; "**" is a whole segment meaning "zero or
+    more segments". Everything else is literal. Cached because the same handful
+    of patterns is tested against every changed file.
+    """
+    segments = pattern.split("/")
+    parts: list[str] = []
+
+    for index, segment in enumerate(segments):
+        is_last = index == len(segments) - 1
+
+        if segment == "**":
+            # Trailing "**" swallows the rest; in the middle it consumes whole
+            # segments *including* their separator, which is what lets
+            # "**/*.md" match README.md with no directory at all.
+            parts.append(".*" if is_last else "(?:[^/]+/)*")
+            continue
+
+        parts.append(
+            "".join(
+                "[^/]*" if char == "*" else "[^/]" if char == "?" else re.escape(char)
+                for char in segment
+            )
+        )
+        if not is_last:
+            parts.append("/")
+
+    return re.compile("".join(parts))
+
+
+def _matches(pattern: str, file_path: str) -> bool:
+    """True if `pattern` matches the whole of `file_path`.
+
+    fullmatch, not match: a pattern names a path from the repository root. The
+    unanchored alternative is what makes pathlib.PurePath.match claim
+    src/auth/login.py for the pattern "auth/**".
+    """
+    return _pattern_to_regex(pattern).fullmatch(file_path) is not None
 
 
 def select_analyzable_files(changed_files: list[str]) -> list[str]:
