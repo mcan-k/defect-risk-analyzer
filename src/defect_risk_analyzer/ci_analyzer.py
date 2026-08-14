@@ -13,9 +13,11 @@ No API server needed — calls analysis logic directly.
 
 import argparse
 import functools
+import json
 import logging
 import re
 import sys
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path, PurePosixPath
 
@@ -189,6 +191,197 @@ def _matches(pattern: str, file_path: str) -> bool:
     src/auth/login.py for the pattern "auth/**".
     """
     return _pattern_to_regex(pattern).fullmatch(file_path) is not None
+
+
+# =============================================================================
+# The module map
+# =============================================================================
+# Loading is deliberately unforgiving. Bölüm A replaced a report that quietly
+# invented a module with one that says what it does and does not know; a loader
+# that swallows a typo and returns an empty map would put that silence straight
+# back, one layer lower. So the map either loads or raises, and main() prints
+# the reason into the report rather than analyzing with a half-read map.
+#
+# This lives here rather than in core/: it reads a file and reads config, and
+# ci_analyzer is its only consumer.
+
+# Glob syntax we do not implement. Rejected at load time rather than passed
+# through as literal text, which would make such a pattern silently never
+# match — and a user seeing no modules cannot tell that from a wrong path.
+_UNSUPPORTED_PATTERN_CHARS = "[]{}!"
+
+
+class ModuleMapError(Exception):
+    """The module map could not be used. main() catches this type."""
+
+
+class ModuleMapMissing(ModuleMapError):
+    """No file at the expected path — a setup state, not a corruption."""
+
+
+class ModuleMapInvalid(ModuleMapError):
+    """The file exists but cannot be read as a map."""
+
+
+@dataclass(frozen=True)
+class ModuleMap:
+    """Path patterns for module inference, plus the analysis scope.
+
+    `modules` maps a path pattern to a module name; `exclude` lists patterns
+    whose files never reach inference at all. Both come from module-map.json —
+    there is no built-in default for either, which is the whole point of the
+    phase: a scope rule the user cannot see is a scope rule they cannot fix.
+    """
+
+    modules: dict[str, str]
+    exclude: tuple[str, ...]
+
+
+def _validate_pattern(pattern: object, where: str) -> str:
+    """Return `pattern` if it is a usable path glob, else raise.
+
+    `where` names the section it came from, so the message points at a line of
+    the user's file rather than at an internal variable.
+    """
+    if not isinstance(pattern, str) or not pattern:
+        raise ModuleMapInvalid(
+            f'module-map.json: every entry of "{where}" must be a non-empty '
+            f"path pattern, got {pattern!r}."
+        )
+
+    if "\\" in pattern:
+        raise ModuleMapInvalid(
+            f'module-map.json: pattern {pattern!r} in "{where}" uses a '
+            "backslash. Patterns are POSIX paths and use / on every platform, "
+            "because that is what git diff emits on every platform."
+        )
+
+    if pattern.startswith("/"):
+        raise ModuleMapInvalid(
+            f'module-map.json: pattern {pattern!r} in "{where}" starts with /. '
+            "Diff paths are relative to the repository root, so a leading "
+            "slash can never match."
+        )
+
+    for char in _UNSUPPORTED_PATTERN_CHARS:
+        if char in pattern:
+            raise ModuleMapInvalid(
+                f'module-map.json: pattern {pattern!r} in "{where}" uses {char!r}, '
+                "which is not supported. The pattern syntax is * (within one "
+                "path segment), ? (one character) and ** (any number of "
+                "segments) — no character classes, braces or negation."
+            )
+
+    return pattern
+
+
+def _no_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
+    """json object hook that rejects a repeated key instead of keeping the last.
+
+    Two entries for the same pattern is a mistake whose winner is decided by
+    file order, silently — the same shape as the dictionary-ordering bug Bölüm A
+    removed from the keyword table.
+    """
+    seen: dict[str, object] = {}
+    for key, value in pairs:
+        if key in seen:
+            raise ModuleMapInvalid(
+                f"module-map.json: {key!r} is listed twice. Remove one — "
+                "otherwise which module wins depends on the order of the lines."
+            )
+        seen[key] = value
+
+    return seen
+
+
+def load_module_map(path: Path | None = None) -> ModuleMap:
+    """Read and validate module-map.json.
+
+    Args:
+        path: The file to read. Defaults to config.MODULE_MAP_FILE, which is
+            derived from BASE_DIR, so tests can point it anywhere.
+
+    Returns:
+        The validated map.
+
+    Raises:
+        ModuleMapMissing: No file at `path`.
+        ModuleMapInvalid: The file is not JSON, does not match the schema, or
+            contains no patterns.
+    """
+    path = path or config.MODULE_MAP_FILE
+
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        raise ModuleMapMissing(
+            f"No module map: expected module-map.json at {path}. Create it — "
+            "the analyzer cannot guess which directories belong to which "
+            "module, and will not try. If this package was installed with "
+            "`pip install .` outside a source checkout, set DRA_BASE_DIR to "
+            "the project root."
+        ) from None
+    except OSError as exc:
+        raise ModuleMapInvalid(f"module-map.json at {path} cannot be read: {exc}") from exc
+
+    try:
+        raw = json.loads(text, object_pairs_hook=_no_duplicate_keys)
+    except json.JSONDecodeError as exc:
+        raise ModuleMapInvalid(
+            f"module-map.json at {path} is not valid JSON: {exc.msg} "
+            f"(line {exc.lineno}, column {exc.colno})."
+        ) from exc
+
+    if not isinstance(raw, dict):
+        raise ModuleMapInvalid(
+            "module-map.json: the top level must be an object with a "
+            f'"modules" key, got {type(raw).__name__}.'
+        )
+
+    if "modules" not in raw:
+        raise ModuleMapInvalid(
+            'module-map.json: the required "modules" key is missing. It maps a '
+            "path pattern to a module name."
+        )
+
+    modules = raw["modules"]
+    if not isinstance(modules, dict):
+        raise ModuleMapInvalid(
+            'module-map.json: "modules" must be an object mapping a path '
+            f"pattern to a module name, got {type(modules).__name__}."
+        )
+
+    if not modules:
+        raise ModuleMapInvalid(
+            'module-map.json contains no patterns: "modules" is empty. Add at '
+            "least one path pattern, or delete the file if you meant to turn "
+            "module inference off — an empty map cannot be told apart from a "
+            "mistake."
+        )
+
+    for pattern, module in modules.items():
+        _validate_pattern(pattern, "modules")
+        if not isinstance(module, str) or not module:
+            raise ModuleMapInvalid(
+                f"module-map.json: the module name for pattern {pattern!r} must "
+                f"be a non-empty string, got {module!r}. The name is compared "
+                "against the component field in your bug data."
+            )
+
+    exclude = raw.get("exclude", [])
+    if not isinstance(exclude, list):
+        raise ModuleMapInvalid(
+            f'module-map.json: "exclude" must be a list of path patterns, got '
+            f"{type(exclude).__name__}."
+        )
+
+    # Omitting "exclude" excludes nothing. Falling back to a built-in denylist
+    # here would be the exact thing this phase removes: a scope rule the user
+    # cannot see, cannot change, and does not know is running.
+    return ModuleMap(
+        modules=dict(modules),
+        exclude=tuple(_validate_pattern(item, "exclude") for item in exclude),
+    )
 
 
 def select_analyzable_files(changed_files: list[str]) -> list[str]:
