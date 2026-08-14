@@ -266,6 +266,63 @@ The included GitHub Actions workflow automatically analyzes PRs for risk:
 
 The workflow uses mock data mode, so it works without Jira credentials in CI.
 
+### Module map (`module-map.json`)
+
+Step 2 needs to know which of your directories belong to which module. It does
+not guess. `module-map.json` at the repository root maps path patterns to
+module names, and also defines what is out of scope:
+
+```json
+{
+  "_comment": "Free text. Ignored by the tool.",
+  "modules": {
+    "src/auth/**": "Authentication",
+    "src/payments/**": "Payment",
+    "web/**/*_view.tsx": "Frontend"
+  },
+  "exclude": ["docs/**", "tests/**", "**/*.md"]
+}
+```
+
+`exclude` is applied first and its result is final: those files never reach
+inference at all. Everything else is matched against `modules`, and **every**
+matching pattern is reported — a file that two patterns claim affects both
+modules. To drop a match you do not want, remove the pattern or exclude the
+path.
+
+**Module names must match the `component` field in your bug data** (for Jira,
+the component name). A name your bug history has never seen is reported as
+`Matched, no historical data` — never as low risk. Leaving files unmapped is
+fine; the report says `NOT ASSESSED` rather than inventing a module.
+
+Pattern syntax:
+
+| | |
+|---|---|
+| `*` | any characters **within one path segment** — `src/*.py` does not match `src/a/b.py` |
+| `?` | exactly one character, not `/` |
+| `**` | any number of segments, including none — `**/*.md` matches `README.md` |
+
+Patterns are anchored at the repository root (`auth/**` does not match
+`src/auth/login.py`), always use `/` regardless of platform, and are case
+sensitive everywhere. Character classes (`[abc]`), braces (`{a,b}`) and
+negation (`!`) are not supported and are rejected when the file is loaded.
+
+The committed `module-map.json` describes *this* repository. It is a working
+example, not a default that fits your project — replace it.
+
+If the file is missing, unreadable or empty, the analyzer reports that and
+scores nothing rather than guessing. The file is found relative to the project
+root; if you installed the package with `pip install .` outside a source
+checkout, set `DRA_BASE_DIR` to the project root (see
+[`docs/KNOWN-DEBT.md`](docs/KNOWN-DEBT.md)).
+
+To see what your map covers before opening a PR:
+
+```bash
+python tests/tools/module_map_report.py
+```
+
 ---
 
 ## 📁 Project Structure
@@ -304,6 +361,7 @@ defect-risk-analyzer/
 │   └── pr-risk-analysis.yml
 ├── BASLAT.bat                  # Windows: setup + launch the dashboard
 ├── DURDUR.bat                  # Windows: stop running services
+├── module-map.json             # Path pattern -> module name, plus the analysis scope
 ├── pyproject.toml              # Packaging (PEP 621) + ruff config
 ├── requirements.txt            # Core deps (also read by pyproject.toml)
 ├── requirements-webhook.txt    # Optional FastAPI service deps — ".[webhook]"

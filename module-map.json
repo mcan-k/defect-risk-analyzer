@@ -1,0 +1,38 @@
+{
+  "_comment": "These patterns describe THIS repository's own directory layout. They are shipped as a working example, not as a default that fits your project - replace them with your own. A module name must match the `component` field in your bug data (for Jira, the component name); a name your bug history has never seen is reported as 'Matched, no historical data', never as low risk. The names below deliberately do NOT overlap with data/sample_bugs.json, which is demo data about a fictional e-commerce product and has nothing to do with this repository's code - so running the analyzer on this repository reports matches with no scores, which is the honest answer. Leaving a file unmapped is a valid choice: 'no mapping' is an honest report. Pattern syntax: * matches within one path segment, ? matches one character, ** matches any number of segments. Patterns are anchored at the repository root, use / on every platform, and are case sensitive.",
+  "modules": {
+    "src/defect_risk_analyzer/dashboard.py": "Dashboard UI",
+    "src/defect_risk_analyzer/cli.py": "Dashboard UI",
+    "src/defect_risk_analyzer/ci_analyzer.py": "CI Analyzer",
+    "src/defect_risk_analyzer/api*.py": "API Server",
+    "src/defect_risk_analyzer/adapters/**": "Adapters",
+    "src/defect_risk_analyzer/core/**": "Scoring Core",
+    "src/defect_risk_analyzer/services/**": "Analysis Service",
+    "src/defect_risk_analyzer/jira_client.py": "Jira Client",
+    "src/defect_risk_analyzer/llm_provider.py": "LLM Provider",
+    "src/defect_risk_analyzer/prompt_templates.py": "LLM Provider",
+    "src/defect_risk_analyzer/anonymizer.py": "Anonymizer",
+    "src/defect_risk_analyzer/*_detector.py": "Detectors",
+    "src/defect_risk_analyzer/*_classifier.py": "Detectors"
+  },
+  "exclude": [
+    "docs/**",
+    "tests/**",
+    ".github/**",
+    "**/*.md",
+    "**/*.rst",
+    "**/*.adoc",
+    "**/*.txt",
+    "**/*.toml",
+    "**/*.cfg",
+    "**/*.ini",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.jpeg",
+    "**/*.gif",
+    "**/*.svg",
+    "**/*.ico",
+    "**/*.webp",
+    "**/*.pdf"
+  ]
+}

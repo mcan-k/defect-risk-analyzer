@@ -47,6 +47,19 @@ def sample_bugs_path() -> Path:
     return SAMPLE_BUGS
 
 
+@pytest.fixture(scope="session")
+def repo_module_map_path() -> Path:
+    """Path to the committed module map, in the repo (not the sandbox).
+
+    Same reason as sample_bugs_path: config.MODULE_MAP_FILE points at the empty
+    sandbox, so the shipped file is only reachable from the repo root. Only the
+    tests that assert what the shipped map says should use this — everything
+    else builds a ModuleMap in memory, which keeps the rule under test separate
+    from the data that happens to be committed.
+    """
+    return REPO_ROOT / "module-map.json"
+
+
 @pytest.fixture(autouse=True, scope="session")
 def _assert_sandboxed():
     """Fail the session if config resolved any path inside the repo.
@@ -57,7 +70,12 @@ def _assert_sandboxed():
     """
     from defect_risk_analyzer import config
 
-    for name in ("BASE_DIR", "DATA_DIR", "CHROMA_DB_DIR", "ENV_FILE"):
+    # MODULE_MAP_FILE is read, never written, but the guard is still the right
+    # place for it: under the sandbox it points at an empty temp directory, so
+    # a test that forgets to pass an explicit map raises ModuleMapMissing
+    # instead of silently reading — and depending on — the developer's own
+    # committed module-map.json.
+    for name in ("BASE_DIR", "DATA_DIR", "CHROMA_DB_DIR", "ENV_FILE", "MODULE_MAP_FILE"):
         resolved = Path(getattr(config, name)).resolve()
         assert resolved != REPO_ROOT and REPO_ROOT not in resolved.parents, (
             f"config.{name} resolved to {resolved}, which is inside the repo. "

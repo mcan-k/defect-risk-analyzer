@@ -63,6 +63,12 @@ BASE_DIR = _resolve_base_dir()
 DATA_DIR = BASE_DIR / "data"
 ENV_FILE = BASE_DIR / ".env"
 
+# Path patterns mapping directories to modules, read by ci_analyzer. Unlike
+# .env this file is committed: it is a product default, not user credentials,
+# and the PR workflow only checks the repository out — a gitignored map would
+# simply be absent on the runner and the analyzer would go silent on every PR.
+MODULE_MAP_FILE = BASE_DIR / "module-map.json"
+
 # Data File Paths (static)
 BUGS_FILE: Path = DATA_DIR / "bugs.json"
 SAMPLE_BUGS_FILE: Path = DATA_DIR / "sample_bugs.json"

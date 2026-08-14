@@ -23,12 +23,35 @@ from typing import Any
 import pytest
 
 from defect_risk_analyzer.ci_analyzer import (
+    ModuleMap,
+    ModuleMapError,
+    _matches,
     extract_changed_files,
     generate_risk_report,
     infer_module_provenance,
+    load_module_map,
     select_analyzable_files,
 )
 from defect_risk_analyzer.core import scoring
+
+# Inference now reads module-map.json, so the report tests have to supply one.
+# Built in memory rather than read from the repository: what these tests are
+# about is what the report SAYS, and pinning that to whichever patterns happen
+# to be committed would make an unrelated map edit fail them.
+#
+# "**/*auth*" is here for the same reason it is in the inference suite: it lets
+# the PR #3 probes stay load-bearing. Without a pattern that really would claim
+# docs/probe/auth-probe.md, the end-to-end probe tests below would pass whether
+# or not the scope filter ran.
+REPORT_MAP = ModuleMap(
+    modules={
+        "**/*auth*": "Authentication",
+        "**/*_view.py": "Frontend",
+        "**/*inventory*": "Inventory",
+        "**/*report*": "Reporting",
+    },
+    exclude=("docs/**", "**/*.md"),
+)
 
 SNAPSHOT = (
     Path(__file__).resolve().parent / "data" / "scores-aff55c6-now2026-08-11.json"
@@ -195,7 +218,10 @@ def test_no_module_match_is_not_assessed():
 
     assert "**Affected Modules:** — none matched" in report
     assert "NOT ASSESSED — changed files did not map to any known module." in report
-    assert "**Analyzed Files:** 0  (1 skipped: documentation, config or asset)" in report
+    # The wording used to name fixed categories ("documentation, config or
+    # asset"). The categories are now whatever the user's exclude list says, so
+    # the line points at the file instead of describing its contents.
+    assert "**Analyzed Files:** 0  (1 excluded by module-map.json)" in report
 
     assert "## Risk Summary" not in report
     assert "LOW RISK" not in report
@@ -207,21 +233,93 @@ def test_no_module_match_is_not_assessed():
 # ===========================================================================
 
 def test_report_shows_why_these_modules():
-    """The evidence for the false positive this phase leaves open."""
-    changed = ["tests/test_ci_analyzer_report.py"]
+    """The evidence line names the pattern, which is a line the reader owns.
+
+    Under the token rule this said "token `report` in `<file>`" — text quoted
+    out of the path, because the rule itself was invisible and the path was the
+    only thing a reader could check. Now the rule is a line in their own
+    module-map.json, so the pattern is what they need: it says which line
+    produced the claim and therefore which line to edit.
+    """
+    changed = ["src/reporting/export_report.py"]
     report = generate_risk_report(
         StubAnalyzer({}),
         changed,
         ["Reporting"],
-        provenance=infer_module_provenance(changed),
+        provenance=infer_module_provenance(changed, REPORT_MAP),
         now=FROZEN_NOW,
     )
 
     assert "## Why these modules" in report
     assert (
-        "- **Reporting** ← token `report` in `tests/test_ci_analyzer_report.py`"
-        in report
+        "- **Reporting** ← pattern `**/*report*` matched "
+        "`src/reporting/export_report.py`" in report
     )
+
+
+# ===========================================================================
+# No usable map — a fourth outcome, distinct from "nothing matched"
+# ===========================================================================
+
+@pytest.mark.parametrize(
+    ("payload", "marker"),
+    [
+        pytest.param(None, "Create it", id="missing"),
+        pytest.param("{", "not valid JSON", id="unreadable"),
+        pytest.param('{"modules": {}}', "no patterns", id="empty"),
+    ],
+)
+def test_module_map_error_reaches_the_report(tmp_path, payload, marker: str):
+    """Three causes, three messages, none of them collapsed into the others.
+
+    The messages are not written here — they are produced by load_module_map
+    and carried through, so a test cannot drift from what a user actually sees.
+    Each `marker` is the part that distinguishes one cause from the other two,
+    which is what makes the three parameters different tests rather than three
+    spellings of one.
+
+    The distinction that matters most is against the existing "nothing matched"
+    branch. Both end with no modules, but one means "your diff touched nothing
+    the map names" and the other means "there was no map to consult". Printing
+    the first when the second is true is the same class of error as PR #3's
+    LOW RISK: a statement about the change, standing in for an admission that
+    nothing was examined.
+    """
+    path = tmp_path / "module-map.json"
+    if payload is not None:
+        path.write_text(payload, encoding="utf-8")
+
+    with pytest.raises(ModuleMapError) as excinfo:
+        load_module_map(path)
+    message = str(excinfo.value)
+    assert marker in message
+
+    report = generate_risk_report(
+        StubAnalyzer({}),
+        ["src/auth/login.py"],
+        [],
+        module_map_error=message,
+        now=FROZEN_NOW,
+    )
+
+    assert "NOT ASSESSED — no usable module map." in report
+    assert message in report
+    assert "**Affected Modules:** — not inferred (no module map)" in report
+    assert "Risk was not assessed" in report
+
+    assert "did not map to any known module" not in report
+    assert "## Risk Summary" not in report
+    assert "LOW RISK" not in report
+
+
+def test_a_usable_map_does_not_print_the_map_error_branch():
+    """The default keeps every other report in this file unchanged."""
+    report = generate_risk_report(
+        StubAnalyzer({}), ["docs/probe/notes.md"], [], analyzed_files=[], now=FROZEN_NOW
+    )
+
+    assert "no usable module map" not in report
+    assert "NOT ASSESSED — changed files did not map to any known module." in report
 
 
 def test_provenance_section_is_omitted_when_not_supplied():
@@ -249,16 +347,18 @@ def _probe_diff(path: str) -> str:
     )
 
 
-def _report_for(diff: str, analyzer: StubAnalyzer) -> str:
+def _report_for(
+    diff: str, analyzer: StubAnalyzer, module_map: ModuleMap = REPORT_MAP
+) -> str:
     """The exact chain main() runs, minus the file I/O."""
     changed_files = extract_changed_files(diff)
-    provenance = infer_module_provenance(changed_files)
+    provenance = infer_module_provenance(changed_files, module_map)
 
     return generate_risk_report(
         analyzer,
         changed_files,
         sorted(provenance),
-        analyzed_files=select_analyzable_files(changed_files),
+        analyzed_files=select_analyzable_files(changed_files, module_map),
         provenance=provenance,
         now=FROZEN_NOW,
     )
@@ -270,8 +370,15 @@ def test_doc_only_diff_produces_no_risk_end_to_end(authentication):
     The analyzer is loaded with Authentication history on purpose: the bug was
     never that the data was missing, it was that a documentation file reached
     that data at all.
+
+    REPORT_MAP's "**/*auth*" is what keeps this honest. Without a pattern that
+    really would claim auth-probe.md the test would pass whether or not the
+    scope filter ran, which is the failure mode 65fe72c found in the earlier
+    version of these cases.
     """
     analyzer = StubAnalyzer({"Authentication": authentication["stats"]})
+
+    assert _matches("**/*auth*", "docs/probe/auth-probe.md")
 
     report = _report_for(_probe_diff("docs/probe/auth-probe.md"), analyzer)
 
@@ -279,6 +386,57 @@ def test_doc_only_diff_produces_no_risk_end_to_end(authentication):
     assert "HIGH RISK" not in report
     assert str(authentication["score"]) not in report
     assert "NOT ASSESSED" in report
+
+
+def test_scored_report_end_to_end_from_a_map_on_disk(authentication, tmp_path):
+    """The full chain, from a JSON file to a filled risk table.
+
+    Everything else in this file feeds generate_risk_report a ModuleMap built
+    in memory, and this repository's own module-map.json deliberately names
+    components the demo bug data has never heard of — so no test and no live CI
+    run exercises a map that actually produces a score. That gap is the price
+    of keeping the shipped map honest, and this test is what pays it: a map
+    written to disk, loaded through load_module_map, and run end to end into a
+    scored row.
+
+    79 / HIGH is not written here. It comes from the `authentication` fixture,
+    which reads tests/data/scores-aff55c6-now2026-08-11.json — the same
+    snapshot test_scoring_regression.py pins core/scoring.py against, and the
+    same number the PR #3 probe printed. tests/test_scoring_units.py:8 shows
+    the derivation: (0.9*60 + 0.3*40) * 1.5 * 0.8 * 1.0 = 79.2 -> 79.
+
+    The docs file in the diff is not decoration either: it is what makes the
+    "excluded" count and the scored row appear in the same report, which is
+    the combination PR #3 got wrong in both halves at once.
+    """
+    path = tmp_path / "module-map.json"
+    path.write_text(
+        json.dumps(
+            {
+                "modules": {"src/auth/**": "Authentication"},
+                "exclude": ["docs/**", "**/*.md"],
+            }
+        ),
+        encoding="utf-8",
+    )
+    module_map = load_module_map(path)
+
+    diff = _probe_diff("src/auth/login.py") + _probe_diff("docs/notes.md")
+    analyzer = StubAnalyzer({"Authentication": authentication["stats"]})
+
+    report = _report_for(diff, analyzer, module_map)
+
+    assert f"| Authentication | {authentication['score']}/100 |" in report
+    assert authentication["level"] in report
+    assert "HIGH RISK — `Authentication` module has elevated defect density." in report
+    assert (
+        "- **Authentication** ← pattern `src/auth/**` matched `src/auth/login.py`"
+        in report
+    )
+    assert "**Analyzed Files:** 1  (1 excluded by module-map.json)" in report
+
+    assert "NOT ASSESSED" not in report
+    assert "Matched, no historical data" not in report
 
 
 def test_report_does_not_depend_on_a_doc_filename(authentication):
