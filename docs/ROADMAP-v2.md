@@ -138,12 +138,48 @@ Reddedildi (ertelenmedi):
       token'ına ya da düzenli çoğuluna eşit olmalı). Eşleşme yoksa rapor artık
       `NOT ASSESSED` yazıyor, `LOW RISK` değil; eşleşen her modülün yanında onu
       üreten dosya ve token gösteriliyor. PR #3'te iki probe ile ölçüldü.
-- [ ] **Faz 4(b) Bölüm B** — eşleme tablosunun (`MODULE_KEYWORDS`)
-      `module-map.json`'a taşınması + dizin kapsamı politikası. Bugün açık kalan
-      yanlış pozitif sınıfı: `tests/test_ci_analyzer_report.py` → token `report`
-      → Reporting (2 bug, `34/100`), `prompt_templates.py` → `templates` →
-      Frontend (`40/100`). Provenance satırı bunu görünür kılıyor ama
-      engellemiyor; `tests/` ve `src/` kapsamı B'nin kararı.
+- [x] **Faz 4(b) Bölüm B** — eşleme tahminden yapılandırmaya taşındı.
+      Ölçüm: takip edilen 34 `.py` dosyasının 8'i modül üretiyordu ve **1'i
+      doğruydu** (`api.py` → API). En pahalısı `api_auth.py`: tek satırlık bir
+      değişiklik `auth` token'ı üzerinden Authentication'ı ateşleyip
+      `79/100 HIGH RISK` veriyordu — bu dosya aracın kendi `X-API-Key` başlığını
+      doğruluyor, bug verisindeki Authentication modülüyle ilgisi yok. `api.py`
+      ile `api_auth.py`'yi hiçbir token ayarı ayıramaz; fark dosya adında değil,
+      dosyanın ne yaptığında. Dolayısıyla bu, token yaklaşımının tamir edilebilir
+      bir hatası değil, sınırıydı.
+
+      `MODULE_KEYWORDS`, `_path_tokens`, `_matched_token`, `EXCLUDED_DIRS` ve
+      `EXCLUDED_SUFFIXES` silindi. Yerlerine depo kökünde `module-map.json`:
+      `modules` (yol deseni → modül adı) ve `exclude` (kapsam dışı desenler).
+      Kapsam da dosyaya taşındı çünkü yanlış pozitiflerin tamamı kapsam
+      tarafındaydı; haritayı taşıyıp filtreleri kodda bırakmak kullanıcıya asıl
+      kolu vermezdi. Gömülü varsayılan yok — görünmeyen bir kural düzeltilemeyen
+      bir kuraldır. `tests/` varsayılan olarak kapsam dışı (ölçümde doğru pozitif
+      kaybı sıfır: 2/2 tesadüfi). Çoklu eşleşmede hepsi raporlanır. Eşleşme
+      kanıtı artık token yerine deseni gösteriyor:
+      `Authentication ← pattern src/auth/** matched src/auth/login.py`.
+
+      Harita yoksa, bozuksa ya da `modules` boşsa modül çıkarımı hiç çalışmıyor;
+      rapor üç durumu üç ayrı mesajla söylüyor ve `NOT ASSESSED` veriyor. Çıkış
+      kodu 0 kalıyor — aksi halde iş adımı düşer ve açıklamayı taşıyan yorum da
+      hiç gönderilmez.
+
+      Gönderilen `module-map.json` bu deponun **kendi** bileşenlerini adlandırıyor
+      (`CI Analyzer`, `Dashboard UI`, `API Server`, …), ürün modüllerini değil.
+      Sonucu bilinçli: bu deponun PR'ları `Matched, no historical data` +
+      `NOT ASSESSED` veriyor. `dashboard.py`'yi `Frontend`'e bağlamak risk
+      tablosunu doldururdu, ama oradaki `Frontend` kurgusal bir e-ticaret
+      ürününün arayüzü — bu, PR #3 hatasının beyan edilmiş, dolayısıyla görünür
+      ama yine de yanlış bir kopyası olurdu. Skorlu yolun kanıtı
+      `test_ci_analyzer_report.py::test_scored_report_end_to_end_from_a_map_on_disk`
+      testinde, snapshot'tan türetilen `79/HIGH` değeriyle.
+
+      B sonrası ölçüm (`tests/tools/module_map_report.py`): 20 dosya eşleşiyor,
+      10 modül, hepsi savunulabilir. `docs/**`, `tests/**` ve `.github/**`
+      desenleri bugün hiçbir eşleşmeyi engellemiyor çünkü modül desenlerinin
+      tamamı `src/defect_risk_analyzer/` altında — savunma derinliği olarak
+      duruyorlar ve bu, paragraf değil test olarak kayıtlı
+      (`test_shipped_directory_excludes_are_defence_in_depth`).
 
   > Eski madde ("`ci_analyzer` modül isimlerini `component_classifier` ile
   > hizala — `API`/`Backend API`, `General`/`Genel` uyuşmazlığı, CI çıktısı şu an

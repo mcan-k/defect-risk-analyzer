@@ -21,6 +21,17 @@ wheel/pipx install with no project tree reaches the cwd fallback — there,
 running `dra` from two different directories yields two different `data/`
 directories, and neither is discoverable by the user.
 
+**Faz 4(b) Bölüm B genişletmesi:** artık `data/` ve `.env` yalnız değil —
+`module-map.json` da `BASE_DIR`'den çözülüyor (`config.MODULE_MAP_FILE`). Dosya
+`src/` dışında, depo kökünde durduğu için wheel'e paket verisi olarak **girmiyor**;
+bu kasıtlı, çünkü kullanıcı yapılandırması, paket varlığı değil. Sonuç: proje ağacı
+olmayan bir `pip install .` kurulumunda harita bulunamaz ve `ci_analyzer` modül
+çıkarımı yapmadan `NOT ASSESSED` raporlar. Sessiz değil — `ModuleMapMissing`
+mesajı hem beklenen yolu hem `DRA_BASE_DIR`'i adlandırıyor. Kaynak checkout'ta,
+editable kurulumda ve Docker imajında ikinci kural kazandığı için sorun görünmez;
+`pr-risk-analysis.yml` de `actions/checkout` + `pip install -e .` kullandığı için
+CI etkilenmiyor.
+
 **Workaround until then:** set `DRA_BASE_DIR` explicitly.
 
 **Planned fix (Phase 2):** resolve the data directory via `platformdirs`
