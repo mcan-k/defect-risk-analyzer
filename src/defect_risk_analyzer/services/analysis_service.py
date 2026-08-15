@@ -109,16 +109,37 @@ class AnalysisService:
     def refresh(self) -> dict[str, Any]:
         """Fetch fresh data from Jira (or mock data) and reindex it.
 
+        A fetch that comes back empty changes nothing: not the index, not the
+        bugs already in memory. refresh_data() returns [] for a missing
+        bugs.json, an unreadable one and an unconfigured Jira alike
+        (jira_client.py:329-334), so an empty result is far more often a broken
+        setup than an empty backlog, and this layer cannot tell which. It takes
+        the conservative reading and reports which one it took, rather than
+        guessing — `bugs_loaded` is 0 either way, so `reindexed` is what
+        separates "skipped" from "there was genuinely nothing".
+
         Returns:
-            Dict with `bugs_fetched`, `bugs_loaded` and `mock_mode`.
+            Dict with `bugs_fetched`, `bugs_loaded`, `reindexed` and `mock_mode`.
         """
         from defect_risk_analyzer.jira_client import refresh_data
 
         bugs = refresh_data()
+
+        if not bugs:
+            # The same guard api.py:99 and dashboard.py:237 have always had.
+            logger.warning("Refresh returned no bugs. Keeping the existing data and index.")
+            return {
+                "bugs_fetched": 0,
+                "bugs_loaded": 0,
+                "reindexed": False,
+                "mock_mode": config.USE_MOCK_DATA,
+            }
+
         loaded = self.load_bugs(bugs)
         return {
             "bugs_fetched": len(bugs),
             "bugs_loaded": loaded,
+            "reindexed": True,
             "mock_mode": config.USE_MOCK_DATA,
         }
 
