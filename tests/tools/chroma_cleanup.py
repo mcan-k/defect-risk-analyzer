@@ -29,6 +29,7 @@ tests/test_chroma_cleanup_plan.py and tests/test_chroma_cleanup_apply.py.
 Usage: python tests/tools/chroma_cleanup.py [path/to/chroma_db]
 """
 
+import shutil
 import sqlite3
 import sys
 import uuid
@@ -406,11 +407,210 @@ def print_report(store: Path, inventory: ChromaInventory, plan: CleanupPlan) -> 
 
 
 # ---------------------------------------------------------------------------
+# Confirmation
+# ---------------------------------------------------------------------------
+
+
+def stdin_is_interactive() -> bool:
+    return sys.stdin is not None and sys.stdin.isatty()
+
+
+def read_confirmation() -> str:
+    return input("  type the number to proceed: ")
+
+
+def confirm(plan: CleanupPlan, read_line) -> bool:
+    """Proceed only if the reader types back the number of directories to remove.
+
+    Not a y/n: "y" is reachable by pressing Enter twice without reading anything,
+    and this is the prompt standing in front of an irreversible delete. Typing
+    the count means the report above was actually looked at.
+    """
+    expected = str(len(plan.drop_dirs))
+    print(f"\nAbout to delete {expected} segment directories and the rows listed above.")
+    print(f"This cannot be undone. To confirm, type: {expected}")
+    return read_line().strip() == expected
+
+
+# ---------------------------------------------------------------------------
+# Applying
+# ---------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class ApplyOutcome:
+    deleted_rows: tuple[tuple[str, int], ...]
+    deleted_dirs: int
+    bytes_freed: int
+    size_before: int
+    size_after: int
+    pages_before: int
+    pages_after: int
+    problems: tuple[str, ...]
+
+
+def verify_consistency(conn: sqlite3.Connection, store: Path) -> tuple[str, ...]:
+    """Re-read the store and complain about anything still dangling.
+
+    Run after the deletions rather than trusted from them: this tool writes SQL
+    by hand against someone else's schema, and the cheapest way to find out that
+    a predicate was wrong is to ask the database instead of assuming.
+    """
+    problems: list[str] = []
+
+    dangling = {
+        "embeddings under a segment that no longer exists": (
+            "SELECT COUNT(*) FROM embeddings WHERE segment_id NOT IN (SELECT id FROM segments)"
+        ),
+        "embedding_metadata with no embedding": (
+            "SELECT COUNT(*) FROM embedding_metadata WHERE id NOT IN (SELECT id FROM embeddings)"
+        ),
+        "full-text rows with no embedding": (
+            "SELECT COUNT(*) FROM embedding_fulltext_search "
+            "WHERE rowid NOT IN (SELECT id FROM embeddings)"
+        ),
+        "segment_metadata for a segment that no longer exists": (
+            "SELECT COUNT(*) FROM segment_metadata "
+            "WHERE segment_id NOT IN (SELECT id FROM segments)"
+        ),
+        "max_seq_id for a segment that no longer exists": (
+            "SELECT COUNT(*) FROM max_seq_id WHERE segment_id NOT IN (SELECT id FROM segments)"
+        ),
+        "collection_metadata for a collection that no longer exists": (
+            "SELECT COUNT(*) FROM collection_metadata "
+            "WHERE collection_id NOT IN (SELECT id FROM collections)"
+        ),
+        "segments under a collection that no longer exists": (
+            "SELECT COUNT(*) FROM segments WHERE collection NOT IN (SELECT id FROM collections)"
+        ),
+    }
+    for description, sql in dangling.items():
+        (n,) = conn.execute(sql).fetchone()
+        if n:
+            problems.append(f"{n} {description}")
+
+    registered = {row[0] for row in conn.execute("SELECT id FROM segments")}
+    for path in store.iterdir():
+        if path.is_dir() and _is_segment_dir_name(path.name) and path.name not in registered:
+            problems.append(f"segment directory {path.name} survives but is registered nowhere")
+
+    return tuple(problems)
+
+
+def apply_cleanup(store: Path, plan: CleanupPlan) -> ApplyOutcome:
+    """Do it. Deletions first and committed, then directories, then VACUUM.
+
+    VACUUM last and outside the transaction because SQLite will not run one with
+    a transaction open on the connection, and after it because there is nothing
+    to reclaim until the deletions are committed.
+    """
+    if plan.refusal:
+        raise CleanupError(plan.refusal)
+
+    db_path = store / "chroma.sqlite3"
+    size_before, pages_before = sqlite_size(db_path)
+
+    # VACUUM rebuilds the file beside the original before replacing it, so the
+    # documented requirement is up to twice the file's size in free space.
+    free = shutil.disk_usage(store).free
+    if free < size_before * 2:
+        raise CleanupError(
+            f"VACUUM needs up to {human(size_before * 2)} free and only {human(free)} "
+            "is available. Nothing was changed."
+        )
+
+    backup = store / "chroma.sqlite3.bak"
+    stage = "taking the backup"
+    conn = None
+    try:
+        shutil.copy2(db_path, backup)
+
+        stage = "deleting rows"
+        conn = sqlite3.connect(db_path)
+        # We drive the transaction ourselves: sqlite3 would otherwise hold one
+        # open and VACUUM below would fail.
+        conn.isolation_level = None
+
+        statements = deletion_statements(plan)
+        conn.execute("BEGIN")
+        # Counted before deleting, using the identical predicate the report used,
+        # so the number shown and the number removed cannot be two different
+        # things. That the rows are actually gone is verify_consistency's job.
+        deleted_rows = []
+        for table, where, params in statements:
+            (n,) = conn.execute(
+                f"SELECT COUNT(*) FROM {table} WHERE {where}", params
+            ).fetchone()
+            conn.execute(f"DELETE FROM {table} WHERE {where}", params)
+            deleted_rows.append((table, n))
+        conn.execute("COMMIT")
+
+        stage = "removing segment directories"
+        for name in plan.drop_dirs:
+            shutil.rmtree(store / name)
+
+        stage = "vacuuming"
+        conn.execute("VACUUM")
+
+        stage = "verifying"
+        problems = verify_consistency(conn, store)
+        (pages_after,) = conn.execute("PRAGMA page_count").fetchone()
+        conn.close()
+        conn = None
+
+        backup.unlink()
+
+        return ApplyOutcome(
+            deleted_rows=tuple(deleted_rows),
+            deleted_dirs=len(plan.drop_dirs),
+            bytes_freed=plan.bytes_to_free,
+            size_before=size_before,
+            size_after=db_path.stat().st_size,
+            pages_before=pages_before,
+            pages_after=pages_after,
+            problems=problems,
+        )
+    except Exception as exc:
+        if conn is not None:
+            conn.close()
+        print(f"\nFAILED while {stage}: {exc}")
+        print(f"A copy of the database from before the run is at {backup}")
+        if stage in ("taking the backup", "deleting rows"):
+            print(
+                "No directory was removed, so copying that file back over "
+                "chroma.sqlite3 returns the store to where it started."
+            )
+        else:
+            print(
+                "Copying that file back is NOT on its own a repair: segment "
+                "directories may already be gone, so SQLite would then describe "
+                "vectors that are not on disk. The way out is to delete the store "
+                "entirely and run a refresh - it is gitignored and one refresh "
+                "rebuilds it."
+            )
+        raise CleanupError(f"cleanup failed while {stage}: {exc}") from exc
+
+
+def print_outcome(outcome: ApplyOutcome) -> None:
+    print("\nDONE")
+    print(f"  directories removed  {outcome.deleted_dirs:>6}   {human(outcome.bytes_freed)}")
+    for table, n in outcome.deleted_rows:
+        print(f"  {table:<28} {n:>6}")
+    print(f"  chroma.sqlite3       {human(outcome.size_before)} -> {human(outcome.size_after)}")
+    print(f"  pages                {outcome.pages_before} -> {outcome.pages_after}")
+    if outcome.problems:
+        print("\nPROBLEMS FOUND AFTER CLEANUP")
+        for problem in outcome.problems:
+            print(f"  {problem}")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 
 def main() -> int:
+    applying = "--apply" in sys.argv[1:]
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     store = Path(args[0]) if args else DEFAULT_STORE
 
@@ -422,8 +622,37 @@ def main() -> int:
 
     plan = plan_cleanup(inventory, KNOWN_COLLECTIONS)
     print_report(store, inventory, plan)
-    print("\nNothing was written. This mode only measures.")
-    return 0
+
+    if not applying:
+        print("\nNothing was written. This mode only measures.")
+        print("Re-run with --apply to delete what is listed above.")
+        return 0
+
+    if plan.refusal:
+        return 1
+
+    hot = hot_journal_files(store)
+    if hot:
+        print(f"\nNot applying: {', '.join(hot)} present.")
+        print("Something may be using this store - check the dashboard and webhook are stopped.")
+        return 1
+
+    if not stdin_is_interactive():
+        print("\nNot applying: --apply needs a terminal, so a person can confirm.")
+        return 1
+
+    if not confirm(plan, read_confirmation):
+        print("Cancelled. Nothing was deleted.")
+        return 1
+
+    try:
+        outcome = apply_cleanup(store, plan)
+    except CleanupError as exc:
+        print(exc)
+        return 1
+
+    print_outcome(outcome)
+    return 1 if outcome.problems else 0
 
 
 if __name__ == "__main__":
