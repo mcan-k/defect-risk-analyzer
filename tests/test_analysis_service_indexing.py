@@ -147,3 +147,67 @@ def test_reindexed_distinguishes_a_skip_from_a_genuinely_empty_result(service, m
 
     assert skipped["bugs_loaded"] == 0
     assert skipped["reindexed"] is False
+
+
+# =============================================================================
+# load_bugs(index=...) — loading without paying for an index
+# =============================================================================
+
+
+def test_loading_bugs_indexes_them_by_default(service):
+    """A1 — the default must not have changed.
+
+    Also guards A2: without this, flipping the default to False would leave A2
+    green while silently stopping the dashboard and the API from indexing
+    anything at all.
+    """
+    svc, store = service
+
+    loaded = svc.load_bugs([dict(b) for b in BUGS])
+
+    assert len(store.upsert_calls) == 1
+    assert loaded == 2
+    assert [bug["key"] for bug in svc.get_bugs()] == ["AP-1", "AP-2"]
+
+
+def test_index_false_skips_the_vector_store_entirely(service):
+    """A2 — what ci_analyzer asks for.
+
+    The bugs still land in memory, which is all the deterministic scoring path
+    reads; the vector store is never called, so ChromaDB is never initialised
+    and data/chroma_db is never created.
+    """
+    svc, store = service
+
+    loaded = svc.load_bugs([dict(b) for b in BUGS], index=False)
+
+    assert store.upsert_calls == []
+    assert loaded == 0, "nothing was indexed, so nothing is reported as indexed"
+    assert [bug["key"] for bug in svc.get_bugs()] == ["AP-1", "AP-2"]
+
+
+def test_classification_still_runs_when_indexing_is_off(service):
+    """A3 — skipping the index must not skip classify_bugs().
+
+    core/scoring.py:99 groups bugs by `component`, and classify_bugs() is what
+    fills that in when Jira left it empty. Skipping it would file every such bug
+    under "Unknown", so ci_analyzer would match a module, find no history for it
+    and report NOT ASSESSED on data it actually has. That failure looks like
+    correct output, which is why it is pinned rather than assumed.
+    """
+    svc, store = service
+    unclassified = {
+        "key": "AP-9",
+        "summary": "Login page rejects a valid password",
+        "component": "",
+        "priority": "High",
+        "status": "Open",
+        "created": "2026-01-01",
+    }
+
+    svc.load_bugs([unclassified], index=False)
+
+    assert store.upsert_calls == []
+    stats = svc.calculate_module_stats()
+    assert "Authentication" in stats, "an empty component must still be classified"
+    assert "Unknown" not in stats
