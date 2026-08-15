@@ -157,13 +157,49 @@ Reddedildi (ertelenmedi):
       silmek no-op mu) kaynaktan çözülemedi, tasarımla erişilemez kılındı:
       silinecek id'ler her zaman az önce yapılan `get()`'ten gelir ve bu
       değişmez testle sabit.
-- [ ] **Faz 4(a) PR-2** — `data/chroma_db` disk ve SQLite temizliği: terk
-      edilen `defect_history` koleksiyonu ve yetim HNSW segment klasörleri.
-      Bu satır önceden "9 yetim klasör" diyordu; 2026-08-15'te geliştirici
-      makinesinde 47 klasör ve 3,0 MB `chroma.sqlite3` sayıldı — her toptan
-      silme yeni bir segment bıraktığı için arada büyümüş. Sıralama kasıtlı:
-      temizlik diff-sync'ten önce yapılsaydı kova ilk yüklemede yeniden
-      dolardı. Ayrıntı `KNOWN-DEBT.md`'de.
+- [x] **Faz 4(a) PR-2** — `data/chroma_db` disk ve SQLite temizliği:
+      `tests/tools/chroma_cleanup.py`. Rapor modu (varsayılan) ölçer ve hiçbir
+      şey yazmaz; `--apply` yazılı onayla siler. Otomatik değil, kasıtlı olarak:
+      açılışta sessizce silen bir mekanizma, silme mantığı yanlışsa canlı veriyi
+      kimse görmeden götürür.
+
+      Bu satır önceden "9 yetim klasör" diyordu. 2026-08-15'te salt okunur
+      ölçüldü (`mode=ro&immutable=1`): 47 klasör / 78.964.700 bayt,
+      `chroma.sqlite3` 3.158.016 bayt, 46 klasör hiçbir `segments` satırında
+      geçmiyor, 956 yetim `embeddings` ve 6.692 yetim `embedding_metadata`
+      satırı, ayrıca `segment_metadata` / `collection_metadata` / `max_seq_id`
+      tablolarının her birinde 46 yetim satır — bu üçü keşifte hiç sayılmamıştı.
+      Keşfin "6.832 yetim `embedding_metadata`" rakamı tablonun tamamıydı,
+      yetim olan 6.692.
+
+      Sıralama kasıtlıydı: temizlik diff-sync'ten önce yapılsaydı kova ilk
+      yüklemede yeniden dolardı.
+
+      Silme chromadb'nin API'siyle **yapılmıyor**, olamazdı da. Yetim satırlar
+      hiçbir koleksiyona ait olmadığı için `list_collections` onları hiç görmez;
+      üstelik `delete_collection` yüklenmemiş bir segmenti diskte bırakarak bu
+      yetimleri üreten mekanizmanın ta kendisi (`KNOWN-DEBT.md`). Araç SQLite ve
+      dosya sistemine doğrudan yazıyor, chroma'nın kendi silme sırasını
+      izleyerek (önce FTS, sonra `embedding_metadata`, sonra `embeddings` —
+      `segment/impl/metadata/sqlite.py:595-648`) ve `chromadb`'yi hiç import
+      etmeden. `chroma utils vacuum` CLI'si kullanılmadı: `automatically_purge`
+      ayarını kalıcı olarak değiştiriyor (`cli/cli.py:168`) ve bir temizlik
+      aracı kullanıcının yapılandırmasını değiştirmemeli.
+
+      Silme kararı `plan_sync` kalıbında saf bir fonksiyon (`plan_cleanup`):
+      envanter girer, silinecekler listesi çıkar, hiçbir şeye dokunmaz. Karar
+      her zaman *korunacaklar* kümesinden türetiliyor, bu yüzden şema büyürse
+      araç fazla değil az siler.
+
+      Tanınan koleksiyon yoksa `--apply` reddediyor. "Araç bozuk" (adlar
+      değişmiş, şema değişmiş) ile "kullanıcı henüz senkronize etmemiş" aynı
+      envanteri üretiyor ve biri her şeyi silmeyi meşrulaştırıyor;
+      `upsert_bugs()`'ın boş-liste kararının aynısı. Geliştirici makinesinde
+      bugün tam olarak bu durum var — `defect_history_mock` ve
+      `defect_history_live` PR-1'den beri hiç `refresh` çalışmadığı için diskte
+      oluşmamış — dolayısıyla araç kendi deposuna karşı henüz uygulanmadı.
+      PR-2 sonrası ölçümler bir `refresh`'ten sonra alınacak ve
+      `KNOWN-DEBT.md`'deki boşluğa girecek.
 - [x] **Faz 4(b) Bölüm A** — `ci_analyzer` yanlış pozitif modül eşleşmesi.
       `infer_modules_from_files` yol içinde çıplak alt dizgi arıyordu, bu yüzden
       değişmemiş bir modül hakkında geçmiş bug verisinden risk uyduruyordu:
