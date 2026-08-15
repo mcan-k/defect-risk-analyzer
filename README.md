@@ -16,7 +16,7 @@ Built on **ISTQB testing principles**: Defect Clustering (Pareto), Risk-Based Te
 ## ✨ Key Features
 
 - **Deterministic Risk Scoring** — Risk scores are calculated in Python using priority weights, bug density, open ratios, and trend analysis. The LLM interprets, not calculates.
-- **RAG Pipeline** — ChromaDB vector database stores historical bugs. Similar defects are retrieved for context-aware analysis.
+- **RAG Pipeline** — ChromaDB vector database stores historical bugs. Similar defects are retrieved for context-aware analysis. Loads are incremental: only bugs whose text or metadata changed are re-embedded, and bugs that left the source are removed.
 - **BYOK (Bring Your Own Key)** — Works with Groq (LLaMA 3.3 70b) or OpenAI (GPT-4o-mini). You provide your own API key.
 - **7-Page Dashboard** — Risk heatmap and trend charts, bug browser, live analysis, pattern detection, blind spot detection, webhook history, and self-service settings.
 - **Pattern Detection** — Clusters similar bugs via vector similarity and extracts common root causes and duplicate candidates — no LLM call required.
@@ -48,7 +48,7 @@ calculate_module_stats() → statistics → LLM prompt → Groq/OpenAI → JSON 
 |-------|-----------|
 | Backend | Python 3.11, FastAPI, Uvicorn |
 | Frontend | Streamlit |
-| Vector DB | ChromaDB (local, cosine similarity) |
+| Vector DB | ChromaDB (local, cosine similarity, separate mock/live collections) |
 | LLM | Groq (LLaMA 3.3 70b) or OpenAI (GPT-4o-mini) |
 | CI/CD | GitHub Actions |
 | Security | DataAnonymizer (PII masking) |
@@ -151,6 +151,11 @@ directory — see [`docs/KNOWN-DEBT.md`](docs/KNOWN-DEBT.md) for the caveat.
 ### Try Without Jira (Mock Mode)
 
 Set `USE_MOCK_DATA=True` in your `.env` file. The app will load 20 realistic sample bugs and work without any Jira credentials. Perfect for evaluation.
+
+Mock and live bugs are indexed into separate ChromaDB collections
+(`defect_history_mock` and `defect_history_live`), so switching modes never
+mixes sample keys into a real index — and switching back does not cost you the
+other one.
 
 ---
 
