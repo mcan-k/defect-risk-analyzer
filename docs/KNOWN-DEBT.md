@@ -228,28 +228,62 @@ bağlanmadı.
 
 ---
 
-## `data/chroma_db` terk edilmiş koleksiyon ve yetim segmentler taşıyor
+## `delete_collection` yüklenmemiş segmenti diskte bırakıyor
 
-**Where:** `data/chroma_db` (izlenmiyor, `.gitignore`'da)
+**Where:** `data/chroma_db` (izlenmiyor, `.gitignore`'da), chromadb 0.5.23
 
-Faz 4(a) PR-1 `defect_history` koleksiyonunu terk etti, taşımadı. İçeriği mock
-ve canlı vektörlerin bilinmeyen bir karışımı — yani düzeltilen bulaşmanın ta
-kendisi — bu yüzden temiz koleksiyona taşımak sorunu da beraberinde taşırdı.
-İçerik `bugs.json` veya `sample_bugs.json` üzerinden tek bir `refresh` ile
-yeniden üretilebildiği için yerinde bırakıldı.
+Bir koleksiyon silindiğinde HNSW segment klasörü ve `embeddings` satırları
+diskte kalabiliyor. `SegmentAPI.delete_collection` (`api/segment.py:376-390`)
+önce `sysdb.delete_collection` ile defter kaydını siliyor, sonra
+`manager.delete_segments` çağırıyor; ama `LocalSegmentManager.delete_segments`
+asıl silmeyi `if segment["id"] in self._instances` koşulunun içinde yapıyor —
+yani segment o süreçte daha önce **yüklendiyse**. Koleksiyonu hiç okumamış taze
+bir istemci sildiğinde `_instances` boştur: `collections` ve `segments` satırları
+gider, klasör ve `embeddings` satırları yetim kalır.
 
-**Detail:** 2026-08-15'te geliştirici makinesinde `data/chroma_db` 47 HNSW
-segment klasörü ve 3,0 MB'lık bir `chroma.sqlite3` içeriyordu. ROADMAP bu
-sayıyı 9 olarak kaydetmişti; her toptan silme yeni bir segment klasörü
-bıraktığı için arada büyümüş. Sayı geliştirici makinesine özgüdür — dizin
-izlenmiyor.
+Faz 4(a) PR-1 öncesi her yükleme koleksiyonu silip yeniden yarattığı için bu
+mekanizma yükleme başına bir klasör biriktirdi.
 
-**Impact:** yalnız disk. Terk edilen koleksiyon okunmuyor: `VectorStore` artık
-`defect_history_mock` ve `defect_history_live` dışında bir ad açmıyor.
+**Detail:** 2026-08-15'te geliştirici makinesinde (PR-2 öncesi) ölçüldü:
+47 segment klasörü / 78.964.700 bayt, `chroma.sqlite3` 3.158.016 bayt
+(771 sayfa, `auto_vacuum` 0, `freelist_count` 0). 46 klasör hiçbir `segments`
+satırında geçmiyordu; 976 `embeddings` satırının 956'sı, 6.832
+`embedding_metadata` satırının 6.692'si yetimdi; `segment_metadata`,
+`collection_metadata` ve `max_seq_id` tablolarının her birinde 46 yetim satır
+vardı. ROADMAP bu klasör sayısını önce 9 olarak kaydetmişti; arada büyümüş.
+Sayılar geliştirici makinesine özgüdür — dizin izlenmiyor.
 
-**Planned fix (Faz 4(a) PR-2):** terk edilen koleksiyonun ve yetim segment
-klasörlerinin silinmesi, `chroma.sqlite3` dahil. Sıralama kasıtlıydı —
-temizlik diff-sync'ten önce yapılsaydı kova ilk yüklemede yeniden dolardı.
+Cascade'e güvenilemiyor: `collection_metadata.collection_id` DDL'de
+`ON DELETE CASCADE` taşıdığı ve chroma `PRAGMA foreign_keys = ON` yaptığı
+(`db/impl/sqlite.py:102`) hâlde 46 yetim satır ölçüldü. Nedeni araştırılmadı —
+`segments.collection` var olmayan bir tabloya işaret ediyor
+(`REFERENCES collection(id)`, tablo adı `collections`), pragma bağlantı başına
+ve satırlar pragma'sız bir bağlantıdan silinmiş olabilir. Araç bu yüzden hiçbir
+cascade'e güvenmiyor, her yan tabloyu açıkça siliyor ve sonrasında doğruluyor.
+
+**Impact:** yalnız disk; okunan hiçbir şey etkilenmiyor. Artık araçla
+temizlenebiliyor ama **tekrar birikiyor**: `reset()` ya da elle bir
+`delete_collection` her çağrıldığında aynı mekanizma bir klasör daha bırakır.
+Faz 4(a) PR-1 sonrası olağan yüklemeler diff-sync yaptığı için birikme hızı
+yükleme başına birden sıfıra indi, ama sıfırlanmadı.
+
+**Workaround:** [`tests/tools/chroma_cleanup.py`](../tests/tools/chroma_cleanup.py).
+Varsayılan mod ölçer ve yazmaz; `--apply` açık onayla siler. Tanınan koleksiyon
+bulunmazsa uygulamayı reddeder — "araç bozuk" ile "kullanıcı henüz senkronize
+etmemiş" aynı envanteri ürettiği için. Dizin `.gitignore`'lu ve tek bir
+`refresh` ile yeniden üretilebilir, geri dönüş güvencesi budur.
+
+**Kapandı (Faz 4(a) PR-2):** terk edilmiş `defect_history` koleksiyonunun
+kendisi. Araç onu siliyor; ayrı bir borç olarak izlenmesi gerekmiyor.
+
+**Ölçülmedi:** PR-2 sonrası geriye ne kaldığı — kalan klasör ve satır sayıları,
+`chroma.sqlite3`'ün VACUUM sonrası boyutu. Araç geliştirici makinesinde bugün
+**uygulanamadı**: diskte tanınan hiçbir koleksiyon yok (PR-1'den beri hiç
+`refresh` çalışmadığı için `defect_history_mock` ve `defect_history_live` henüz
+oluşmamış), bu yüzden araç kendi kuralı gereği reddediyor. Sayılar ancak bir
+`refresh`'ten sonra araç gerçek dizine karşı koşturulunca ölçülebilir; o zaman
+ölçüm tarihiyle birlikte buraya girecek. Bu bir boşluktur, tahmin değildir —
+yukarıdaki rakamların hiçbiri PR-2 sonrasına ait değil.
 
 ---
 

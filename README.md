@@ -403,6 +403,22 @@ effect. The `pip install -e .` above is optional for the tests alone:
 
 The streamlit page walk is the slow part; skip it with `pytest -m "not slow"`.
 
+#### Cleaning up `data/chroma_db`
+
+Deleting a collection can leave its HNSW segment directory and its rows behind
+(see [`docs/KNOWN-DEBT.md`](docs/KNOWN-DEBT.md)), so the store accumulates
+directories that nothing reads. To see what is in there:
+
+```bash
+python tests/tools/chroma_cleanup.py
+```
+
+That measures and prints; it writes nothing. Adding `--apply` deletes what it
+listed, after asking you to type the number of directories back. It refuses to
+apply when it finds no collection it recognises — that looks identical whether
+the tool is wrong or you simply have not synced yet, so it stops instead of
+guessing. The directory is gitignored and one refresh rebuilds it.
+
 Both commands run in CI on every push and pull request
 ([`.github/workflows/tests.yml`](.github/workflows/tests.yml)).
 
