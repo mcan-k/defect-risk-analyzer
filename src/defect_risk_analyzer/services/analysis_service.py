@@ -81,17 +81,29 @@ class AnalysisService:
     # Bug data
     # ------------------------------------------------------------------
 
-    def load_bugs(self, bugs: list[dict[str, Any]]) -> int:
+    def load_bugs(self, bugs: list[dict[str, Any]], index: bool = True) -> int:
         """
-        Load bugs into memory and sync them to the vector store.
+        Load bugs into memory and, by default, sync them to the vector store.
+
+        Args:
+            bugs: Bugs to load.
+            index: Whether to sync them to the vector store. Callers that only
+                use the deterministic scoring path pass False and skip the cost
+                of embedding entirely — ci_analyzer is the one that does. The
+                default keeps every other caller as it was.
 
         Returns:
-            Number of bugs indexed.
+            Number of bugs indexed; 0 when `index` is False.
         """
         self._bugs = bugs
 
-        # Auto-classify bugs with missing components
+        # Auto-classify bugs with missing components. Runs whether or not the
+        # bugs are indexed: core/scoring.py groups by `component`, so skipping
+        # this would file every unclassified bug under "Unknown".
         classify_bugs(self._bugs)
+
+        if not index:
+            return 0
 
         return self._vector_store.upsert_bugs(bugs)
 
