@@ -123,9 +123,47 @@ Reddedildi (ertelenmedi):
   `pytest-cov` kurulu, isteyen elle çalıştırır. Bkz. `KNOWN-DEBT.md`.
 
 ### Faz 4 — Veri katmanı (yarım gün)
-- [ ] ChromaDB toptan silme yerine diff-sync (`collection.get` → karşılaştır → `delete` + `upsert`)
-- [ ] `defect_history_mock` / `defect_history_live` ayrı koleksiyonlar
-- [ ] `data/chroma_db` içindeki 9 yetim HNSW segment klasörünü temizle
+- [x] **Faz 4(a) PR-1** — ChromaDB toptan silme yerine diff-sync
+      (`collection.get` → karşılaştır → `delete` + `upsert`),
+      `defect_history_mock` / `defect_history_live` ayrı koleksiyonlar,
+      boş-liste koruması ve `ci_analyzer`'ın indekslemeyi atlaması.
+
+      `upsert_bugs()` her çağrıda `reset()` ile başlıyordu ve boş-liste
+      kontrolü ondan sonra geliyordu. `refresh_data()` eksik `bugs.json`,
+      okunamayan dosya ve yapılandırılmamış Jira için aynı `[]`'i döndürdüğü
+      için, bozuk kurulumda `POST /refresh` ve dashboard sync butonu indeksi
+      siliyordu. `analysis_service.refresh()` `api.py:99` ile
+      `dashboard.py:237`'nin guard'ından yoksundu; artık var ve hangi okumayı
+      seçtiğini `reindexed` ile bildiriyor. Katman "fetch başarısız" ile
+      "gerçekten hiç bug yok"u ayırt **edemediği** için her zaman muhafazakâr
+      okumayı seçiyor; indeksi kasten boşaltmak açık bir `reset()` işi.
+
+      Diff karşılaştırması doküman metni **ve** metadata üzerinden yapılıyor.
+      `updated` alanı yetmezdi: `classify_bugs()` upsert'ten önce `component`'i
+      yerinde değiştirdiği için `COMPONENT_KEYWORDS` değişimi `updated`'ı
+      kıpırdatmadan embedding'i bayatlatıyor. `created` ise metadata'da var,
+      doküman metninde yok.
+
+      `ci_analyzer` yalnız `calculate_module_stats` ve `calculate_risk_score`
+      çağırıyor, benzerlik aramasını hiç kullanmıyor; artık
+      `load_bugs(..., index=False)` ile yüklüyor. Temiz CI makinesinde her koşu
+      "ilk koşu" olduğu için diff-sync orada zaten kazanç sağlamıyordu, ve
+      `:720`'de try/except olmadığından ChromaDB init'i patladığında rapor hiç
+      üretilmiyordu — artık patlayacak çağrı yok.
+
+      chromadb 0.5.23'ün dayanılan dört sözleşmesi kaynak okunarak doğrulandı
+      ve `vector_store.py` başına `file:line` atıflarıyla yazıldı; sürüm
+      yükseldiğinde kontrol noktası olacak. Beşincisi (olmayan bir id'yi
+      silmek no-op mu) kaynaktan çözülemedi, tasarımla erişilemez kılındı:
+      silinecek id'ler her zaman az önce yapılan `get()`'ten gelir ve bu
+      değişmez testle sabit.
+- [ ] **Faz 4(a) PR-2** — `data/chroma_db` disk ve SQLite temizliği: terk
+      edilen `defect_history` koleksiyonu ve yetim HNSW segment klasörleri.
+      Bu satır önceden "9 yetim klasör" diyordu; 2026-08-15'te geliştirici
+      makinesinde 47 klasör ve 3,0 MB `chroma.sqlite3` sayıldı — her toptan
+      silme yeni bir segment bıraktığı için arada büyümüş. Sıralama kasıtlı:
+      temizlik diff-sync'ten önce yapılsaydı kova ilk yüklemede yeniden
+      dolardı. Ayrıntı `KNOWN-DEBT.md`'de.
 - [x] **Faz 4(b) Bölüm A** — `ci_analyzer` yanlış pozitif modül eşleşmesi.
       `infer_modules_from_files` yol içinde çıplak alt dizgi arıyordu, bu yüzden
       değişmemiş bir modül hakkında geçmiş bug verisinden risk uyduruyordu:

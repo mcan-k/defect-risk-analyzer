@@ -16,12 +16,14 @@ tests/test_scoring_units.py:8 shows the derivation:
 """
 
 import json
+import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
 
+from defect_risk_analyzer import ci_analyzer
 from defect_risk_analyzer.ci_analyzer import (
     ModuleMap,
     ModuleMapError,
@@ -182,6 +184,33 @@ def test_matched_module_without_history_gets_no_risk_row():
     assert "No Data" not in report
     assert "LOW RISK" not in report
     assert "No significant defect patterns" not in report
+
+
+@pytest.mark.parametrize(
+    ("modules", "subject", "pronoun"),
+    [
+        (["Inventory"], "this module", "it"),
+        (["Inventory", "Reporting"], "these modules", "them"),
+    ],
+)
+def test_the_unassessed_sentences_agree_with_the_module_count(modules, subject, pronoun):
+    """Both sentences name the modules and then refer back to them.
+
+    With one module they read "named these modules ... no record of them",
+    which is simply wrong — and this repository's own PRs hit the single-module
+    case constantly, because the shipped module-map.json names components the
+    bug history has never heard of.
+
+    Both are fixed together: they are the same sentence twice, and they are both
+    printed in exactly this case, so correcting one would leave the other
+    sitting next to it.
+    """
+    report = generate_risk_report(
+        StubAnalyzer({}), ["src/inventory/stock.py"], modules, now=FROZEN_NOW
+    )
+
+    assert f"named {subject}, but the bug history has no record of {pronoun}," in report
+    assert f"matched, but the bug history has no record of {pronoun}." in report
 
 
 def test_mixed_matched_modules(authentication):
@@ -452,3 +481,67 @@ def test_report_does_not_depend_on_a_doc_filename(authentication):
     neutral_named = _report_for(_probe_diff("docs/probe/notes.md"), analyzer)
 
     assert keyword_named.replace("auth-probe", "notes") == neutral_named
+
+
+# ===========================================================================
+# main() — what the CI entry point asks of the service
+# ===========================================================================
+
+def test_the_ci_entry_point_loads_bugs_without_indexing(tmp_path, monkeypatch):
+    """ci_analyzer must not pay for a vector index it never reads.
+
+    Everything it asks the service for is calculate_module_stats() and
+    calculate_risk_score(); there is no similarity query anywhere in the module.
+    Indexing anyway meant re-embedding the whole bug history on every CI run —
+    and CI starts on a clean machine each time, so diff-sync saves nothing there
+    either. Every run is a first run.
+
+    It also removes a way for the run to produce no report at all: line 720 has
+    no try/except around load_bugs, so a ChromaDB that failed to initialise took
+    the PR comment down with it. Nothing is caught here; the thing that could
+    throw is simply not called.
+
+    This is the only test that pins the call site. A2 in
+    test_analysis_service_indexing.py proves the parameter works, but a dropped
+    keyword argument here would restore the old behaviour in silence.
+    """
+    recorded = []
+
+    class RecordingService:
+        """Only the three methods this path actually uses."""
+
+        def __init__(self) -> None:
+            self.load_calls: list[tuple[int, bool]] = []
+            recorded.append(self)
+
+        def load_bugs(self, bugs: list[dict], index: bool = True) -> int:
+            self.load_calls.append((len(bugs), index))
+            return len(bugs) if index else 0
+
+        def calculate_module_stats(self) -> dict[str, dict[str, Any]]:
+            return {}
+
+        def calculate_risk_score(self, module_name: str, module_stats: dict) -> int:
+            return scoring.calculate_risk_score(module_name, module_stats)
+
+    monkeypatch.setattr(ci_analyzer, "AnalysisService", RecordingService)
+    monkeypatch.setattr(
+        ci_analyzer,
+        "load_bugs_from_file",
+        lambda: [{"key": "AP-1", "summary": "Login fails"}],
+    )
+
+    output = tmp_path / "risk_report.md"
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["ci_analyzer", "--diff", _probe_diff("src/auth/login.py"), "--output", str(output)],
+    )
+
+    ci_analyzer.main()
+
+    assert len(recorded) == 1, "main() should build exactly one service"
+    assert recorded[0].load_calls == [(1, False)], (
+        "the CI entry point must load bugs with indexing off"
+    )
+    assert output.exists(), "the report is still written"

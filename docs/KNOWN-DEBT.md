@@ -188,31 +188,68 @@ koruma Faz 3'teki testler olacak.
 
 `docker-compose --profile webhook up` çalıştırıldığında dashboard ve API
 servisleri `app-data` volume'ünü paylaşıyor, yani ikisi de aynı
-`data/chroma_db` dizinine bağlanıyor. Bir tam veri yüklemesi
-(`load_bugs` → `VectorStore.reset()`) koleksiyonu silip yeniden yarattığı
-için, o sırada yükleme yapmayan tarafın elindeki koleksiyon tanıtıcısı
-geçersiz kalıyor.
+`data/chroma_db` dizinine bağlanıyor.
 
 **Detail:** Faz 2 Adım 2 doğrulaması sırasında gerçek bir arıza olarak
 görüldü: ikinci bir process veri yükleyince canlı dashboard'un Pattern
 sayfası `Collection ... does not exist` verdi ve o oturum boyunca bozuk
-kaldı. `VectorStore._run()` artık bu hatayı tanıyıp istemciyi ve tanıtıcıyı
-düşürerek bir kez yeniden deniyor, dolayısıyla kullanıcıya yansıyan kalıcı
-bozulma giderildi.
+kaldı. Sebebi, bir tam veri yüklemesinin (`load_bugs` → `VectorStore.reset()`)
+koleksiyonu silip yeniden yaratması, o sırada yükleme yapmayan tarafın
+elindeki tanıtıcıyı geçersiz bırakmasıydı. `VectorStore._run()` bu hatayı
+tanıyıp istemciyi ve tanıtıcıyı düşürerek bir kez yeniden deniyor, dolayısıyla
+kullanıcıya yansıyan kalıcı bozulma giderildi.
 
-**Impact:** artık kurtarılabilir, ama hâlâ bir yarış: iki taraf aynı anda
-`reset()` çağırırsa biri diğerinin yeni indekslediği verinin üzerine yazabilir.
-Varsayılan `docker-compose up` tek servis çalıştırdığı için normal kullanımda
-görülmez; yalnız `webhook` profili açıkken geçerli. SQLite kilit çakışması da
-teorik olarak mümkün.
+**Faz 4(a) PR-1 sonrası:** olağan bir yükleme artık hiçbir şeyi toptan
+silmiyor. Diff-sync yalnız değişen id'leri `upsert`, gelen listede olmayanları
+`delete` ediyor; mock ve canlı veri de ayrı koleksiyonlarda. Tanıtıcıyı
+geçersiz kılan silme-yeniden-yaratma yalnız açık bir `reset()` çağrısında
+kaldı ve `reset()`'in `src/` içinde çağıranı yok. Yani yukarıdaki arızayı
+üretmek için birinin `reset()`'i kasten çağırması gerekiyor.
+
+**Impact:** yarış daraldı, bitmedi. İki process aynı anda senkronize ederse
+`get()` ile `upsert`/`delete` arasına girmek hâlâ mümkün: A tarafı mevcut
+durumu okur, B tarafı yazar, A eskimiş bir plana göre siler. Kaybedilen kayıt
+bir sonraki senkronizasyonda geri gelir — eskisi gibi oturum boyu süren
+bozulma değil, tek turluk bayatlama. SQLite kilit çakışması da teorik olarak
+mümkün. Varsayılan `docker-compose up` tek servis çalıştırdığı için normal
+kullanımda görülmez; yalnız `webhook` profili açıkken geçerli.
+
+`_run()`'ın stale-handle kurtarma dalı bu yüzden korunuyor: tam olarak
+`reset()` yaşadığı sürece yük taşıyor. `reset()` bir gün silinirse kurtarma
+dalı aynı commit'te silinmeli — not `_run()`'ın docstring'inde duruyor.
 
 **Workaround until then:** iki profil birlikte çalışıyorken veri
 senkronizasyonunu tek taraftan yapın.
 
-**Planned fix (Phase 4):** veri katmanı ele alınırken toptan silme yerine
-diff-sync (`collection.get` → karşılaştır → `delete` + `upsert`) ve
-`defect_history_mock` / `defect_history_live` ayrı koleksiyonları geliyor;
-ikisi de bu yarışı büyük ölçüde ortadan kaldırır.
+**Planned fix:** kalan yarış için tek yazar kilidi ya da tek yönlü
+senkronizasyon gerekir. Varsayılan kurulum tek servis çalıştırdığı ve kalan
+etki tek turluk bayatlamaya indiği için önceliklendirilmedi; bir faza
+bağlanmadı.
+
+---
+
+## `data/chroma_db` terk edilmiş koleksiyon ve yetim segmentler taşıyor
+
+**Where:** `data/chroma_db` (izlenmiyor, `.gitignore`'da)
+
+Faz 4(a) PR-1 `defect_history` koleksiyonunu terk etti, taşımadı. İçeriği mock
+ve canlı vektörlerin bilinmeyen bir karışımı — yani düzeltilen bulaşmanın ta
+kendisi — bu yüzden temiz koleksiyona taşımak sorunu da beraberinde taşırdı.
+İçerik `bugs.json` veya `sample_bugs.json` üzerinden tek bir `refresh` ile
+yeniden üretilebildiği için yerinde bırakıldı.
+
+**Detail:** 2026-08-15'te geliştirici makinesinde `data/chroma_db` 47 HNSW
+segment klasörü ve 3,0 MB'lık bir `chroma.sqlite3` içeriyordu. ROADMAP bu
+sayıyı 9 olarak kaydetmişti; her toptan silme yeni bir segment klasörü
+bıraktığı için arada büyümüş. Sayı geliştirici makinesine özgüdür — dizin
+izlenmiyor.
+
+**Impact:** yalnız disk. Terk edilen koleksiyon okunmuyor: `VectorStore` artık
+`defect_history_mock` ve `defect_history_live` dışında bir ad açmıyor.
+
+**Planned fix (Faz 4(a) PR-2):** terk edilen koleksiyonun ve yetim segment
+klasörlerinin silinmesi, `chroma.sqlite3` dahil. Sıralama kasıtlıydı —
+temizlik diff-sync'ten önce yapılsaydı kova ilk yüklemede yeniden dolardı.
 
 ---
 
