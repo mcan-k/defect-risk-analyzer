@@ -293,7 +293,9 @@ def test_a_segment_row_whose_collection_vanished_is_dropped():
     assert DEAD_VEC in plan.drop_dirs
 
 
-@pytest.mark.parametrize("name", ["chroma.sqlite3.bak", "notes.txt", "scratch", ".ipynb_checkpoints"])
+@pytest.mark.parametrize(
+    "name", ["chroma.sqlite3.bak", "notes.txt", "scratch", ".ipynb_checkpoints"]
+)
 def test_a_directory_that_is_not_a_uuid_is_left_alone(name):
     """Anything the user put there by hand is not ours to delete.
 
