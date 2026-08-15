@@ -717,7 +717,15 @@ def main():
     analyzer = AnalysisService()
     bugs = load_bugs_from_file()
     if bugs:
-        analyzer.load_bugs(bugs)
+        # index=False: nothing here queries the vector store. The only things
+        # this module asks the service for are calculate_module_stats() and
+        # calculate_risk_score(), both of which read the in-memory bug list.
+        # Indexing anyway re-embedded the whole bug history on every run, and
+        # a fresh CI machine has nothing for a diff sync to save — every run is
+        # a first run. It also removes a way for the run to produce no report
+        # at all: there is no try/except here, so a ChromaDB that failed to
+        # initialise used to take the PR comment down with it.
+        analyzer.load_bugs(bugs, index=False)
         logger.info("Loaded %d bugs for analysis.", len(bugs))
     else:
         logger.warning("No bug data available. Report will have limited risk data.")
