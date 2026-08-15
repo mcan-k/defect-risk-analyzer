@@ -547,3 +547,146 @@ def test_the_consistency_check_passes_after_a_clean_run(store):
     """The tool's own post-condition check, exercised on the happy path."""
     outcome = cleanup.apply_cleanup(store, planned(store))
     assert outcome.problems == ()
+
+
+# =============================================================================
+# The consistency check finds things
+# =============================================================================
+#
+# The case above only says the check is quiet when the store is clean, which
+# stays true if the check is deleted — a mutation run proved exactly that:
+# stubbing verify_consistency to return () broke no test. That made the tool's
+# last line of defence against a wrong deletion predicate unpinned, and an
+# unpinned defence is one nobody will notice losing. These cases corrupt an
+# already-cleaned store one way at a time and require the check to say so, and
+# to name the table it found it in.
+
+GHOST_SEG = "0c0c0c0c-0c0c-4c0c-8c0c-0c0c0c0c0c0c"
+GHOST_COLL = "0d0d0d0d-0d0d-4d0d-8d0d-0d0d0d0d0d0d"
+
+CORRUPTIONS = [
+    (
+        "embeddings",
+        "INSERT INTO embeddings (id, segment_id, embedding_id, seq_id) "
+        f"VALUES (999001, '{GHOST_SEG}', 'AP-999001', x'00')",
+        "embeddings under a segment that no longer exists",
+    ),
+    (
+        "embedding_metadata",
+        "INSERT INTO embedding_metadata (id, key, string_value) VALUES (999002, 'key', 'v')",
+        "embedding_metadata with no embedding",
+    ),
+    (
+        "fulltext",
+        "INSERT INTO embedding_fulltext_search (rowid, string_value) VALUES (999003, 'doc')",
+        "full-text rows with no embedding",
+    ),
+    (
+        "segment_metadata",
+        "INSERT INTO segment_metadata (segment_id, key, str_value) "
+        f"VALUES ('{GHOST_SEG}', 'hnsw:space', 'cosine')",
+        "segment_metadata for a segment that no longer exists",
+    ),
+    (
+        "max_seq_id",
+        f"INSERT INTO max_seq_id (segment_id, seq_id) VALUES ('{GHOST_SEG}', x'00')",
+        "max_seq_id for a segment that no longer exists",
+    ),
+    (
+        "collection_metadata",
+        "INSERT INTO collection_metadata (collection_id, key, str_value) "
+        f"VALUES ('{GHOST_COLL}', 'hnsw:space', 'cosine')",
+        "collection_metadata for a collection that no longer exists",
+    ),
+    (
+        "segments",
+        "INSERT INTO segments (id, type, scope, collection) VALUES "
+        f"('{GHOST_SEG}', 'urn:chroma:segment/vector/hnsw-local-persisted', "
+        f"'VECTOR', '{GHOST_COLL}')",
+        "segments under a collection that no longer exists",
+    ),
+]
+
+
+def _problems(store):
+    conn = sqlite3.connect(store / "chroma.sqlite3")
+    try:
+        return cleanup.verify_consistency(conn, store)
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize(
+    "label, sql, expected", CORRUPTIONS, ids=[c[0] for c in CORRUPTIONS]
+)
+def test_the_consistency_check_reports_a_dangling_row(store, label, sql, expected):
+    """One orphan left behind, one problem reported, naming where it is.
+
+    Left behind *after* a clean run, so the store differs from a good one in
+    exactly this one way and the reported problem cannot be coming from anywhere
+    else.
+    """
+    cleanup.apply_cleanup(store, planned(store))
+    assert _problems(store) == ()
+
+    conn = sqlite3.connect(store / "chroma.sqlite3")
+    try:
+        conn.execute(sql)
+        conn.commit()
+    finally:
+        conn.close()
+
+    problems = _problems(store)
+    assert len(problems) == 1, f"expected exactly one problem, got {problems}"
+    assert expected in problems[0]
+    assert problems[0].startswith("1 "), f"the count should be reported: {problems[0]}"
+
+
+def test_the_consistency_check_reports_a_directory_registered_nowhere(store):
+    """The disk half of the check: a segment directory belonging to no segment row."""
+    cleanup.apply_cleanup(store, planned(store))
+    assert _problems(store) == ()
+
+    (store / GHOST_SEG).mkdir()
+
+    problems = _problems(store)
+    assert len(problems) == 1
+    assert GHOST_SEG in problems[0]
+    assert "registered nowhere" in problems[0]
+
+
+def test_a_skipped_deletion_step_is_caught_by_the_check(store, monkeypatch):
+    """The scenario the check exists for: a predicate that does not delete everything.
+
+    Not a hand-corrupted store this time — a real run with one deletion step
+    removed, which is what a wrong or dropped predicate would look like. The run
+    still succeeds; the check is what tells anyone that it did not finish.
+    """
+    real = cleanup.deletion_statements
+
+    def without_metadata(plan):
+        return [s for s in real(plan) if s[0] != "embedding_metadata"]
+
+    monkeypatch.setattr(cleanup, "deletion_statements", without_metadata)
+
+    outcome = cleanup.apply_cleanup(store, planned(store))
+
+    assert outcome.problems != (), "an incomplete cleanup was reported as clean"
+    assert any("embedding_metadata" in p for p in outcome.problems), outcome.problems
+
+
+def test_problems_make_main_exit_nonzero(store, monkeypatch):
+    """Reporting a problem is not enough if the exit code still says success."""
+    real = cleanup.deletion_statements
+    monkeypatch.setattr(
+        cleanup,
+        "deletion_statements",
+        lambda plan: [s for s in real(plan) if s[0] != "embedding_metadata"],
+    )
+    monkeypatch.setattr(sys, "argv", ["chroma_cleanup.py", str(store), "--apply"])
+    monkeypatch.setattr(cleanup, "stdin_is_interactive", lambda: True)
+    monkeypatch.setattr(
+        cleanup, "read_confirmation", lambda: str(len(planned(store).drop_dirs))
+    )
+
+    assert cleanup.main() == 1
