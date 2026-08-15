@@ -357,28 +357,54 @@ def test_duplicate_keys_are_deduplicated_last_one_winning():
 # =============================================================================
 
 
-def test_an_empty_metadata_value_survives_a_lossy_round_trip():
-    """S11 — an absent key and an empty string must compare equal.
+def faithful(metadata: dict[str, Any]) -> dict[str, Any]:
+    """What a store that returns exactly what it was given hands back."""
+    return dict(metadata)
+
+
+def lossy(metadata: dict[str, Any]) -> dict[str, Any]:
+    """What a store that drops empty values hands back."""
+    return {k: v for k, v in metadata.items() if v != ""}
+
+
+def test_the_two_round_trip_shapes_actually_differ():
+    """Guards the parametrisation below.
+
+    If both helpers produced the same dict, the case below would run twice and
+    cover one thing.
+    """
+    metadata = build_metadata(make_bug("AP-1", created=""))
+
+    assert faithful(metadata) != lossy(metadata)
+    assert "created" in faithful(metadata)
+    assert "created" not in lossy(metadata)
+
+
+@pytest.mark.parametrize("round_trip", [faithful, lossy], ids=["faithful", "lossy"])
+def test_an_empty_metadata_value_survives_either_round_trip(round_trip):
+    """S11 — an absent key and an empty string must compare equal, both ways.
 
     chromadb accepts '' as a metadata value on the way in (api/types.py:547-560
     only checks the type), but whether it hands '' back unchanged on the way out
     is not something reading the source settles, and this suite will not run a
-    real client to find out.
+    real client to find out. So the comparison normalises both sides instead of
+    trusting either answer.
 
-    So the comparison normalises both sides instead of trusting the answer.
-    Without it, every bug with an empty `created` — which is the default
-    whenever Jira omits it — would be re-embedded on every single sync, forever.
-    That is a silent loss of the entire feature, not a visible failure, which is
-    why it is pinned here rather than left to a log line.
+    Without it, every bug with an empty `created` — the default whenever Jira
+    omits it — would be re-embedded on every single sync, forever. That is a
+    silent loss of the entire feature, not a visible failure, which is why it is
+    pinned here rather than left to a log line.
+
+    Both shapes are covered because normalising only the desired side passes the
+    lossy case by accident: the stored dict has already lost the key, so it
+    happens to match. Only the faithful shape catches that — and the faithful
+    shape is the likelier one in production, precisely because chromadb accepts
+    '' on the way in.
     """
     bug = make_bug("AP-1", created="")
     document, metadata = indexed(bug)
 
-    # What a lossy store might hand back: the empty value simply absent.
-    stripped = {k: v for k, v in metadata.items() if v != ""}
-    assert "created" not in stripped, "the fixture must actually be lossy"
-
-    plan = plan_sync({"AP-1": (document, stripped)}, [bug])
+    plan = plan_sync({"AP-1": (document, round_trip(metadata))}, [bug])
 
     assert plan.upsert_ids == [], "an absent key and '' must not count as a change"
     assert plan.unchanged == 1

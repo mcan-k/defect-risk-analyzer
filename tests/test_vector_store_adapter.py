@@ -403,17 +403,23 @@ def test_syncing_the_same_bugs_twice_writes_nothing_the_second_time(tmp_path, mo
     assert store.last_sync.upsert_ids == []
 
 
-def test_a_lossy_metadata_round_trip_still_syncs_nothing(tmp_path, monkeypatch):
+@pytest.mark.parametrize("lossy", [False, True], ids=["faithful-store", "lossy-store"])
+def test_an_empty_metadata_field_still_syncs_nothing_the_second_time(
+    tmp_path, monkeypatch, lossy
+):
     """C10 — robustness against the one contract source-reading left open.
 
     chromadb takes '' as a metadata value but whether it returns '' rather than
-    dropping the key is not visible in its source. Here the fake drops it, which
-    is the pessimistic reading. Without the normalisation in plan_sync, every bug
-    with an empty field would be re-embedded on every sync forever — a total loss
-    of the feature that no test and no error message would ever mention.
+    dropping the key is not visible in its source, so both readings are run. The
+    lossy store is the pessimistic one; the faithful store is the likelier one,
+    and it is the one that catches a comparison normalised on only one side.
+
+    Either way, without the normalisation in plan_sync every bug with an empty
+    field would be re-embedded on every sync forever — a total loss of the
+    feature that no test and no error message would otherwise mention.
     """
     monkeypatch.setattr(config, "USE_MOCK_DATA", False)
-    store, client = make_store(tmp_path, lossy=True)
+    store, client = make_store(tmp_path, lossy=lossy)
     bugs = [make_bug("AP-1", created=""), make_bug("AP-2", created="")]
 
     store.upsert_bugs(bugs)
