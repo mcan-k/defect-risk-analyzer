@@ -186,6 +186,33 @@ def test_matched_module_without_history_gets_no_risk_row():
     assert "No significant defect patterns" not in report
 
 
+@pytest.mark.parametrize(
+    ("modules", "subject", "pronoun"),
+    [
+        (["Inventory"], "this module", "it"),
+        (["Inventory", "Reporting"], "these modules", "them"),
+    ],
+)
+def test_the_unassessed_sentences_agree_with_the_module_count(modules, subject, pronoun):
+    """Both sentences name the modules and then refer back to them.
+
+    With one module they read "named these modules ... no record of them",
+    which is simply wrong — and this repository's own PRs hit the single-module
+    case constantly, because the shipped module-map.json names components the
+    bug history has never heard of.
+
+    Both are fixed together: they are the same sentence twice, and they are both
+    printed in exactly this case, so correcting one would leave the other
+    sitting next to it.
+    """
+    report = generate_risk_report(
+        StubAnalyzer({}), ["src/inventory/stock.py"], modules, now=FROZEN_NOW
+    )
+
+    assert f"named {subject}, but the bug history has no record of {pronoun}," in report
+    assert f"matched, but the bug history has no record of {pronoun}." in report
+
+
 def test_mixed_matched_modules(authentication):
     """One scored, one not. The unscored one must not touch the verdict."""
     report = generate_risk_report(

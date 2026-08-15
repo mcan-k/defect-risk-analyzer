@@ -454,6 +454,13 @@ def generate_risk_report(
     scored = [m for m in affected_modules if module_stats.get(m)]
     unscored = [m for m in affected_modules if not module_stats.get(m)]
 
+    # Both sentences that name the unscored modules then refer back to them, and
+    # with one module "these modules ... them" is wrong. This repository's own
+    # PRs hit the singular case constantly: the shipped module-map.json names
+    # components the bug history has never heard of.
+    unscored_subject = "this module" if len(unscored) == 1 else "these modules"
+    unscored_pronoun = "it" if len(unscored) == 1 else "them"
+
     report_lines = []
     report_lines.append("# 🔍 Defect Risk Analysis Report")
     report_lines.append("")
@@ -524,8 +531,8 @@ def generate_risk_report(
         report_lines.append(f"**Matched, no historical data:** {', '.join(unscored)}")
         report_lines.append("")
         report_lines.append(
-            "*A pattern in module-map.json named these modules, but the bug "
-            "history has no record of them, so no risk was calculated.*"
+            f"*A pattern in module-map.json named {unscored_subject}, but the bug "
+            f"history has no record of {unscored_pronoun}, so no risk was calculated.*"
         )
         report_lines.append("")
 
@@ -563,7 +570,7 @@ def generate_risk_report(
             named = ", ".join(unscored)
             report_lines.append(
                 f"### ⚪ NOT ASSESSED — {named} matched, but the bug history has "
-                "no record of them."
+                f"no record of {unscored_pronoun}."
             )
         else:
             report_lines.append(
