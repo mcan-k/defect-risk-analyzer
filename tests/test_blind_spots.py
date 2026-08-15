@@ -266,41 +266,45 @@ def test_summary_counts(bugs, module_stats, risk_scores):
 
 
 # =============================================================================
-# The Turkish sentences
+# Structural findings
 #
-# These four assertions move to tests/test_ui_messages.py in the commit that
-# converts the detector to structural data. They are written out in full here
-# so that the move is verifiable: the same strings must appear on the other
-# side, proving the text was relocated rather than rewritten.
+# The wording that used to be asserted here now lives in
+# tests/test_ui_messages.py, moved in the commit that converted the detector.
+# What is pinned here is the code and the params — the contract between the
+# two layers — and that params is self-contained, since the renderer reads
+# nothing else.
 # =============================================================================
 
-def test_unanalyzed_recommendation_sentence(bugs, module_stats, risk_scores):
+def test_unanalyzed_finding_is_a_code_and_params(bugs, module_stats, risk_scores):
     top = run(bugs, module_stats, risk_scores)["unanalyzed_risky_modules"][0]
 
-    assert top["recommendation"] == (
-        "Authentication modülü CRITICAL risk seviyesinde ancak henüz analiz "
-        "edilmemiş. Canlı Analiz sayfasından analiz yapın."
-    )
+    assert "recommendation" not in top
+    assert top["code"] == "unanalyzed_risky_module"
+    assert top["params"] == {"module": "Authentication", "risk_level": "CRITICAL"}
 
 
-def test_neglected_recommendation_sentence(bugs, module_stats, risk_scores):
+def test_neglected_finding_is_a_code_and_params(bugs, module_stats, risk_scores):
     top = run(bugs, module_stats, risk_scores)["neglected_critical_bugs"][0]
 
-    assert top["recommendation"] == (
-        "AP-201 — Highest öncelikli bug 15 gündür 'Open' durumunda. "
-        "Acil müdahale gerekiyor."
-    )
+    assert "recommendation" not in top
+    assert top["code"] == "neglected_critical_bug"
+    assert top["params"] == {
+        "key": "AP-201",
+        "priority": "Highest",
+        "days_open": 15,
+        "status": "Open",
+    }
 
 
-def test_stale_recommendation_sentence(bugs, module_stats, risk_scores):
+def test_stale_finding_is_a_code_and_params(bugs, module_stats, risk_scores):
     top = run(bugs, module_stats, risk_scores)["stale_bugs"][0]
 
-    assert top["recommendation"] == (
-        "AP-203 — 40 gündür açık. Çözüm süresi beklentinin üzerinde."
-    )
+    assert "recommendation" not in top
+    assert top["code"] == "stale_bug"
+    assert top["params"] == {"key": "AP-203", "days_open": 40}
 
 
-def test_rising_recommendation_sentence():
+def test_rising_finding_is_a_code_and_params():
     spots = detect_blind_spots(
         bugs=[],
         module_stats={"Search": _stats(trend="increasing", recent=5)},
@@ -309,10 +313,10 @@ def test_rising_recommendation_sentence():
         now=NOW,
     )
 
-    assert spots["rising_unattended"][0]["recommendation"] == (
-        "Search modülünde bug sayısı artıyor (5 yeni bug) ancak üzerinde "
-        "çalışılan bug yok. Bu modüle kaynak ayrılması önerilir."
-    )
+    top = spots["rising_unattended"][0]
+    assert "recommendation" not in top
+    assert top["code"] == "rising_unattended_module"
+    assert top["params"] == {"module": "Search", "recent_bugs": 5}
 
 
 # =============================================================================
@@ -358,10 +362,8 @@ def test_rising_unattended_reports_a_module_nobody_is_working_on():
         # Literal 0, never counted: the branch is only reached when the
         # in-progress list is empty, so the field can only ever be zero.
         "in_progress": 0,
-        "recommendation": (
-            "Search modülünde bug sayısı artıyor (5 yeni bug) ancak üzerinde "
-            "çalışılan bug yok. Bu modüle kaynak ayrılması önerilir."
-        ),
+        "code": "rising_unattended_module",
+        "params": {"module": "Search", "recent_bugs": 5},
     }]
 
 

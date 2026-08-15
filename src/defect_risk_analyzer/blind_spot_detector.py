@@ -8,6 +8,12 @@ Analyzes bug data to find:
   4. Rising risk areas (increasing trend, no mitigation)
 
 No LLM needed — pure data analysis.
+
+Every finding carries a "code" and a "params" dict instead of a ready-made
+sentence, per architectural rule 3 (docs/ROADMAP-v2.md:16-18): business logic
+returns structural data and ui/messages.py turns it into text. params holds
+everything the sentence needs, so the renderer never reads the rest of the
+finding.
 """
 
 import logging
@@ -111,8 +117,11 @@ def _find_unanalyzed_risky_modules(
                 "risk_level": _score_to_level(score),
                 "bug_count": stats.get("total_bugs", 0),
                 "open_bugs": stats.get("open_bugs", 0),
-                "recommendation": f"{module_name} modülü {_score_to_level(score)} risk seviyesinde "
-                                  f"ancak henüz analiz edilmemiş. Canlı Analiz sayfasından analiz yapın.",
+                "code": "unanalyzed_risky_module",
+                "params": {
+                    "module": module_name,
+                    "risk_level": _score_to_level(score),
+                },
             })
 
     unanalyzed.sort(key=lambda x: x["risk_score"], reverse=True)
@@ -143,8 +152,13 @@ def _find_neglected_critical_bugs(
                 "status": bug.get("status", ""),
                 "component": bug.get("component", "Genel"),
                 "days_open": days_open,
-                "recommendation": f"{bug.get('key', '?')} — {priority} öncelikli bug {days_open} gündür "
-                                  f"'{bug.get('status', '')}' durumunda. Acil müdahale gerekiyor.",
+                "code": "neglected_critical_bug",
+                "params": {
+                    "key": bug.get("key", "?"),
+                    "priority": priority,
+                    "days_open": days_open,
+                    "status": bug.get("status", ""),
+                },
             })
 
     neglected.sort(key=lambda x: (x["priority"] == "Highest", x["days_open"]), reverse=True)
@@ -177,8 +191,11 @@ def _find_stale_bugs(
                 "status": bug.get("status", ""),
                 "component": bug.get("component", "Genel"),
                 "days_open": days_open,
-                "recommendation": f"{bug.get('key', '?')} — {days_open} gündür açık. "
-                                  f"Çözüm süresi beklentinin üzerinde.",
+                "code": "stale_bug",
+                "params": {
+                    "key": bug.get("key", "?"),
+                    "days_open": days_open,
+                },
             })
 
     stale.sort(key=lambda x: x["days_open"], reverse=True)
@@ -211,10 +228,11 @@ def _find_rising_unattended(
                 "open_bugs": stats.get("open_bugs", 0),
                 "recent_bugs": stats.get("recent_bug_count", 0),
                 "in_progress": 0,
-                "recommendation": f"{module_name} modülünde bug sayısı artıyor "
-                                  f"({stats.get('recent_bug_count', 0)} yeni bug) "
-                                  f"ancak üzerinde çalışılan bug yok. "
-                                  f"Bu modüle kaynak ayrılması önerilir.",
+                "code": "rising_unattended_module",
+                "params": {
+                    "module": module_name,
+                    "recent_bugs": stats.get("recent_bug_count", 0),
+                },
             })
 
     rising.sort(key=lambda x: x["recent_bugs"], reverse=True)

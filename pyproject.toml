@@ -99,6 +99,5 @@ select = ["E", "F", "I", "UP", "B"]
 # them opportunistically the next time each file is edited.
 "src/defect_risk_analyzer/api_models.py" = ["E501"]          # 4
 "src/defect_risk_analyzer/prompt_templates.py" = ["E501"]    # 3
-"src/defect_risk_analyzer/blind_spot_detector.py" = ["E501"] # 2
 "src/defect_risk_analyzer/pattern_detector.py" = ["E501"]    # 2
 "src/defect_risk_analyzer/anonymizer.py" = ["E501"]          # 1
