@@ -276,14 +276,40 @@ etmemiş" aynı envanteri ürettiği için. Dizin `.gitignore`'lu ve tek bir
 **Kapandı (Faz 4(a) PR-2):** terk edilmiş `defect_history` koleksiyonunun
 kendisi. Araç onu siliyor; ayrı bir borç olarak izlenmesi gerekmiyor.
 
-**Ölçülmedi:** PR-2 sonrası geriye ne kaldığı — kalan klasör ve satır sayıları,
-`chroma.sqlite3`'ün VACUUM sonrası boyutu. Araç geliştirici makinesinde bugün
-**uygulanamadı**: diskte tanınan hiçbir koleksiyon yok (PR-1'den beri hiç
-`refresh` çalışmadığı için `defect_history_mock` ve `defect_history_live` henüz
-oluşmamış), bu yüzden araç kendi kuralı gereği reddediyor. Sayılar ancak bir
-`refresh`'ten sonra araç gerçek dizine karşı koşturulunca ölçülebilir; o zaman
-ölçüm tarihiyle birlikte buraya girecek. Bu bir boşluktur, tahmin değildir —
-yukarıdaki rakamların hiçbiri PR-2 sonrasına ait değil.
+**PR-2 sonrası ölçüm (2026-08-15, geliştirici makinesi):** araç bir `refresh`
+sonrası gerçek dizine karşı uygulandı. `refresh` `defect_history_mock`
+koleksiyonunu oluşturdu, böylece araç artık tanıdığı bir koleksiyon buldu ve
+reddetmeyi bıraktı.
+
+| | Temizlik öncesi | Sonrası |
+|---|---|---|
+| Segment klasörü | 48 (47 yetim + 1 canlı) | 1 (`defect_history_mock`) |
+| `chroma.sqlite3` | 3.321.856 bayt / 811 sayfa | 1.241.088 bayt / 303 sayfa |
+
+Silinen: 47 klasör / 78.964.700 bayt. Satırlar — `embedding_fulltext_search`
+976, `embedding_metadata` 6.832, `embeddings` 976, `embeddings_queue` 20,
+`max_seq_id` 47, `segment_metadata` 47, `segments` 2, `collection_metadata` 47,
+`collections` 1.
+
+`chroma.sqlite3` VACUUM ile 2.080.768 bayt (508 sayfa) küçüldü; klasörlerle
+birlikte toplam 81.045.468 bayt geri alındı. Yeniden koşturulan rapor modu
+`DROP 0` diyor ve tüm satır sayaçları sıfır.
+
+Silme doğrulandı: dashboard 20 bug gösteriyor, örüntü tespiti çalışıyor,
+AP-104 için benzerlik araması %75-78 skorlarla 5 sonuç döndürüyor — yani VACUUM
+sonrası HNSW indeksi sağlam ve canlı koleksiyon zarar görmemiş.
+
+Ayrıca canlıda doğrulandı: **kova artık dolmuyor.** İki ardışık yükleme arasında
+klasör sayısı 1'de kaldı. Faz 4(a) PR-1'in diff-sync iddiası ölçümle tutuyor —
+yukarıdaki "tekrar birikiyor" uyarısı olağan yüklemeler için değil, yalnız
+`reset()` ya da elle bir `delete_collection` çağrıldığı durumlar için geçerli.
+
+**Küçük çıktı tutarsızlığı:** temizlik sonrası raporda `embeddings_queue` ve
+`collections` satırları hiç listelenmiyor, önceki raporda vardı. Sebebi
+`deletion_statements`: bu iki yüklem yalnız düşecek koleksiyon varken listeye
+ekleniyor, düşecek koleksiyon kalmayınca satırları da kayboluyor. İşlevsel bir
+sorun değil — her iki durumda da silinecek satır sıfır — ama tablonun şekli
+koşudan koşuya değişiyor.
 
 ---
 
