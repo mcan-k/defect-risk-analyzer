@@ -16,7 +16,18 @@ from defect_risk_analyzer import config
 
 logger = logging.getLogger(__name__)
 
-COLLECTION_NAME = "defect_history"
+# One collection per data source. A single `defect_history` used to hold
+# whichever source ran last, and the only thing keeping mock keys (AP-101…) out
+# of a live index (AP-37…) was that every load destroyed everything first. Once
+# loads stopped being destructive the two had to be separated properly.
+#
+# The old `defect_history` is abandoned rather than migrated: its contents are a
+# mixture of both sources, which is the contamination being fixed, so carrying
+# it over would carry the problem into a clean collection. It is fully
+# rebuildable from bugs.json or sample_bugs.json by one refresh. Deleting it
+# off disk belongs to the cleanup that follows this change.
+COLLECTION_MOCK = "defect_history_mock"
+COLLECTION_LIVE = "defect_history_live"
 COLLECTION_METADATA = {"hnsw:space": "cosine"}
 
 # ---------------------------------------------------------------------------
@@ -207,6 +218,10 @@ class VectorStore:
         self._client = None
         self._collection = None
 
+        # Which collection the cached handle belongs to, so that a change of
+        # data source invalidates it instead of writing to the wrong one.
+        self._open_collection_name: str | None = None
+
         # The plan the last upsert_bugs() acted on, or None if it has not run.
         # Exposed so that "the second sync of the same data writes nothing" is
         # observable from outside — that claim is the feature's reason to exist,
@@ -224,19 +239,34 @@ class VectorStore:
             self._client = chromadb.PersistentClient(path=str(self._db_path))
         return self._client
 
+    @staticmethod
+    def _collection_name() -> str:
+        """The collection for the data source currently configured.
+
+        Read at call time, never cached in __init__. The dashboard writes
+        USE_MOCK_DATA and calls config.reload() while the AnalysisService
+        holding this store stays alive behind @st.cache_resource
+        (dashboard.py:209-217), so a name frozen at construction would send mock
+        data into the live collection on the first toggle.
+        """
+        return COLLECTION_MOCK if config.USE_MOCK_DATA else COLLECTION_LIVE
+
     def _get_collection(self):
         """Lazy-initialize ChromaDB collection."""
-        if self._collection is not None:
+        name = self._collection_name()
+        if self._collection is not None and self._open_collection_name == name:
             return self._collection
 
         try:
             client = self._get_client()
             self._collection = client.get_or_create_collection(
-                name=COLLECTION_NAME,
+                name=name,
                 metadata=COLLECTION_METADATA,
             )
+            self._open_collection_name = name
             logger.info(
-                "ChromaDB collection ready. Documents: %d",
+                "ChromaDB collection %s ready. Documents: %d",
+                name,
                 self._collection.count(),
             )
         except Exception as e:
@@ -258,6 +288,14 @@ class VectorStore:
         the collection. Whoever was not doing the loading is left holding a
         handle to a collection that no longer exists; every later call then
         fails forever. Reopening once turns that into a transparent recovery.
+
+        Diff-sync made that far rarer — an ordinary load no longer deletes
+        anything wholesale — but reset() still does, so the recovery branch is
+        still load bearing. It is load bearing for exactly as long as reset()
+        exists: if reset() is ever removed, remove the recovery branch in the
+        same commit rather than leaving a handler for a case nothing can cause.
+        The rest of _run is not optional either way, since count(), collection
+        and query_similar all reach the collection through it.
         """
         try:
             return operation(self._get_collection())
@@ -267,6 +305,7 @@ class VectorStore:
             logger.warning("ChromaDB collection handle is stale (%s). Reopening.", e)
             self._client = None
             self._collection = None
+            self._open_collection_name = None
             return operation(self._get_collection())
 
     @property
@@ -281,25 +320,46 @@ class VectorStore:
         return self._run(lambda c: (c.count(), c)[1])
 
     def reset(self) -> None:
-        """Delete and recreate the collection to remove stale data.
+        """Delete and recreate the current collection. Destructive, and unused.
 
-        Deliberately destructive: mock and live data must never mix in the
-        same collection, so every full load starts from a clean slate.
+        Nothing calls this. It used to open every upsert_bugs(); diff-sync
+        replaced that, and it is kept deliberately rather than left behind:
+
+        * Diff-sync cannot empty the index. An empty bug list is read as "no
+          data available" (see upsert_bugs), so "delete everything" is no longer
+          expressible through that path, and this is the only operation that
+          says it.
+        * It is the only recovery route when a collection is corrupt.
+          docs/KNOWN-DEBT.md:184-215 records that as an observed failure, not a
+          hypothetical one: a second process loading data left the live
+          dashboard's Pattern page broken for the rest of its session.
+
+        Its behaviour is pinned in tests/test_vector_store_adapter.py, because a
+        callerless method with no test rots without anyone noticing.
         """
+        # Outside the try: a client that cannot be built is not something the
+        # fallback below can help with. Retrying it inside the handler — which
+        # this method used to do — turned a broken client into a chained,
+        # half-logged exception raised from inside an error path.
+        client = self._get_client()
+        name = self._collection_name()
+
         try:
-            client = self._get_client()
-            client.delete_collection(COLLECTION_NAME)
+            client.delete_collection(name)
             self._collection = client.create_collection(
-                name=COLLECTION_NAME,
+                name=name,
                 metadata=COLLECTION_METADATA,
             )
-            logger.info("ChromaDB collection reset. Clean slate.")
+            logger.info("ChromaDB collection %s reset. Clean slate.", name)
         except Exception as e:
-            logger.warning("Could not reset collection, falling back to get_or_create: %s", e)
-            self._collection = self._get_client().get_or_create_collection(
-                name=COLLECTION_NAME,
+            # The ordinary case here is a collection that was never created.
+            logger.warning("Could not reset %s, falling back to get_or_create: %s", name, e)
+            self._collection = client.get_or_create_collection(
+                name=name,
                 metadata=COLLECTION_METADATA,
             )
+
+        self._open_collection_name = name
 
     def count(self) -> int:
         """Number of documents currently indexed."""
