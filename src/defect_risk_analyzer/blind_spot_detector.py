@@ -8,10 +8,16 @@ Analyzes bug data to find:
   4. Rising risk areas (increasing trend, no mitigation)
 
 No LLM needed — pure data analysis.
+
+Every finding carries a "code" and a "params" dict instead of a ready-made
+sentence, per architectural rule 3 (docs/ROADMAP-v2.md:16-18): business logic
+returns structural data and ui/messages.py turns it into text. params holds
+everything the sentence needs, so the renderer never reads the rest of the
+finding.
 """
 
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -22,6 +28,8 @@ def detect_blind_spots(
     module_stats: dict[str, dict[str, Any]],
     analysis_results: list[dict[str, Any]],
     risk_scores: dict[str, int],
+    *,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """
     Detect blind spots in QA coverage.
@@ -31,6 +39,14 @@ def detect_blind_spots(
         module_stats: Per-module statistics from calculate_module_stats().
         analysis_results: Previously saved analysis results.
         risk_scores: Per-module risk scores {module_name: score}.
+        now: Reference time for every "days open" calculation. Defaults to the
+            current time. Passing it explicitly makes the result reproducible,
+            which is what lets the two bug categories be pinned by a test at
+            all — see tests/test_blind_spots.py. Keyword-only so the
+            positional contract stays fixed when Phase 5B moves this module.
+            Pass an *aware* datetime: the bugs carry a Jira UTC offset, and
+            subtracting a naive reference from those raises TypeError, which
+            _days_since swallows into a silent 0.
 
     Returns:
         Dict with categorized blind spots:
@@ -42,12 +58,18 @@ def detect_blind_spots(
             "summary": {...},
         }
     """
+    # Resolved here rather than in the signature default, which would freeze
+    # the value at import time and silently skew "days open" after midnight.
+    # Resolved once rather than per bug, so a run that straddles midnight
+    # cannot put two bugs on opposite sides of the 14-day staleness line.
+    now = now or datetime.now(UTC)
+
     result = {
         "unanalyzed_risky_modules": _find_unanalyzed_risky_modules(
             module_stats, analysis_results, risk_scores
         ),
-        "neglected_critical_bugs": _find_neglected_critical_bugs(bugs),
-        "stale_bugs": _find_stale_bugs(bugs),
+        "neglected_critical_bugs": _find_neglected_critical_bugs(bugs, now),
+        "stale_bugs": _find_stale_bugs(bugs, now=now),
         "rising_unattended": _find_rising_unattended(bugs, module_stats),
     }
 
@@ -95,15 +117,21 @@ def _find_unanalyzed_risky_modules(
                 "risk_level": _score_to_level(score),
                 "bug_count": stats.get("total_bugs", 0),
                 "open_bugs": stats.get("open_bugs", 0),
-                "recommendation": f"{module_name} modülü {_score_to_level(score)} risk seviyesinde "
-                                  f"ancak henüz analiz edilmemiş. Canlı Analiz sayfasından analiz yapın.",
+                "code": "unanalyzed_risky_module",
+                "params": {
+                    "module": module_name,
+                    "risk_level": _score_to_level(score),
+                },
             })
 
     unanalyzed.sort(key=lambda x: x["risk_score"], reverse=True)
     return unanalyzed
 
 
-def _find_neglected_critical_bugs(bugs: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def _find_neglected_critical_bugs(
+    bugs: list[dict[str, Any]],
+    now: datetime,
+) -> list[dict[str, Any]]:
     """Find high-priority bugs still in To Do with no progress."""
     high_priorities = {"Highest", "High"}
     no_progress_statuses = {"to do", "open", "backlog", "new"}
@@ -115,7 +143,7 @@ def _find_neglected_critical_bugs(bugs: list[dict[str, Any]]) -> list[dict[str, 
 
         if priority in high_priorities and status in no_progress_statuses:
             created = bug.get("created", "")
-            days_open = _days_since(created) if created else 0
+            days_open = _days_since(created, now) if created else 0
 
             neglected.append({
                 "key": bug.get("key", "?"),
@@ -124,8 +152,13 @@ def _find_neglected_critical_bugs(bugs: list[dict[str, Any]]) -> list[dict[str, 
                 "status": bug.get("status", ""),
                 "component": bug.get("component", "Genel"),
                 "days_open": days_open,
-                "recommendation": f"{bug.get('key', '?')} — {priority} öncelikli bug {days_open} gündür "
-                                  f"'{bug.get('status', '')}' durumunda. Acil müdahale gerekiyor.",
+                "code": "neglected_critical_bug",
+                "params": {
+                    "key": bug.get("key", "?"),
+                    "priority": priority,
+                    "days_open": days_open,
+                    "status": bug.get("status", ""),
+                },
             })
 
     neglected.sort(key=lambda x: (x["priority"] == "Highest", x["days_open"]), reverse=True)
@@ -135,6 +168,8 @@ def _find_neglected_critical_bugs(bugs: list[dict[str, Any]]) -> list[dict[str, 
 def _find_stale_bugs(
     bugs: list[dict[str, Any]],
     stale_days: int = 14,
+    *,
+    now: datetime,
 ) -> list[dict[str, Any]]:
     """Find bugs open for too long without resolution."""
     open_statuses = {"to do", "open", "in progress", "in review", "backlog", "new", "reopened"}
@@ -146,7 +181,7 @@ def _find_stale_bugs(
             continue
 
         created = bug.get("created", "")
-        days_open = _days_since(created) if created else 0
+        days_open = _days_since(created, now) if created else 0
 
         if days_open >= stale_days:
             stale.append({
@@ -156,8 +191,11 @@ def _find_stale_bugs(
                 "status": bug.get("status", ""),
                 "component": bug.get("component", "Genel"),
                 "days_open": days_open,
-                "recommendation": f"{bug.get('key', '?')} — {days_open} gündür açık. "
-                                  f"Çözüm süresi beklentinin üzerinde.",
+                "code": "stale_bug",
+                "params": {
+                    "key": bug.get("key", "?"),
+                    "days_open": days_open,
+                },
             })
 
     stale.sort(key=lambda x: x["days_open"], reverse=True)
@@ -190,10 +228,11 @@ def _find_rising_unattended(
                 "open_bugs": stats.get("open_bugs", 0),
                 "recent_bugs": stats.get("recent_bug_count", 0),
                 "in_progress": 0,
-                "recommendation": f"{module_name} modülünde bug sayısı artıyor "
-                                  f"({stats.get('recent_bug_count', 0)} yeni bug) "
-                                  f"ancak üzerinde çalışılan bug yok. "
-                                  f"Bu modüle kaynak ayrılması önerilir.",
+                "code": "rising_unattended_module",
+                "params": {
+                    "module": module_name,
+                    "recent_bugs": stats.get("recent_bug_count", 0),
+                },
             })
 
     rising.sort(key=lambda x: x["recent_bugs"], reverse=True)
@@ -204,14 +243,31 @@ def _find_rising_unattended(
 # Helpers
 # =============================================================================
 
-def _days_since(date_str: str) -> int:
-    """Calculate days since a given ISO date string."""
+def _days_since(date_str: str, now: datetime) -> int:
+    """Calculate days since a given ISO date string, against a fixed reference.
+
+    `now` replaces what used to be `datetime.now(created.tzinfo)` inline. That
+    expression did two different things depending on the bug, and both are
+    preserved here:
+
+      * aware `created` (every real Jira timestamp, e.g. "+0300") compared
+        against the same instant — aware minus aware is instant arithmetic, so
+        the offset the reference carries does not matter;
+      * naive `created` (no offset in the string) compared in local wall time,
+        which is what datetime.now(None) returned.
+
+    The TypeError branch below is load-bearing and unchanged: passing a *naive*
+    `now` while the bugs are aware raises there and every result silently
+    becomes 0. Pinned in tests/test_blind_spots.py rather than fixed — this
+    commit changes no behaviour.
+    """
     try:
         if "T" in date_str:
             created = datetime.fromisoformat(date_str.replace("Z", "+00:00"))
         else:
             created = datetime.fromisoformat(date_str)
-        delta = datetime.now(created.tzinfo) - created
+        reference = now if created.tzinfo is not None else now.astimezone().replace(tzinfo=None)
+        delta = reference - created
         return max(0, delta.days)
     except (ValueError, TypeError):
         return 0

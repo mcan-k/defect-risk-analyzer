@@ -31,6 +31,7 @@ from defect_risk_analyzer.services.analysis_service import (
     AnalysisService,
     BugNotFoundError,
 )
+from defect_risk_analyzer.ui.messages import format_finding
 
 logger = logging.getLogger(__name__)
 
@@ -1046,7 +1047,7 @@ def page_blind_spots():
                 f"{item.get('open_bugs', 0)} açık bug)",
                 unsafe_allow_html=True,
             )
-            st.caption(f"💡 {item.get('recommendation', '')}")
+            st.caption(f"💡 {format_finding(item)}")
 
         st.markdown("---")
 
@@ -1070,7 +1071,7 @@ def page_blind_spots():
         st.dataframe(df_neglected, use_container_width=True, hide_index=True)
 
         for item in neglected[:3]:
-            st.caption(f"💡 {item.get('recommendation', '')}")
+            st.caption(f"💡 {format_finding(item)}")
 
         st.markdown("---")
 
@@ -1108,7 +1109,7 @@ def page_blind_spots():
                 f"{item.get('recent_bugs', 0)} yeni, "
                 f"{item.get('in_progress', 0)} üzerinde çalışılıyor"
             )
-            st.caption(f"💡 {item.get('recommendation', '')}")
+            st.caption(f"💡 {format_finding(item)}")
 
     # Action summary
     st.markdown("---")

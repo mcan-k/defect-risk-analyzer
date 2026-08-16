@@ -112,9 +112,13 @@ Yapılmadı — Faz 5'e taşındı (gerekçeleri `KNOWN-DEBT.md`'de):
 - [ ] `tests/test_anonymizer.py` — round-trip + **telefon regex'i düzeltmesi**
       (sürüm numarası, sipariş kodu, tarih maskelenmemeli). Eksik test değil,
       yaşayan hata.
-- [ ] `pattern_detector` / `blind_spot_detector` / `component_classifier` testleri
-- [ ] `compare_service.py` emekliye ayrılırken kaybedilen üç regresyon bölümü:
-      `risk_for_query`, `defect_density`, `blind_spots`
+- [ ] `pattern_detector` / `component_classifier` testleri
+      (`blind_spot_detector` Faz 5A'da karşılandı)
+- [x] `compare_service.py` emekliye ayrılırken kaybedilen üç regresyon bölümü:
+      `risk_for_query`, `defect_density`, `blind_spots` — **Faz 5A**. Üçü de
+      sıfırdan yazıldı: bu testler git geçmişinde hiç yoktu, `baseline/`
+      versiyon kontrolü dışında bir scratch dizinmiş. Kayıp da Faz 3'te oldu,
+      Faz 2'de değil.
 - [ ] CI'a `pip-audit` adımı
 
 Reddedildi (ertelenmedi):
@@ -265,7 +269,30 @@ Reddedildi (ertelenmedi):
   > CI raporunu değiştirmezdi.
 
 ### Faz 5 — UI + i18n (2 gün)
-- [ ] `blind_spot_detector` yapısal veri dönsün (API kontratını kıran adım, önce yapılmalı)
+
+Faz 5 üçe bölündü. **5A** (sözleşme) tamam; **5B** sayfa birleştirme ve dosya
+taşıma; **5C** i18n. Sıra zorunlu: 5B sayfaları taşıyacak ve testsiz bir
+davranışı taşımak sessiz kayıp demektir.
+
+- [x] **Faz 5A** — `blind_spot_detector` yapısal veri dönüyor: her bulgu
+      `recommendation` cümlesi yerine `code` + `params` taşıyor, cümleler
+      `ui/messages.py`'ye taşındı. Mimari kural 3 artık bu yolda geçerli.
+
+      Kırılma öngörüldüğü gibi `GET /blind-spots`'a ulaştı. Endpoint dict'i ham
+      döndürüyordu — `response_model` yok, model yok — yani sözleşme literal
+      dict'in kendisiydi. `BlindSpotReport` kırılmanın olduğu commit'te eklendi
+      ve alan kaybı olmadığı round-trip testiyle kanıtlandı.
+
+      Sıra tutuldu: üç regresyon testi yeniden yazımdan **önce** yazıldı, ve
+      commit'lerin diff'i cümlelerin yalnız yer değiştirdiğini gösteriyor.
+      `ui/` paketi şimdiden açıldı, böylece 5B bu dosyayı taşımak yerine
+      yanına ekleyecek. `dashboard.py`'ye dokunuş üç render satırı + bir import.
+
+      Karar: `page_setup_wizard` ayrı kalıyor, Ayarlar'a katlanmıyor. Wizard bir
+      sayfa değil bir akış — sidebar'dan seçilmiyor, `is_first_run()` ile
+      koşullu çalışıyor, işi bitince görünmüyor. "7→4 sayfa" hedefiyle aynı
+      kategoride değil. 5B'nin kapsamı için kayda geçti.
+- [ ] **Faz 5B** — sayfa birleştirme, native `pages/`, dosya taşıma, lint temizliği
 - [ ] 7 sayfa → 4: Genel bakış · Buglar · Analiz · Ayarlar
 - [ ] Streamlit native `pages/` yapısı; string eşlemeli router'ı sil
 - [ ] 110 satırlık gömülü CSS → `.streamlit/config.toml` teması

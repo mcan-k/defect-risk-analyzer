@@ -5,6 +5,7 @@ All API endpoints use these models for request validation and response serializa
 """
 
 from datetime import datetime
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -115,6 +116,90 @@ class RiskSummary(BaseModel):
         description="Per-module defect density values.",
     )
     last_updated: str | None = Field(None, description="ISO timestamp of last analysis run.")
+
+
+class BlindSpotFinding(BaseModel):
+    """One blind spot, as structural data rather than a sentence.
+
+    `code` names the finding; `params` holds everything needed to word it, and
+    holds it self-contained so a client can render without reading the
+    finding's other fields. Architectural rule 3 (docs/ROADMAP-v2.md:16-18):
+    business logic returns this, the UI layer produces the text. The Turkish
+    templates live in ui/messages.py.
+
+    params is left as a free dict rather than a discriminated union per code.
+    A union would be more precise, but it pins four shapes that Phase 5C is
+    about to add to, and the round-trip test in tests/test_blind_spot_contract
+    already catches the failure a looser type risks — a dropped field.
+    """
+    code: str = Field(description="Finding type, e.g. 'stale_bug'.")
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Values the rendered sentence interpolates.",
+    )
+
+
+class UnanalyzedRiskyModule(BlindSpotFinding):
+    """A module scoring 35 or above that no analysis result mentions."""
+    module: str = Field(description="Module name.")
+    risk_score: int = Field(0, description="Deterministic risk score, 0-100.")
+    risk_level: str = Field("LOW", description="CRITICAL / HIGH / MEDIUM / LOW.")
+    bug_count: int = Field(0, description="Total bugs in the module.")
+    open_bugs: int = Field(0, description="Open bugs in the module.")
+
+
+class BlindSpotBug(BaseModel):
+    """A bug flagged as neglected or stale.
+
+    One model for both categories: they are produced by different filters but
+    carry identical fields.
+    """
+    key: str = Field(description="Jira bug key.")
+    summary: str = Field("", description="Bug summary, untruncated.")
+    priority: str = Field("Medium", description="Jira priority.")
+    status: str = Field("", description="Jira status, original casing.")
+    component: str = Field("Genel", description="Module the bug belongs to.")
+    days_open: int = Field(0, description="Days since created, 0 if unparseable.")
+    code: str = Field(description="Finding type.")
+    params: dict[str, Any] = Field(default_factory=dict, description="Sentence values.")
+
+
+class RisingUnattendedModule(BlindSpotFinding):
+    """A module whose bug count is climbing with nobody working on it."""
+    module: str = Field(description="Module name.")
+    total_bugs: int = Field(0, description="Total bugs in the module.")
+    open_bugs: int = Field(0, description="Open bugs in the module.")
+    recent_bugs: int = Field(0, description="Bugs filed inside the 30-day window.")
+    in_progress: int = Field(0, description="Always 0 — the category requires it.")
+
+
+class BlindSpotSummary(BaseModel):
+    """Counts across the four categories."""
+    total_blind_spots: int = Field(0, description="Sum of all four categories.")
+    critical_spots: int = Field(
+        0,
+        description="Neglected bugs plus CRITICAL unanalyzed modules. Stale and "
+                    "rising findings are not counted.",
+    )
+    categories: dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-category counts, keyed by category name.",
+    )
+
+
+class BlindSpotReport(BaseModel):
+    """GET /blind-spots.
+
+    Added when the payload changed from carrying "recommendation" sentences to
+    carrying code/params. The endpoint previously returned the detector's dict
+    raw, so its literal shape was the only contract — which is how that break
+    reached a public endpoint unobserved.
+    """
+    unanalyzed_risky_modules: list[UnanalyzedRiskyModule] = Field(default_factory=list)
+    neglected_critical_bugs: list[BlindSpotBug] = Field(default_factory=list)
+    stale_bugs: list[BlindSpotBug] = Field(default_factory=list)
+    rising_unattended: list[RisingUnattendedModule] = Field(default_factory=list)
+    summary: BlindSpotSummary = Field(default_factory=BlindSpotSummary)
 
 
 class HealthResponse(BaseModel):
