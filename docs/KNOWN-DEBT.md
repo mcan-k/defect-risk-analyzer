@@ -313,32 +313,203 @@ koşudan koşuya değişiyor.
 
 ---
 
-## Retiring `compare_service.py` drops three regression checks
+## ~~Retiring `compare_service.py` drops three regression checks~~ — Faz 5A'da kapatıldı
 
-**Where:** [`tests/test_scoring_regression.py`](../tests/test_scoring_regression.py),
-[`tests/test_analysis_service_breaker.py`](../tests/test_analysis_service_breaker.py)
+**Where:** [`tests/test_blind_spots.py`](../tests/test_blind_spots.py),
+[`tests/test_analysis_service_query.py`](../tests/test_analysis_service_query.py),
+[`tests/test_risk_summary_contract.py`](../tests/test_risk_summary_contract.py)
 
 Faz 3, `baseline/compare_service.py`'yi emekli etti. O script beş bölümü
 refactor öncesi `RiskAnalyzer` ile karşılaştırıyordu; yeni test paketi bunların
-ikisini devraldı, biri kısmen karşılandı, **üçü karşılıksız kaldı**.
-
-**Detail:** devralınanlar `module_stats` ve `risk_scores` — ikisi de
-`test_scoring_regression.py` içinde, `tests/data/` altındaki aff55c6
-snapshot'larına karşı. Devre kesici davranışı `test_analysis_service_breaker.py`
-ile kısmen karşılandı (dört eski senaryonun tamamı değil). Karşılıksız kalanlar:
+ikisini devraldı, biri kısmen karşılandı, **üçü karşılıksız kaldı**:
 `risk_for_query`, `defect_density`, `blind_spots`.
 
 Emekli etmek yine de doğruydu: script eski `RiskAnalyzer`'ı
 `git show <ref>:...` ile git geçmişinden yüklüyordu, yani geçmiş yaşlandıkça
 çürüyor ve CI'da hiç koşamıyordu.
 
-**Impact:** bu üç bölümdeki bir davranış değişikliği CI'dan sessizce geçer.
-En keskin risk `blind_spots`: Faz 5 bu fonksiyonun dönüş tipini yapısal veriye
-çevirmeyi planlıyor ve bunun API kontratını kırdığı açıkça biliniyor — ama artık
-mevcut şekli sabitleyen hiçbir test yok.
+**Faz 5A kapanışı.** Üçü de karşılandı, `blind_spot_detector` yeniden
+yazımından **önce** — sıra tutuldu. Kapanırken iki şey düzeltildi:
 
-**Planned fix (Phase 5):** üçünü snapshot testi olarak geri getir; sırayla
-`blind_spot_detector` yeniden yazımından **önce**, sonra değil.
+- **Bu testler "geri getirilmedi", sıfırdan yazıldı.** Bu kayıt "geri getir"
+  diyordu ve bu yanıltıcıydı: `baseline/` dizini hiçbir commit'te, hiçbir
+  branch'te, hiçbir dangling object'te yok (`git log --diff-filter=D -- "tests/*"`
+  boş; deponun tamamındaki tek dosya silmesi `risk_analyzer.py` ve üç `scripts/*.bat`).
+  `compare_service.py` versiyon kontrolü dışında yaşayan bir scratch script'ti.
+  Kurtarılacak bir referans yoktu.
+- **Kayıp Faz 3'te oldu, Faz 2'de değil.** Faz 2 (`2a52585`) `risk_analyzer.py`'yi
+  sildi; üç kontrolü düşüren, `compare_service.py`'yi emekliye ayıran Faz 3.
+
+**Beklenen değerler nereden geldi:** `blind_spots` testi `module_stats` ve
+`risk_scores` girdilerini `tests/data/scores-aff55c6-now2026-04-01.json`'dan
+okuyor — dosya `trend`, `total_bugs`, `open_bugs`, `recent_bug_count`,
+`risk_score` ve `risk_level`'ı zaten taşıyor. Beklenen `risk_level` dizgileri de
+oradan okunuyor, yazılmıyor; böylece `_score_to_level`'in özel 80/60/35 kopyası
+commit edilmiş kanıta karşı denetleniyor. `days_open` değerleri sabit saate karşı
+tarih çıkarması, türetmesi assert'in üstünde yazılı. `tests/data/` altına yeni
+dosya eklenmedi.
+
+Not: `rising_unattended` örnek veriyle **hiç** üretilemiyor — `increasing`
+trendli tek iki modül (Authentication, Payment) örnekteki tek iki
+"üzerinde çalışılan" bug'ı taşıyan modüller. Boş sonuç gerekçesiyle pinlendi,
+dolu hâli sentetik girdiyle.
+
+---
+
+## `GET /blind-spots` sözleşmesi Faz 5A'da kırıldı
+
+**Where:** [`src/defect_risk_analyzer/api.py`](../src/defect_risk_analyzer/api.py),
+[`src/defect_risk_analyzer/api_models.py`](../src/defect_risk_analyzer/api_models.py)
+
+Her bulgu artık hazır cümle taşıyan `recommendation` alanı yerine `code` ve
+`params` döndürüyor. Bu **kırıcı** bir değişiklik ve ROADMAP:268 onu
+"API kontratını kıran adım" olarak zaten öngörmüştü.
+
+**Detail:** endpoint dict'i ham döndürüyordu — `response_model` yok,
+`api_models.py`'de model yok. Yani sözleşme yalnızca fonksiyonun literal
+dict'iydi, ve kırılmanın tek bir test tarafından bile fark edilmemesinin sebebi
+buydu. Faz 5A kırılmanın olduğu commit'te `BlindSpotReport`'u ekledi ve
+`response_model=` bağladı.
+
+`response_model` ters riski getiriyor: model payload ile uyuşmazsa FastAPI
+alanları sessizce düşürür ve gürültülü bir kırılma sessizleşir. Bu yüzden model
+alan alan assert edilmiyor, gerçek bir detector çıktısına karşı round-trip
+ediliyor (`BlindSpotReport(**payload).model_dump() == payload`); Pydantic
+bilinmeyen anahtarları attığı için modelin unuttuğu her alan karşılaştırmayı
+düşürür.
+
+**Kalan borç:** `params` `dict[str, Any]`, `code` başına ayrımlı birlik değil.
+Daha kesin olurdu ama 5C'nin genişleteceği dört şekli çivilerdi. Ayrıca bu
+endpoint'in HTTP davranışı hâlâ test edilmiyor — pakette API test altyapısı yok
+(`TestClient` yok, `api.py` modül seviyesinde `analyzer` singleton'ı kuruyor,
+route API anahtarı bağımlılığı taşıyor). Sözleşme servis seviyesinde pinlendi.
+
+---
+
+## `calculate_risk_for_query`'nin sıfır-skor guard'ı — latent, canlı değil
+
+**Where:** [`src/defect_risk_analyzer/services/analysis_service.py:226-232`](../src/defect_risk_analyzer/services/analysis_service.py)
+
+Anahtar eşleme döngüsü `best_score = 0`'dan başlayıp `score > best_score` ile
+koruyor. Yani adı sorguda geçen ama skoru 0 olan bir modül `best_module`'ü hiç
+atamıyor; sorgu, modül hiç adlandırılmamış gibi vektör yoluna düşüyor ve bambaşka
+bir modüle atfedilerek dönebiliyor.
+
+**Bu kusur bugün tetiklenemiyor, ve bunu ölçmek önemliydi.** Faz 5A planı bunu
+"canlı hata" diye kaydediyordu; test yazılınca kırmızı verdi ve varsayım yanlış
+çıktı. `module_stats`'tan gelen hiçbir modül 0 alamıyor:
+tanınmayan öncelik bile `DEFAULT_PRIORITY_WEIGHT` 2.5 ağırlığında, en düşük
+gerçek ağırlık Low 2.0, yani `priority_factor` tabanı 0.4. Mümkün olan en sessiz
+modül — tek kapalı Low bug, azalan trend, ihmal edilebilir yoğunluk — yine de
+**11** alıyor:
+
+    (0.4 × 60 + 0.0 × 40) × 1.0 × 0.8 × 0.55 = 10.56 -> 11
+
+Hiç bug'ı olmayan bir modül 0 alırdı ama `module_stats` bug'ları gruplayarak
+kurulduğu için oraya giremez.
+
+**Impact:** bugün yok. Yarın olabilir — bir öncelik ağırlığı eklemek, hacim
+çarpanını değiştirmek ya da `bug_density`'yi yeniden tanımlamak gerçek bir
+modülü 0'a indirdiği anda kusur sessizce canlanır.
+
+**Neden burada:** hem tabanı (gerçek bug'lardan üretilen hiçbir modül 0 almaz)
+hem guard'ın kendisini (enjekte edilmiş 0 atılır) `test_analysis_service_query.py`
+pinliyor. İkinci test bugün varsayımsal; skorlama değişirse kimse fark etmeden
+varsayımsal olmaktan çıkar.
+
+**Planned fix:** guard `score > best_score` yerine "modül adlandırıldı mı"
+sorusunu ayrı tutmalı — `best_module is None or score > best_score`. Faz 6.
+
+---
+
+## `_days_since` naive bir referans saatini sessizce 0'a çeviriyor
+
+**Where:** [`src/defect_risk_analyzer/blind_spot_detector.py`](../src/defect_risk_analyzer/blind_spot_detector.py)
+
+`detect_blind_spots` Faz 5A'da keyword-only `now` parametresi aldı. Naive bir
+`now` geçilirse ve bug'lar aware ise (gerçek Jira verisinin tamamı `+0300`
+taşıyor), çıkarma `TypeError` fırlatıyor — ve `_days_since`'in
+`except (ValueError, TypeError): return 0` bloğu bunu yutuyor.
+
+**Impact:** her `days_open` sıfır olur. `stale_bugs` tamamen boşalır,
+`neglected_critical_bugs` her bug'ı "bugün açılmış" gösterir. Hata **yeşil
+tarafta** başarısız oluyor: hiçbir şey fırlatmıyor, hiçbir şey loglamıyor, rapor
+yalnızca sessizce boşalıyor.
+
+Bu teorik değil: `tests/data/` snapshot'larının `_baseline_now` alanı naive
+(`"2026-04-01T12:00:00"`), yani pinleme testinin doğal olarak yapacağı ilk şey
+tam olarak bu hataydı. Test aware bir saat kuruyor ve tuzağı ayrıca pinliyor
+(`test_a_naive_now_is_swallowed_into_zero_days`).
+
+**Planned fix:** `_days_since`'in `except` bloğu ayrıştırma hatasıyla
+karşılaştırma hatasını ayırmalı; ikincisi yutulmamalı. Faz 5A davranış
+değiştirmediği için yalnızca görünür kılındı. Faz 6.
+
+---
+
+## Kör nokta analizi "analiz edilmiş" sayarken tarihe bakmıyor
+
+**Where:** [`src/defect_risk_analyzer/blind_spot_detector.py`](../src/defect_risk_analyzer/blind_spot_detector.py)
+(`_find_unanalyzed_risky_modules`)
+
+Fonksiyon kendisine verilen her `analysis_results` kaydının `affected_modules`
+listesini birleştiriyor — **hiçbir zaman penceresi yok**. Tek bir analiz, kaç
+yıl önce yapılmış olursa olsun, o modülü rapordan kalıcı olarak siliyor.
+Eşleşme ayrıca tam ve büyük/küçük harfe duyarlı bir dizgi karşılaştırması, ve
+`affected_modules` ham LLM çıktısından geliyor.
+
+**Impact:** bugün geliştirici makinesinde tam olarak bu durum var.
+`data/analysis_results.json` 16 kayıt taşıyor, hepsi `2026-03-23` tarihli, ve bu
+kayıtlar bugünün riskli modüllerini "analiz edilmiş" sayarak listeden eliyor.
+Sayfa daha temiz görünüyor çünkü veri bayat, çünkü kapsam iyi değil.
+
+**Neden 5A'da düzeltilmedi:** üç sebep. (1) Bir recency penceresi eklemek
+pencere uzunluğuna dair bir tasarım kararı ve 5A'nın davranış-koruyucu iddiasını
+kirletirdi. (2) İlgili veri dosyaları `.gitignore`'da ve takip edilmiyor
+(`git ls-files data/` yalnız `.gitkeep` ve `sample_bugs.json` döndürüyor), yani
+bir PR'ın düzeltebileceği bir depo içeriği yok. (3) Kusur artık
+`test_an_ancient_analysis_still_counts_a_module_as_analyzed` ile pinli, yani
+değiştirildiğinde görünür bir diff üretecek.
+
+**Planned fix:** `analyzed_at` üzerinden bir tazelik penceresi; ayrıca modül adı
+eşleşmesi normalize edilmeli. Faz 6.
+
+---
+
+## `classify_bugs` diske hiç yazmıyor
+
+**Where:** [`src/defect_risk_analyzer/component_classifier.py`](../src/defect_risk_analyzer/component_classifier.py),
+[`src/defect_risk_analyzer/jira_client.py`](../src/defect_risk_analyzer/jira_client.py)
+
+`classify_bugs` yalnızca bellekteki dict'leri yerinde değiştiriyor
+(`bug["component"] = new_component`) ve aynı listeyi döndürüyor. Modülde hiçbir
+kalıcılık yok — ne `open`, ne `json`, ne `config` importu.
+
+**Detail:** `jira_client.fetch_and_save()` `bugs.json`'u `_normalize_issue()`
+çıktısından doğrudan yazıyor ve eksik component'leri `"Unknown"` yapıyor. Bu
+yazma, `AnalysisService.load_bugs()` veriyi görmeden **önce** oluyor. Sınıflandırma
+sonrasında hiçbir şey sonucu geri yazmıyor.
+
+**Sonuç:** `data/bugs.json` diskte kalıcı olarak 24/24 `"Unknown"`, buna karşın
+her süreç açılışında 24'ü de bellekte yeniden sınıflandırılıyor. Sınıflandırıcı
+bozuk değil; kalıcılık hiç bağlanmamış. `data/defect_density.json`'daki tek
+`"Unknown"` modülü de bunun fosili — sınıflandırma `load_bugs`'a bağlanmadan
+önceki bir kod yolundan kalma, `risk_score: 100 / CRITICAL` ile.
+
+Mock ile canlı arasındaki fark girdide, kodda değil: `classify_bugs` her iki
+modda da koşuyor (`analysis_service.py:98-108`, mock/live ayrımının üstünde),
+ama `sample_bugs.json`'da 20/20 component dolu olduğu için orada no-op.
+
+**Test durumu:** `component_classifier`'ın anahtar mantığının hâlâ testi yok.
+`test_analysis_service_indexing.py:189-213` yalnızca çağrı noktasını pinliyor
+(boş component'li bir bug `Authentication`'a düşüyor). Faz 5A'ya alınmadı:
+asıl bulgu bir test boşluğu değil, bir veri katmanı kararı, ve ROADMAP:115
+`pattern_detector` / `component_classifier` testlerini zaten tek kalem olarak
+listeliyor.
+
+**Planned fix:** kalıcılık kararı (sınıflandırılmış component'ler `bugs.json`'a
+geri yazılsın mı, yoksa türetilmiş veri olarak mı kalsın) Faz 6; anahtar mantığı
+testleri `pattern_detector` ile birlikte.
 
 ---
 
@@ -359,8 +530,10 @@ gerçeğin sessizce ayrışmaması için buraya yazıldı.
 - **`tests/test_anonymizer.py`** — round-trip **ve telefon regex'i düzeltmesi**
   (sürüm numarası, sipariş kodu ve tarih maskelenmemeli). Dikkat: bu eksik bir
   test değil, **yaşayan bir hata**; test yazmak tek başına yetmez.
-- **`pattern_detector.py`, `blind_spot_detector.py`, `component_classifier.py`**
-  — hiç testleri yok.
+- **`pattern_detector.py`, `component_classifier.py`** — hiç testleri yok.
+  `blind_spot_detector.py` Faz 5A'da karşılandı (`tests/test_blind_spots.py`);
+  `component_classifier` için ayrıca yukarıdaki "`classify_bugs` diske hiç
+  yazmıyor" kaydına bakın.
 - **`pip-audit`** — ROADMAP hem `requirements-dev.txt` hem CI için istiyor;
   ikisinde de yok. Faz 3 CI'a `pytest` + `ruff` ekledi, bunu eklemedi.
 - **Kapsam rozeti / `pytest-cov` eşiği** — **bilerek reddedildi**, ertelenmedi.
