@@ -38,6 +38,7 @@ from defect_risk_analyzer import __version__, config
 from defect_risk_analyzer.api_auth import require_api_key
 from defect_risk_analyzer.api_models import (
     AnalyzeRequest,
+    BlindSpotReport,
     BugRiskResult,
     BulkAnalyzeRequest,
     BulkAnalyzeResponse,
@@ -477,6 +478,7 @@ async def get_duplicates(bug_key: str):
 
 @app.get(
     "/blind-spots",
+    response_model=BlindSpotReport,
     dependencies=[Depends(require_api_key)],
     tags=["Analysis"],
 )
