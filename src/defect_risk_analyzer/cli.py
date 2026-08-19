@@ -22,7 +22,7 @@ def main() -> int:
     # Needed for STREAMLIT_PORT; the dashboard process runs init() again itself.
     config.init()
 
-    dashboard = Path(__file__).resolve().parent / "dashboard.py"
+    dashboard = Path(__file__).resolve().parent / "ui" / "app.py"
 
     return subprocess.call(
         [
@@ -33,6 +33,13 @@ def main() -> int:
             str(dashboard),
             "--server.port",
             str(config.STREAMLIT_PORT),
+            # Streamlit looks for .streamlit/config.toml under the process
+            # working directory, not next to the script. `dra` is installable
+            # with pipx and runs from wherever the user happens to be, so the
+            # repo's config.toml is usually not found — and a missed config
+            # file is silent. Without this flag the built-in pages/ navigation
+            # appears above the one render_nav() draws, and the user gets two.
+            "--client.showSidebarNavigation=false",
         ]
     )
 

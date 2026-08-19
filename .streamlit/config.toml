@@ -1,0 +1,32 @@
+# =============================================================================
+# Streamlit configuration
+# =============================================================================
+# Read from ${CWD}/.streamlit/config.toml — the PROCESS working directory, not
+# the directory holding the entry script. Every documented way of starting this
+# app runs from the repository root (README's `streamlit run`, BASLAT.bat, and
+# Docker with WORKDIR /app), so this file applies to all of them.
+#
+# The one launch path it cannot cover is `dra`, which pipx makes runnable from
+# any directory. src/defect_risk_analyzer/cli.py passes
+# --client.showSidebarNavigation=false explicitly for that reason. The two are
+# not redundant: this file is the declaration and covers the documented
+# launches, the flag covers a working directory we do not control. A missing
+# config file produces no warning at all, which is exactly why the flag exists.
+# =============================================================================
+
+[theme]
+# The stylesheet in ui/theme.py is built entirely out of rgba(255,255,255,a)
+# overlays — it assumes a dark ground but never said so, so a viewer whose
+# Streamlit theme resolved to light got white on white. Pinning the base is
+# what makes those rules correct by design rather than by luck.
+#
+# Nothing else from that stylesheet can move here: streamlit 1.41.1 offers
+# exactly six [theme] options (base, primaryColor, backgroundColor,
+# secondaryBackgroundColor, textColor, font) and none of the 21 rules is
+# expressible as one of them.
+base = "dark"
+
+[client]
+# ui/shell.py:render_nav draws the navigation with st.page_link, so the
+# built-in pages/ navigation would be a second, duplicate list above it.
+showSidebarNavigation = false

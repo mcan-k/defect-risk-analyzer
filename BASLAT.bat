@@ -101,7 +101,7 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":8501" ^| findstr "LISTENING
 
 REM --- Dashboard baslat ---
 echo   Dashboard baslatiliyor...
-start /B "" cmd /c "call .venv\Scripts\activate.bat && python -m streamlit run src\defect_risk_analyzer\dashboard.py --server.port 8501 --server.headless true 2>&1 > data\dashboard.log"
+start /B "" cmd /c "call .venv\Scripts\activate.bat && python -m streamlit run src\defect_risk_analyzer\ui\app.py --server.port 8501 --server.headless true 2>&1 > data\dashboard.log"
 
 timeout /t 3 /nobreak >nul
 
