@@ -16,7 +16,6 @@ to a setup wizard that guides the user through entering credentials.
 All UI text is in Turkish.
 """
 
-import logging
 import os
 import time
 
@@ -25,25 +24,21 @@ import plotly.express as px
 import streamlit as st
 
 from defect_risk_analyzer import config
-from defect_risk_analyzer.jira_client import load_bugs_from_file
-from defect_risk_analyzer.llm_provider import LLMError, RateLimitError
-from defect_risk_analyzer.services.analysis_service import (
-    AnalysisService,
-    BugNotFoundError,
-)
 from defect_risk_analyzer.ui.messages import format_finding
-
-logger = logging.getLogger(__name__)
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-RISK_COLORS = {
-    "CRITICAL": "#DC2626",
-    "HIGH": "#F97316",
-    "MEDIUM": "#EAB308",
-    "LOW": "#22C55E",
-}
+from defect_risk_analyzer.ui.results import display_analysis_result
+from defect_risk_analyzer.ui.service import (
+    call,
+    get_service,
+    get_status,
+    save_multiple_env,
+)
+from defect_risk_analyzer.ui.setup_wizard import render_setup_wizard
+from defect_risk_analyzer.ui.theme import (
+    CHART_COLORS,
+    RISK_COLORS,
+    apply_chart_theme,
+    inject_css,
+)
 
 # ---------------------------------------------------------------------------
 # Page Config
@@ -55,232 +50,7 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ---------------------------------------------------------------------------
-# Custom Theme — consistent colors, professional look
-# ---------------------------------------------------------------------------
-st.markdown("""<style>
-    /* Hide Streamlit default elements */
-    [data-testid="stStatusWidget"],
-    div[data-testid="stDecoration"],
-    .stDeployButton,
-    #stDecoration,
-    iframe[title="streamlit_status_widget"] {
-        display: none !important;
-    }
-    .stApp [data-testid="stHeader"] {
-        background: transparent !important;
-    }
-
-    /* Metric cards — subtle border, consistent padding */
-    [data-testid="stMetric"] {
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 8px;
-        padding: 12px 16px;
-    }
-    [data-testid="stMetric"] label {
-        color: rgba(255, 255, 255, 0.6) !important;
-        font-size: 0.85rem !important;
-    }
-    [data-testid="stMetric"] [data-testid="stMetricValue"] {
-        font-size: 1.8rem !important;
-        font-weight: 600 !important;
-    }
-
-    /* Sidebar — subtle separator, clean look */
-    [data-testid="stSidebar"] {
-        border-right: 1px solid rgba(255, 255, 255, 0.06);
-    }
-    [data-testid="stSidebar"] .stRadio label {
-        border-radius: 6px;
-        padding: 6px 10px;
-        margin: 1px 0;
-        transition: background-color 0.15s ease;
-    }
-    [data-testid="stSidebar"] .stRadio label:hover {
-        background-color: rgba(255, 255, 255, 0.05);
-    }
-
-    /* Expander cards — consistent border */
-    [data-testid="stExpander"] {
-        border: 1px solid rgba(255, 255, 255, 0.08) !important;
-        border-radius: 8px !important;
-    }
-
-    /* Buttons — consistent style */
-    .stButton > button {
-        border-radius: 6px;
-        font-weight: 500;
-        transition: all 0.15s ease;
-    }
-    .stButton > button:hover {
-        transform: translateY(-1px);
-    }
-
-    /* DataFrames — cleaner table look */
-    [data-testid="stDataFrame"] {
-        border: 1px solid rgba(255, 255, 255, 0.08);
-        border-radius: 8px;
-    }
-
-    /* Alerts/info boxes — softer look */
-    .stAlert {
-        border-radius: 8px !important;
-    }
-
-    /* Divider line */
-    hr {
-        border-color: rgba(255, 255, 255, 0.06) !important;
-    }
-
-    /* Tab styling */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 8px;
-    }
-    .stTabs [data-baseweb="tab"] {
-        border-radius: 6px 6px 0 0;
-        padding: 8px 16px;
-    }
-
-    /* Toggle switch */
-    [data-testid="stToggle"] label span {
-        font-weight: 400 !important;
-    }
-
-    /* Text input — consistent border */
-    .stTextInput > div > div {
-        border-radius: 6px !important;
-    }
-
-    /* Consistent page title sizing */
-    .main h1 {
-        font-size: 2rem !important;
-        font-weight: 600 !important;
-        margin-bottom: 0.5rem !important;
-    }
-    .main h2 {
-        font-size: 1.4rem !important;
-        font-weight: 500 !important;
-        color: rgba(255, 255, 255, 0.85) !important;
-    }
-
-    /* Caption text — muted */
-    .main .stCaption {
-        color: rgba(255, 255, 255, 0.45) !important;
-    }
-</style>""", unsafe_allow_html=True)
-
-
-# ---------------------------------------------------------------------------
-# Plotly Chart Theme — consistent dark theme for all charts
-# ---------------------------------------------------------------------------
-
-CHART_COLORS = [
-    "#8B5CF6", "#22C55E", "#F97316", "#3B82F6",
-    "#EC4899", "#EAB308", "#06B6D4", "#F43F5E",
-]
-
-def apply_chart_theme(fig, height: int = 400) -> None:
-    """Apply consistent dark theme to a Plotly figure."""
-    fig.update_layout(
-        height=height,
-        plot_bgcolor="rgba(0,0,0,0)",
-        paper_bgcolor="rgba(0,0,0,0)",
-        title_text="",
-        showlegend=True,
-        font=dict(color="rgba(255,255,255,0.7)", size=12),
-        legend=dict(
-            bgcolor="rgba(0,0,0,0)",
-            bordercolor="rgba(255,255,255,0.1)",
-            font=dict(color="rgba(255,255,255,0.65)", size=11),
-        ),
-        xaxis=dict(
-            gridcolor="rgba(255,255,255,0.06)",
-            zerolinecolor="rgba(255,255,255,0.06)",
-        ),
-        yaxis=dict(
-            gridcolor="rgba(255,255,255,0.06)",
-            zerolinecolor="rgba(255,255,255,0.06)",
-        ),
-        margin=dict(l=40, r=20, t=20, b=40),
-    )
-
-
-# ---------------------------------------------------------------------------
-# .env Read/Write Helpers
-# ---------------------------------------------------------------------------
-
-def save_multiple_env(values: dict[str, str]) -> None:
-    """Save multiple values to .env and apply them to the running service."""
-    for key, value in values.items():
-        config.set_env_value(key, value)
-    # The one place a re-read is still needed: .env just changed underneath us.
-    config.reload()
-    # The service holds a provider built from the old credentials; drop it so
-    # the next analysis picks up what was just saved.
-    get_service().reset_llm()
-
-
-# ---------------------------------------------------------------------------
-# Service Access
-# ---------------------------------------------------------------------------
-
-@st.cache_resource(show_spinner="Analiz servisi hazırlanıyor...")
-def get_service() -> AnalysisService:
-    """
-    Return the process-wide analysis service, loading bug data on first use.
-
-    Cached with @st.cache_resource deliberately: Streamlit re-executes this
-    module top-to-bottom on every interaction, and a fresh AnalysisService per
-    rerun would start with an empty bug list. Nothing would raise — every page
-    would just quietly report "no data".
-    """
-    service = AnalysisService()
-
-    bugs = load_bugs_from_file()
-    if bugs:
-        service.load_bugs(bugs)
-        logger.info("Dashboard loaded %d bugs into the analysis service.", len(bugs))
-    else:
-        logger.warning("No bug data found. Use the sidebar sync button or mock mode.")
-
-    return service
-
-
-def call(fn, *args, **kwargs):
-    """
-    Run a service call, reporting failures inline instead of raising.
-
-    Preserves the contract the old api_request() had: callers check the result
-    with `if not result:` and never see a traceback. Without this, an exception
-    from the service would surface as a raw Streamlit traceback.
-    """
-    try:
-        return fn(*args, **kwargs)
-    except RateLimitError as e:
-        st.error(f"⚠️ Kota doldu: {e}")
-    except LLMError as e:
-        st.error(f"⚠️ LLM hatası: {e}")
-    except BugNotFoundError as e:
-        st.error(f"⚠️ {e}")
-    except ValueError as e:
-        st.error(f"⚠️ {e}")
-    except Exception as e:
-        logger.exception("Service call %s failed", getattr(fn, "__name__", fn))
-        st.error(f"⚠️ İşlem başarısız: {e}")
-    return None
-
-
-def get_status() -> dict:
-    """Local status for the sidebar — no HTTP, no backend process."""
-    service = get_service()
-    return {
-        "bugs_loaded": len(service.get_bugs()),
-        "daily_requests_used": service.get_daily_request_count(),
-        "daily_requests_limit": config.MAX_DAILY_REQUESTS,
-        "mock_mode": config.USE_MOCK_DATA,
-    }
-
+inject_css()
 
 # ---------------------------------------------------------------------------
 # Sidebar
@@ -347,176 +117,6 @@ def render_sidebar() -> str:
             st.rerun()
 
     return page
-
-
-# =============================================================================
-# First Run Setup Wizard
-# =============================================================================
-
-def page_setup_wizard():
-    """First-run setup wizard for new users."""
-    st.title("🚀 Defect Risk Analyzer — İlk Kurulum")
-    st.markdown("Hoş geldiniz! Uygulamayı kullanmaya başlamak için aşağıdaki adımları tamamlayın.")
-    st.markdown("---")
-
-    # Step 1: Choose mode
-    st.subheader("Adım 1: Çalışma Modu")
-    st.markdown("Jira hesabınız var mı yoksa önce demo olarak denemek mi istiyorsunuz?")
-
-    mode = st.radio(
-        "Mod seçin:",
-        [
-            "🎭 Demo Modu (Jira olmadan örnek verilerle dene)",
-            "🔗 Canlı Mod (Gerçek Jira hesabımla kullanacağım)",
-        ],
-        index=0,
-        label_visibility="collapsed",
-    )
-
-    if "Demo" in mode:
-        st.info(
-            "Demo modunda 20 örnek bug ile uygulamayı deneyebilirsiniz. "
-            "Jira veya LLM key gerekmez."
-        )
-        if st.button(
-            "✅ Demo Modunu Aktifleştir ve Başla", type="primary", use_container_width=True
-        ):
-            save_multiple_env({"USE_MOCK_DATA": "True"})
-            st.success("Demo modu aktifleştirildi! Sayfa yenileniyor...")
-            time.sleep(1)
-            st.rerun()
-        return
-
-    # Step 2: LLM Provider
-    st.markdown("---")
-    st.subheader("Adım 2: LLM API Key")
-    st.markdown(
-        "Risk analizi için bir LLM sağlayıcı gerekiyor. "
-        "Groq ücretsiz API key sunuyor — "
-        "[console.groq.com/keys](https://console.groq.com/keys) adresinden alabilirsiniz."
-    )
-
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        llm_provider = st.selectbox("Sağlayıcı", ["groq", "openai"], index=0)
-    with col2:
-        if llm_provider == "groq":
-            llm_key = st.text_input(
-                "Groq API Key",
-                type="password",
-                placeholder="gsk_...",
-                help="Groq Console'dan ücretsiz API key oluşturun",
-            )
-        else:
-            llm_key = st.text_input(
-                "OpenAI API Key",
-                type="password",
-                placeholder="sk-...",
-                help="OpenAI Platform'dan API key oluşturun",
-            )
-
-    # Step 3: Jira Connection
-    st.markdown("---")
-    st.subheader("Adım 3: Jira Bağlantısı")
-    st.markdown(
-        "Jira API token'ınızı [id.atlassian.com/manage-profile/security/api-tokens]"
-        "(https://id.atlassian.com/manage-profile/security/api-tokens) adresinden oluşturun."
-    )
-
-    col1, col2 = st.columns(2)
-    with col1:
-        jira_url = st.text_input(
-            "Jira URL",
-            placeholder="https://yourcompany.atlassian.net",
-            help="Jira Cloud veya Server URL'iniz",
-        )
-        jira_email = st.text_input(
-            "Jira E-posta",
-            placeholder="you@company.com",
-            help="Jira hesabınızın e-posta adresi",
-        )
-    with col2:
-        jira_token = st.text_input(
-            "Jira API Token",
-            type="password",
-            placeholder="ATATT3x...",
-            help="Jira'dan oluşturduğunuz API token",
-        )
-        jira_project = st.text_input(
-            "Proje Key",
-            placeholder="AP",
-            help="Bug key'lerinin başındaki harfler (örn: AP-101 → AP)",
-        )
-
-    # Save and start
-    st.markdown("---")
-    if st.button("🚀 Kaydet ve Başla", type="primary", use_container_width=True):
-        # Validate minimum requirements
-        if not llm_key:
-            st.error("LLM API Key zorunludur. Groq'tan ücretsiz key alabilirsiniz.")
-            return
-
-        if not all([jira_url, jira_email, jira_token, jira_project]):
-            st.error("Tüm Jira bilgileri zorunludur.")
-            return
-
-        # Save all values
-        env_values = {
-            "LLM_PROVIDER": llm_provider,
-            "USE_MOCK_DATA": "False",
-            "JIRA_URL": jira_url.rstrip("/"),
-            "JIRA_EMAIL": jira_email,
-            "JIRA_API_TOKEN": jira_token,
-            "JIRA_PROJECT_KEY": jira_project,
-        }
-
-        if llm_provider == "groq":
-            env_values["GROQ_API_KEY"] = llm_key
-        else:
-            env_values["OPENAI_API_KEY"] = llm_key
-
-        save_multiple_env(env_values)
-
-        # Test connections
-        st.info("Bağlantılar test ediliyor...")
-
-        # Test Jira
-        try:
-            from defect_risk_analyzer.jira_client import JiraClient
-            client = JiraClient(jira_url, jira_email, jira_token, jira_project)
-            if client.test_connection():
-                st.success("✅ Jira bağlantısı başarılı!")
-            else:
-                st.warning(
-                    "⚠️ Jira bağlantısı kurulamadı. Bilgileri kontrol edin. "
-                    "Yine de kaydedildi."
-                )
-        except Exception as e:
-            st.warning(
-                f"⚠️ Jira test hatası: {e}. "
-                "Bilgiler kaydedildi, Ayarlar'dan düzeltebilirsiniz."
-            )
-
-        # Test LLM
-        try:
-            from defect_risk_analyzer.llm_provider import create_llm_provider
-            llm = create_llm_provider(llm_provider)
-            if llm.test_connection():
-                st.success(f"✅ {llm_provider.capitalize()} API bağlantısı başarılı!")
-            else:
-                st.warning(
-                    f"⚠️ {llm_provider.capitalize()} bağlantısı kurulamadı. "
-                    "Key'i kontrol edin."
-                )
-        except Exception as e:
-            st.warning(
-                f"⚠️ LLM test hatası: {e}. "
-                "Bilgiler kaydedildi, Ayarlar'dan düzeltebilirsiniz."
-            )
-
-        st.success("✅ Kurulum tamamlandı! Sayfa yenileniyor...")
-        time.sleep(2)
-        st.rerun()
 
 
 # =============================================================================
@@ -880,52 +480,6 @@ def page_live_analysis():
                 "Analiz edilecek bug verisi yok. "
                 "Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın."
             )
-
-
-def display_analysis_result(result: dict):
-    """Display a single analysis result with formatting."""
-    risk_level = result.get("risk_level", "LOW")
-    risk_score = result.get("risk_score", 0)
-    color = RISK_COLORS.get(risk_level, "#666")
-
-    st.markdown(
-        f"### Risk Skoru: <span style='color:{color}; font-size:1.5em;'>{risk_score}</span> "
-        f"<span style='background-color:{color}; color:white; padding:2px 10px; "
-        f"border-radius:4px;'>{risk_level}</span>",
-        unsafe_allow_html=True,
-    )
-
-    reasoning = result.get("reasoning", "")
-    if reasoning:
-        st.markdown("**Analiz:**")
-        st.markdown(reasoning)
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        modules = result.get("affected_modules", [])
-        if modules:
-            st.markdown("**Etkilenen Modüller:**")
-            for m in modules:
-                st.markdown(f"- {m}")
-
-        scenarios = result.get("test_scenarios", [])
-        if scenarios:
-            st.markdown("**Test Senaryoları:**")
-            for s in scenarios:
-                st.markdown(f"- {s}")
-
-    with col2:
-        actions = result.get("recommended_actions", [])
-        if actions:
-            st.markdown("**Önerilen Aksiyonlar:**")
-            for a in actions:
-                st.markdown(f"- {a}")
-
-    st.caption(
-        f"Kaynak: {result.get('source', '?')} | "
-        f"Tarih: {result.get('analyzed_at', '?')[:19]}"
-    )
 
 
 # =============================================================================
@@ -1502,7 +1056,7 @@ def main():
 
     # First-run: show setup wizard if nothing is configured
     if config.is_first_run():
-        page_setup_wizard()
+        render_setup_wizard()
         return
 
     # Force page redirect (from session state)
