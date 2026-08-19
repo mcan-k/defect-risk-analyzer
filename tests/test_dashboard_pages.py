@@ -10,6 +10,12 @@ unreachable — that is how the pre-Faz-2 HTTP layer reported "API down", and
 those strings must never reappear now that the dashboard calls the service
 directly.
 
+Beyond "it did not raise", CONTENT below pins the sections each page renders.
+That is what makes this suite useful to Faz 5B, which folds seven pages into
+four: a merge can drop a heading or a filter without raising anything at all,
+and the walk alone would stay green. Verified by mutation — deleting one
+st.subheader from dashboard.py fails only the content test, not the walk.
+
 Two things the original script depended on that a CI checkout does not have,
 both fixed by the fixture below:
 
@@ -46,6 +52,103 @@ PAGES = [
     "🔔 Webhook Sonuçları",
     "⚙️ Ayarlar",
 ]
+
+# What each page actually renders today, measured against this app rather than
+# read off the source: the assertions below are the contract Faz 5B's page merge
+# has to keep. The walk above only proves a page did not raise — a section could
+# vanish during the merge and nothing would notice.
+#
+# Deliberately excluded: anything carrying a day count. The blind spot findings
+# render "155 gündür 'Open' durumunda", and that number grows with the wall
+# clock, so pinning it would make this suite fail on a future Tuesday for no
+# reason. Section headings and widget labels are the stable part.
+#
+# The blind spot headings below do depend on the sample bugs staying stale and
+# unanalyzed. That only becomes more true as time passes — days_open grows, the
+# 14-day threshold stays put, and the sandbox has no analysis results at all.
+CONTENT: dict[str, dict[str, tuple[str, ...]]] = {
+    "📊 Dashboard": {
+        "title": ("📊 Risk Dashboard",),
+        "subheader": (
+            "Modül Risk Haritası",
+            "Bug Dağılımı (Modül Bazında)",
+            "Modül Risk Sıralaması",
+            "📈 Bug Trend Analizi",
+        ),
+        "metric": ("Toplam Bug", "Analiz Edilen", "🔴 Kritik Modül", "🟠 Yüksek Risk Modül"),
+    },
+    "🐛 Bug Listesi": {
+        "title": ("🐛 Bug Listesi",),
+        "multiselect": ("Öncelik Filtresi", "Durum Filtresi", "Modül Filtresi"),
+        "text_input": ("🔍 Ara (bug key veya özet)",),
+    },
+    "⚡ Canlı Analiz": {
+        "title": ("⚡ Canlı Analiz",),
+        "tabs": ("🔍 Tekli Analiz", "📦 Toplu Analiz"),
+        "subheader": ("Tekli Bug / Alan Analizi", "Toplu Bug Analizi"),
+        "radio": ("Analiz Türü",),
+        "text_input": ("Bug Key",),
+        "multiselect": ("Analiz edilecek bugları seçin",),
+        "button": ("🚀 Analiz Et", "🚀 Toplu Analiz Başlat"),
+    },
+    "🔗 Pattern Tespiti": {
+        "title": ("🔗 Pattern Tespiti",),
+        "caption": ("Benzer bug'ları otomatik gruplar ve olası ortak nedenleri tespit eder.",),
+        # StubVectorStore.collection is None, so this page renders its no-data
+        # branch. That is the branch the merge must preserve.
+        "info": (
+            "Pattern tespit edilemedi. Yeterli bug verisi yüklendikten sonra bu sayfa "
+            "otomatik dolar.",
+        ),
+    },
+    "🎯 Kör Nokta Tespiti": {
+        "title": ("🎯 Kör Nokta Tespiti",),
+        "metric": ("Toplam Kör Nokta", "🔴 Kritik", "Sahipsiz Bug", "Bayat Bug"),
+        "subheader": (
+            "⚠️ Analiz Edilmemiş Riskli Modüller",
+            "🚨 Sahipsiz Kritik Bug'lar",
+            "🕐 Bayat Bug'lar (14+ gündür açık)",
+            "📋 Önerilen Aksiyonlar",
+        ),
+    },
+    "🔔 Webhook Sonuçları": {
+        "title": ("🔔 Webhook Sonuçları",),
+        "subheader": ("Webhook Nasıl Kurulur?",),
+        "info": ("Henüz webhook analiz sonucu yok.",),
+    },
+    "⚙️ Ayarlar": {
+        "title": ("⚙️ Ayarlar",),
+        "subheader": (
+            "🔗 Jira Bağlantısı",
+            "🤖 LLM Sağlayıcı",
+            "🛠️ Uygulama Ayarları",
+            "🔒 Veri Anonimleştirme",
+            "📋 Sistem Durumu",
+            "🔑 API Key (webhook servisi için)",
+        ),
+        "text_input": ("Jira URL", "Jira E-posta", "Jira API Token", "Proje Key", "Groq API Key"),
+        "selectbox": ("Sağlayıcı",),
+        "toggle": ("Mock Data Modu (Jira olmadan demo)", "Veri Anonimleştirme"),
+        "number_input": (
+            "Günlük Maksimum LLM İstek Sayısı",
+            "İstekler Arası Bekleme (saniye)",
+        ),
+        "button": (
+            "💾 Jira Ayarlarını Kaydet",
+            "🧪 Jira Bağlantısını Test Et",
+            "💾 LLM Ayarlarını Kaydet",
+            "🧪 LLM Bağlantısını Test Et",
+            "💾 Uygulama Ayarlarını Kaydet",
+            "🔑 API Key Üret",
+        ),
+    },
+}
+
+# Elements whose visible text lives on `.label`; everything else uses `.value`.
+_LABELLED = frozenset(
+    {"metric", "multiselect", "text_input", "radio", "selectbox", "toggle",
+     "number_input", "button", "tabs"}
+)
 
 # Substrings that mean the page still believes it needs a backend.
 FORBIDDEN = (
@@ -177,6 +280,19 @@ def _fresh_app() -> AppTest:
     return at
 
 
+def _open(page: str) -> AppTest:
+    """A fresh app showing `page`."""
+    at = _fresh_app()
+    at.sidebar.radio[0].set_value(page).run()
+    return at
+
+
+def _rendered(at: AppTest, kind: str) -> list[str]:
+    """Visible text of every `kind` element on the page, sidebar included."""
+    attribute = "label" if kind in _LABELLED else "value"
+    return [getattr(element, attribute) for element in getattr(at, kind)]
+
+
 def test_setup_wizard_does_not_appear_when_configured():
     """A configured install must land on the app, not back in the wizard.
 
@@ -203,6 +319,26 @@ def test_page_renders_without_errors(page: str):
     at.sidebar.radio[0].set_value(page).run()
 
     assert not _problems(at), f"{page}: " + "; ".join(_problems(at))
+
+
+@pytest.mark.parametrize("page", PAGES)
+def test_page_renders_all_of_its_sections(page: str):
+    """Every heading and widget the page shows today must survive Faz 5B.
+
+    Membership rather than equality on purpose: the sidebar contributes its own
+    metrics and buttons to these lists, and a page is free to grow. What must
+    not happen is a section quietly disappearing when seven pages become four.
+    """
+    at = _open(page)
+
+    missing = [
+        f"{kind}={text!r}"
+        for kind, expected in CONTENT[page].items()
+        for text in expected
+        if text not in _rendered(at, kind)
+    ]
+
+    assert not missing, f"{page} no longer renders: " + ", ".join(missing)
 
 
 def test_sync_button_is_present_and_works():
