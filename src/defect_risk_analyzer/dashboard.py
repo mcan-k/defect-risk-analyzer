@@ -175,7 +175,10 @@ st.markdown("""<style>
 # Plotly Chart Theme — consistent dark theme for all charts
 # ---------------------------------------------------------------------------
 
-CHART_COLORS = ["#8B5CF6", "#22C55E", "#F97316", "#3B82F6", "#EC4899", "#EAB308", "#06B6D4", "#F43F5E"]
+CHART_COLORS = [
+    "#8B5CF6", "#22C55E", "#F97316", "#3B82F6",
+    "#EC4899", "#EAB308", "#06B6D4", "#F43F5E",
+]
 
 def apply_chart_theme(fig, height: int = 400) -> None:
     """Apply consistent dark theme to a Plotly figure."""
@@ -289,7 +292,15 @@ def render_sidebar() -> str:
 
     page = st.sidebar.radio(
         "Sayfa Seçin",
-        ["📊 Dashboard", "🐛 Bug Listesi", "⚡ Canlı Analiz", "🔗 Pattern Tespiti", "🎯 Kör Nokta Tespiti", "🔔 Webhook Sonuçları", "⚙️ Ayarlar"],
+        [
+            "📊 Dashboard",
+            "🐛 Bug Listesi",
+            "⚡ Canlı Analiz",
+            "🔗 Pattern Tespiti",
+            "🎯 Kör Nokta Tespiti",
+            "🔔 Webhook Sonuçları",
+            "⚙️ Ayarlar",
+        ],
         index=0,
     )
 
@@ -354,14 +365,22 @@ def page_setup_wizard():
 
     mode = st.radio(
         "Mod seçin:",
-        ["🎭 Demo Modu (Jira olmadan örnek verilerle dene)", "🔗 Canlı Mod (Gerçek Jira hesabımla kullanacağım)"],
+        [
+            "🎭 Demo Modu (Jira olmadan örnek verilerle dene)",
+            "🔗 Canlı Mod (Gerçek Jira hesabımla kullanacağım)",
+        ],
         index=0,
         label_visibility="collapsed",
     )
 
     if "Demo" in mode:
-        st.info("Demo modunda 20 örnek bug ile uygulamayı deneyebilirsiniz. Jira veya LLM key gerekmez.")
-        if st.button("✅ Demo Modunu Aktifleştir ve Başla", type="primary", use_container_width=True):
+        st.info(
+            "Demo modunda 20 örnek bug ile uygulamayı deneyebilirsiniz. "
+            "Jira veya LLM key gerekmez."
+        )
+        if st.button(
+            "✅ Demo Modunu Aktifleştir ve Başla", type="primary", use_container_width=True
+        ):
             save_multiple_env({"USE_MOCK_DATA": "True"})
             st.success("Demo modu aktifleştirildi! Sayfa yenileniyor...")
             time.sleep(1)
@@ -373,7 +392,8 @@ def page_setup_wizard():
     st.subheader("Adım 2: LLM API Key")
     st.markdown(
         "Risk analizi için bir LLM sağlayıcı gerekiyor. "
-        "Groq ücretsiz API key sunuyor — [console.groq.com/keys](https://console.groq.com/keys) adresinden alabilirsiniz."
+        "Groq ücretsiz API key sunuyor — "
+        "[console.groq.com/keys](https://console.groq.com/keys) adresinden alabilirsiniz."
     )
 
     col1, col2 = st.columns([1, 3])
@@ -467,9 +487,15 @@ def page_setup_wizard():
             if client.test_connection():
                 st.success("✅ Jira bağlantısı başarılı!")
             else:
-                st.warning("⚠️ Jira bağlantısı kurulamadı. Bilgileri kontrol edin. Yine de kaydedildi.")
+                st.warning(
+                    "⚠️ Jira bağlantısı kurulamadı. Bilgileri kontrol edin. "
+                    "Yine de kaydedildi."
+                )
         except Exception as e:
-            st.warning(f"⚠️ Jira test hatası: {e}. Bilgiler kaydedildi, Ayarlar'dan düzeltebilirsiniz.")
+            st.warning(
+                f"⚠️ Jira test hatası: {e}. "
+                "Bilgiler kaydedildi, Ayarlar'dan düzeltebilirsiniz."
+            )
 
         # Test LLM
         try:
@@ -478,9 +504,15 @@ def page_setup_wizard():
             if llm.test_connection():
                 st.success(f"✅ {llm_provider.capitalize()} API bağlantısı başarılı!")
             else:
-                st.warning(f"⚠️ {llm_provider.capitalize()} bağlantısı kurulamadı. Key'i kontrol edin.")
+                st.warning(
+                    f"⚠️ {llm_provider.capitalize()} bağlantısı kurulamadı. "
+                    "Key'i kontrol edin."
+                )
         except Exception as e:
-            st.warning(f"⚠️ LLM test hatası: {e}. Bilgiler kaydedildi, Ayarlar'dan düzeltebilirsiniz.")
+            st.warning(
+                f"⚠️ LLM test hatası: {e}. "
+                "Bilgiler kaydedildi, Ayarlar'dan düzeltebilirsiniz."
+            )
 
         st.success("✅ Kurulum tamamlandı! Sayfa yenileniyor...")
         time.sleep(2)
@@ -502,7 +534,10 @@ def page_dashboard():
 
     module_risks = risks.get("module_risks", {})
     if not module_risks:
-        st.info("Modül risk verisi bulunamadı. Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın.")
+        st.info(
+            "Modül risk verisi bulunamadı. "
+            "Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın."
+        )
         return
 
     # Top metrics
@@ -518,9 +553,14 @@ def page_dashboard():
     col4.metric("🟠 Yüksek Risk Modül", high_count)
 
     # Critical alerts
-    critical_modules = [name for name, data in module_risks.items() if data.get("level") == "CRITICAL"]
+    critical_modules = [
+        name for name, data in module_risks.items() if data.get("level") == "CRITICAL"
+    ]
     if critical_modules:
-        st.error(f"⚠️ KRİTİK RİSK: {', '.join(critical_modules)} modüllerinde acil müdahale gerekiyor!")
+        st.error(
+            f"⚠️ KRİTİK RİSK: {', '.join(critical_modules)} "
+            "modüllerinde acil müdahale gerekiyor!"
+        )
 
     st.markdown("---")
 
@@ -566,7 +606,9 @@ def page_dashboard():
     st.subheader("Modül Risk Sıralaması")
 
     table_data = []
-    for name, data in sorted(module_risks.items(), key=lambda x: x[1].get("score", 0), reverse=True):
+    for name, data in sorted(
+        module_risks.items(), key=lambda x: x[1].get("score", 0), reverse=True
+    ):
         table_data.append({
             "Modül": name,
             "Risk Skoru": data.get("score", 0),
@@ -610,7 +652,9 @@ def page_dashboard():
                 df_weekly["Hafta"] = pd.to_datetime(df_weekly["Tarih"]).apply(
                     lambda d: d - pd.Timedelta(days=d.weekday())
                 )
-                weekly_counts = df_weekly.groupby(["Hafta", "Modül"]).size().reset_index(name="Bug Sayısı")
+                weekly_counts = (
+                    df_weekly.groupby(["Hafta", "Modül"]).size().reset_index(name="Bug Sayısı")
+                )
 
                 fig_trend = px.line(
                     weekly_counts,
@@ -630,7 +674,9 @@ def page_dashboard():
                 df_status["Kategori"] = df_status["Durum"].apply(
                     lambda s: "Açık" if s.lower() in open_statuses else "Kapalı"
                 )
-                status_by_module = df_status.groupby(["Modül", "Kategori"]).size().reset_index(name="Sayı")
+                status_by_module = (
+                    df_status.groupby(["Modül", "Kategori"]).size().reset_index(name="Sayı")
+                )
 
                 fig_status = px.bar(
                     status_by_module,
@@ -671,7 +717,10 @@ def page_bug_list():
 
     bugs = get_service().get_bugs()
     if not bugs:
-        st.info("Henüz bug verisi yüklenmemiş. Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın.")
+        st.info(
+            "Henüz bug verisi yüklenmemiş. "
+            "Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın."
+        )
         return
 
     col1, col2, col3 = st.columns(3)
@@ -694,7 +743,11 @@ def page_bug_list():
         if b.get("priority") in selected_priority
         and b.get("status") in selected_status
         and b.get("component") in selected_component
-        and (not search or search.lower() in b.get("key", "").lower() or search.lower() in b.get("summary", "").lower())
+        and (
+            not search
+            or search.lower() in b.get("key", "").lower()
+            or search.lower() in b.get("summary", "").lower()
+        )
     ]
 
     st.markdown(f"**{len(filtered)}** / {len(bugs)} bug gösteriliyor")
@@ -737,13 +790,17 @@ def page_live_analysis():
     with tab1:
         st.subheader("Tekli Bug / Alan Analizi")
 
-        analysis_type = st.radio("Analiz Türü", ["Bug Key ile", "Serbest Metin ile"], horizontal=True)
+        analysis_type = st.radio(
+            "Analiz Türü", ["Bug Key ile", "Serbest Metin ile"], horizontal=True
+        )
 
         if analysis_type == "Bug Key ile":
             bug_key = st.text_input("Bug Key", placeholder="Örn: AP-101")
             query = None
         else:
-            query = st.text_input("Analiz Sorgusu", placeholder="Örn: Authentication modülü güvenlik açıkları")
+            query = st.text_input(
+                "Analiz Sorgusu", placeholder="Örn: Authentication modülü güvenlik açıkları"
+            )
             bug_key = None
 
         if st.button("🚀 Analiz Et", key="single_analyze"):
@@ -762,7 +819,10 @@ def page_live_analysis():
 
     with tab2:
         st.subheader("Toplu Bug Analizi")
-        st.info("⚠️ Toplu analiz LLM API kotanızı kullanır. Rate limit aşılırsa circuit breaker devreye girer.")
+        st.info(
+            "⚠️ Toplu analiz LLM API kotanızı kullanır. "
+            "Rate limit aşılırsa circuit breaker devreye girer."
+        )
 
         bugs = get_service().get_bugs()
         if bugs:
@@ -800,17 +860,26 @@ def page_live_analysis():
                         col3.metric("⏭️ Atlanan", result.get("skipped", 0))
 
                         if result.get("circuit_breaker_triggered"):
-                            st.error("🔴 Circuit Breaker Tetiklendi! Rate limit aşıldığı için kalan buglar atlandı.")
+                            st.error(
+                                "🔴 Circuit Breaker Tetiklendi! "
+                                "Rate limit aşıldığı için kalan buglar atlandı."
+                            )
 
                         skipped = result.get("skipped_keys", [])
                         if skipped:
                             st.warning(f"Atlanan buglar: {', '.join(skipped)}")
 
                         for r in result.get("results", []):
-                            with st.expander(f"{r.get('bug_key', '?')} — Risk: {r.get('risk_score', 0)} ({r.get('risk_level', '?')})"):
+                            with st.expander(
+                                f"{r.get('bug_key', '?')} — "
+                                f"Risk: {r.get('risk_score', 0)} ({r.get('risk_level', '?')})"
+                            ):
                                 display_analysis_result(r)
         else:
-            st.info("Analiz edilecek bug verisi yok. Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın.")
+            st.info(
+                "Analiz edilecek bug verisi yok. "
+                "Sol menüden 'Jira'dan Senkronize Et' butonuna tıklayın."
+            )
 
 
 def display_analysis_result(result: dict):
@@ -821,7 +890,8 @@ def display_analysis_result(result: dict):
 
     st.markdown(
         f"### Risk Skoru: <span style='color:{color}; font-size:1.5em;'>{risk_score}</span> "
-        f"<span style='background-color:{color}; color:white; padding:2px 10px; border-radius:4px;'>{risk_level}</span>",
+        f"<span style='background-color:{color}; color:white; padding:2px 10px; "
+        f"border-radius:4px;'>{risk_level}</span>",
         unsafe_allow_html=True,
     )
 
@@ -852,7 +922,10 @@ def display_analysis_result(result: dict):
             for a in actions:
                 st.markdown(f"- {a}")
 
-    st.caption(f"Kaynak: {result.get('source', '?')} | Tarih: {result.get('analyzed_at', '?')[:19]}")
+    st.caption(
+        f"Kaynak: {result.get('source', '?')} | "
+        f"Tarih: {result.get('analyzed_at', '?')[:19]}"
+    )
 
 
 # =============================================================================
@@ -870,7 +943,10 @@ def page_patterns():
         return
 
     if not patterns:
-        st.info("Pattern tespit edilemedi. Yeterli bug verisi yüklendikten sonra bu sayfa otomatik dolar.")
+        st.info(
+            "Pattern tespit edilemedi. "
+            "Yeterli bug verisi yüklendikten sonra bu sayfa otomatik dolar."
+        )
         return
 
     # Summary metrics
@@ -919,7 +995,13 @@ def page_patterns():
             f"{bug_count} bug — {component}"
         )
 
-        with st.expander(f"{'🔴' if severity == 'critical' else '🟠' if severity == 'high' else '🟡' if severity == 'medium' else '🟢'} {header}"):
+        severity_emoji = (
+            "🔴" if severity == "critical"
+            else "🟠" if severity == "high"
+            else "🟡" if severity == "medium"
+            else "🟢"
+        )
+        with st.expander(f"{severity_emoji} {header}"):
 
             # Severity badge
             st.markdown(
@@ -1004,7 +1086,10 @@ def page_patterns():
 def page_blind_spots():
     """Display blind spots — untested risky areas and neglected bugs."""
     st.title("🎯 Kör Nokta Tespiti")
-    st.caption("Test edilmemiş riskli alanları, sahipsiz kritik bug'ları ve uzun süredir açık sorunları tespit eder.")
+    st.caption(
+        "Test edilmemiş riskli alanları, sahipsiz kritik bug'ları ve "
+        "uzun süredir açık sorunları tespit eder."
+    )
 
     data = call(get_service().detect_blind_spots)
 
@@ -1117,11 +1202,16 @@ def page_blind_spots():
 
     actions = []
     if unanalyzed:
-        actions.append(f"⚡ {len(unanalyzed)} riskli modülü **Canlı Analiz** sayfasından analiz edin")
+        actions.append(
+            f"⚡ {len(unanalyzed)} riskli modülü **Canlı Analiz** sayfasından analiz edin"
+        )
     if neglected:
         actions.append(f"🚨 {len(neglected)} kritik bug'a kaynak atayın veya öncelik güncelleyin")
     if stale:
-        actions.append(f"🕐 {len(stale)} bayat bug'ı gözden geçirin — kapatılabilir veya önceliklendirilebilir")
+        actions.append(
+            f"🕐 {len(stale)} bayat bug'ı gözden geçirin — "
+            "kapatılabilir veya önceliklendirilebilir"
+        )
     if rising:
         actions.append(f"📈 {len(rising)} modüle ek test kaynağı ayrılması önerilir")
 
@@ -1146,12 +1236,13 @@ def page_webhook_results():
 
         st.markdown("---")
         st.subheader("Webhook Nasıl Kurulur?")
+        jql_project = config.JIRA_PROJECT_KEY or "YOUR_PROJECT"
         st.markdown(f"""
         1. Jira'da **Settings → System → Webhooks** bölümüne gidin
         2. Yeni webhook oluşturun:
            - **URL:** `http://YOUR_SERVER:{config.API_PORT}/webhook/jira`
            - **Events:** Issue created, Issue updated
-           - **JQL Filter:** `project = {config.JIRA_PROJECT_KEY or 'YOUR_PROJECT'} AND issuetype = Bug`
+           - **JQL Filter:** `project = {jql_project} AND issuetype = Bug`
         3. Header ekleyin: `X-API-Key: {config.API_KEY[:8]}...`
         """)
         return
@@ -1160,10 +1251,10 @@ def page_webhook_results():
 
     for r in reversed(results):
         level = r.get("risk_level", "LOW")
-        color = RISK_COLORS.get(level, "#666")
         emoji = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}.get(level, "⚪")
         with st.expander(
-            f"{emoji} {r.get('bug_key', '?')} — {r.get('query', '?')[:60]} — Risk: {r.get('risk_score', 0)}"
+            f"{emoji} {r.get('bug_key', '?')} — {r.get('query', '?')[:60]} — "
+            f"Risk: {r.get('risk_score', 0)}"
         ):
             display_analysis_result(r)
 
@@ -1181,7 +1272,9 @@ def page_settings():
     st.subheader("🔗 Jira Bağlantısı")
 
     jira_url = st.text_input("Jira URL", value=config.JIRA_URL, placeholder="https://yourcompany.atlassian.net")
-    jira_email = st.text_input("Jira E-posta", value=config.JIRA_EMAIL, placeholder="you@company.com")
+    jira_email = st.text_input(
+        "Jira E-posta", value=config.JIRA_EMAIL, placeholder="you@company.com"
+    )
     jira_token = st.text_input("Jira API Token", value=config.JIRA_API_TOKEN, type="password",
                                help="[Token oluştur →](https://id.atlassian.com/manage-profile/security/api-tokens)")
     jira_project = st.text_input("Proje Key", value=config.JIRA_PROJECT_KEY, placeholder="AP",
@@ -1226,11 +1319,19 @@ def page_settings():
     )
 
     if provider == "groq":
-        llm_key = st.text_input("Groq API Key", value=config.GROQ_API_KEY, type="password",
-                                help="[Groq Console →](https://console.groq.com/keys) adresinden ücretsiz key alın")
+        llm_key = st.text_input(
+            "Groq API Key",
+            value=config.GROQ_API_KEY,
+            type="password",
+            help="[Groq Console →](https://console.groq.com/keys) adresinden ücretsiz key alın",
+        )
     else:
-        llm_key = st.text_input("OpenAI API Key", value=config.OPENAI_API_KEY, type="password",
-                                help="[OpenAI Platform →](https://platform.openai.com/api-keys) adresinden key alın")
+        llm_key = st.text_input(
+            "OpenAI API Key",
+            value=config.OPENAI_API_KEY,
+            type="password",
+            help="[OpenAI Platform →](https://platform.openai.com/api-keys) adresinden key alın",
+        )
 
     col1, col2 = st.columns(2)
     if col1.button("💾 LLM Ayarlarını Kaydet", use_container_width=True):
@@ -1308,7 +1409,10 @@ def page_settings():
 | API Key'ler | `gsk_abc123...`, `sk-abc123...` | `[APIKEY_001]` |
 """
     )
-    st.caption("Not: Düz metin olarak yazılmış kişi isimleri (ör. 'Ahmet Yılmaz') yapısal bir formata uymadığı için maskelenmez.")
+    st.caption(
+        "Not: Düz metin olarak yazılmış kişi isimleri (ör. 'Ahmet Yılmaz') "
+        "yapısal bir formata uymadığı için maskelenmez."
+    )
 
     anonymize = st.toggle(
         "Veri Anonimleştirme",
