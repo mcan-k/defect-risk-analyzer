@@ -75,6 +75,9 @@ Projenin en kritik adımı. `ui/` ile `server/` arasındaki HTTP bağımlılığ
 
 - [ ] `risk_analyzer.py`'ı böl: `vector_store` / `scoring` / `results_repository` / `analysis_service`
 - [ ] `dashboard.py`'daki `api_request()` çağrılarını doğrudan servis çağrısına çevir
+      (Faz 5B notu: **ölçülmedi**, muhtemelen bayat — `README.md` dashboard'un
+      servisi doğrudan çağırdığını söylüyor ve `api_request` kaynakta yok.
+      Kapatmadan önce ayrı bir ölçüm gerekiyor.)
 - [ ] `config.py`'ın import anındaki yan etkisini kaldır (testler `.env`'i bozmasın)
 - [ ] LLM provider'ı `analysis_service` constructor'ından enjekte et
 - [ ] `docker-compose.yml`'ı tek servise indir; `API_URL` / paylaşılan `API_KEY` sorunu ortadan kalkar
@@ -105,6 +108,7 @@ Yapıldı:
 - [x] `tests/test_dashboard_pages.py` — `baseline/walk_pages.py` portu, 7 sayfa
       `streamlit.testing.v1.AppTest` ile headless; üretilen geçici `.env` ve
       stub vector store sayesinde ChromaDB/Jira/ağ gerektirmiyor
+      (Faz 5B'de dört sayfaya göre yeniden yazıldı ve içerik doğrulaması eklendi)
 - [x] CI'a `pytest` + `ruff` adımları (`.github/workflows/tests.yml`)
 
 Yapılmadı — Faz 5'e taşındı (gerekçeleri `KNOWN-DEBT.md`'de):
@@ -137,7 +141,8 @@ Reddedildi (ertelenmedi):
       okunamayan dosya ve yapılandırılmamış Jira için aynı `[]`'i döndürdüğü
       için, bozuk kurulumda `POST /refresh` ve dashboard sync butonu indeksi
       siliyordu. `analysis_service.refresh()` `api.py:99` ile
-      `dashboard.py:237`'nin guard'ından yoksundu; artık var ve hangi okumayı
+      `ui/service.py`'deki `get_service()`'in guard'ından yoksundu; artık var ve
+      hangi okumayı
       seçtiğini `reindexed` ile bildiriyor. Katman "fetch başarısız" ile
       "gerçekten hiç bug yok"u ayırt **edemediği** için her zaman muhafazakâr
       okumayı seçiyor; indeksi kasten boşaltmak açık bir `reset()` işi.
@@ -292,14 +297,62 @@ davranışı taşımak sessiz kayıp demektir.
       sayfa değil bir akış — sidebar'dan seçilmiyor, `is_first_run()` ile
       koşullu çalışıyor, işi bitince görünmüyor. "7→4 sayfa" hedefiyle aynı
       kategoride değil. 5B'nin kapsamı için kayda geçti.
-- [ ] **Faz 5B** — sayfa birleştirme, native `pages/`, dosya taşıma, lint temizliği
-- [ ] 7 sayfa → 4: Genel bakış · Buglar · Analiz · Ayarlar
-- [ ] Streamlit native `pages/` yapısı; string eşlemeli router'ı sil
-- [ ] 110 satırlık gömülü CSS → `.streamlit/config.toml` teması
-- [ ] `locales/tr.json` + `locales/en.json`, sidebar'da dil seçici
-- [ ] Renk sadece risk seviyesini kodlasın
-- [ ] `data/sample_bugs_en.json` (İngilizce demo için)
+- [x] **Faz 5B** — sayfa birleştirme, native `pages/`, dosya taşıma, lint temizliği
+- [x] 7 sayfa → 4: Genel Bakış · Buglar · Analiz · Ayarlar
+
+      Gruplama verinin kaynağına göre: Genel Bakış ve Kör Nokta mevcut veriyi
+      okuyup raporluyor, LLM çağırmıyor; Canlı Analiz ve Webhook aynı
+      `display_analysis_result`'ı paylaşıyor. Her eski sayfa başlığı bir sekme
+      etiketi olarak yaşıyor. `page_setup_wizard` 5A kararı gereği ayrı akış
+      olarak kaldı ve hedef sayıya dahil değil.
+
+      İki bilinçli davranış değişikliği: Canlı Analiz'in iç sekmeleri üst düzeye
+      çıktı (bir tık azaldı, "Canlı Analiz" adı arayüzden kalktı), ve LLM guard'ı
+      artık sayfayı değil yalnız iki analiz sekmesini kesiyor — eski hâli merge
+      sonrası webhook geçmişini de gizlerdi, oysa o LLM'siz okunabilir.
+- [x] Streamlit native `pages/` yapısı; string eşlemeli router'ı sil
+
+      `st.navigation` **değil** `pages/` dizini seçildi. Streamlit 1.41.1'in
+      `AppTest`'i `st.navigation`/`st.Page` ile uyumsuz olduğunu kendi
+      docstring'inde söylüyor (`testing/v1/app_test.py:129`) ve sebebi yapısal:
+      `st.Page` URL yolunu hash'liyor, `AppTest.switch_page` mutlak dosya yolunu.
+      `st.navigation` ile dört sayfanın üçü test edilemez olurdu.
+
+      Yerleşik `pages/` navigasyonu kapalı, `shell.render_nav()` dört
+      `st.page_link` çiziyor. MPA-v1 giriş dosyasını her zaman listenin başına
+      koyduğu için aksi hâlde sidebar'da "app" yazan beşinci bir madde çıkardı;
+      ayrıca bu sayede `bootstrap()` wizard yolunda `st.stop()`'u nav'dan önce
+      çağırabiliyor ve sidebar eskisi gibi bomboş kalıyor. Bedeli
+      `KNOWN-DEBT.md`'de kayıtlı: `st.page_link`'i yalnız kaynak okuyan bir test
+      koruyor.
+- [~] 110 satırlık gömülü CSS → `.streamlit/config.toml` teması
+
+      **Bu madde yazıldığı gibi tutulamadı; kabul edilmiş sapma.** Streamlit
+      1.41.1'de `[theme]` bölümü tam **altı** seçenek sunuyor (`base`,
+      `primaryColor`, `backgroundColor`, `secondaryBackgroundColor`, `textColor`,
+      `font` — `config.py:958`). Gömülü bloğun **21 kuralının 0'ı** bunlarla
+      ifade edilebiliyor: beşi eleman gizliyor, on üçü geometri/tipografi ölçeği,
+      üçü element-başına alfa metin rengi ve `textColor` global. `borderColor`,
+      `baseRadius`, `headingFont` gibi seçenekler bu sürümde **yok**.
+
+      Yapılan: CSS `ui/theme.py::inject_css()`'e taşındı — import anındaki yan
+      etki açık bir çağrıya döndü, ki `st.set_page_config`'in ilk çağrı olma
+      zorunluluğu bunu gerektiriyordu. `config.toml`'a giren tek tema ayarı
+      `base = "dark"`: blok baştan sona `rgba(255,255,255,a)` bindirmesi, yani
+      koyu bir zemin varsayıyordu ama bunu hiçbir yerde sabitlememişti — teması
+      açık çözülen kullanıcı beyaz üstüne beyaz görüyordu.
+
+      Kalan iş: kuralların gerçekten temaya çevrilmesi bir tasarım işi, sürüm
+      yükseltmesi de gerektirebilir. Sahipli bir faza bağlanmadı.
+- [ ] `locales/tr.json` + `locales/en.json`, sidebar'da dil seçici → **5C**
+- [ ] Renk sadece risk seviyesini kodlasın → 5B kapsamına alınmadı
+- [ ] `data/sample_bugs_en.json` (İngilizce demo için) → **5C**
 - [ ] N+1 API çağrısı ve her render'daki `config.reload()` düzeltmesi
+
+      Faz 5B notu: **ölçülmedi**, muhtemelen bayat. `config.init()`
+      `_initialized` bayrağıyla korunuyor (`config.py:295-319`) ve `reload()`
+      yalnız `save_multiple_env` içinde çağrılıyor. Kapatmadan önce ayrı bir
+      ölçüm gerekiyor.
 
 ### Faz 6 — Güven katmanı (yarım gün)
 - [ ] **Jira token'ı `keyring`'e taşı** — düz metin `.env`'de kimlik bilgisi kalmasın

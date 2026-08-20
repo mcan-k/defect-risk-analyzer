@@ -431,8 +431,11 @@ def test_nav_declares_all_four_pages():
     while every other test in this file stayed green. Reading the source is
     coarse, but it is the only thing that closes that hole.
 
-    What it still does not catch: a link moved inside a conditional branch.
-    Recorded in docs/KNOWN-DEBT.md.
+    What it still does not catch: a link moved inside a conditional branch, or
+    render_nav() never being called at all. Recorded in docs/KNOWN-DEBT.md
+    under "Sidebar navigasyonunu yalnız kaynak okuyan bir test koruyor", along
+    with the condition for deleting this test — an AppTest accessor for
+    st.page_link in a later Streamlit release.
     """
     tree = ast.parse(Path(shell.__file__).read_text(encoding="utf-8"))
 

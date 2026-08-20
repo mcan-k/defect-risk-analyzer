@@ -18,7 +18,7 @@ Built on **ISTQB testing principles**: Defect Clustering (Pareto), Risk-Based Te
 - **Deterministic Risk Scoring** — Risk scores are calculated in Python using priority weights, bug density, open ratios, and trend analysis. The LLM interprets, not calculates.
 - **RAG Pipeline** — ChromaDB vector database stores historical bugs. Similar defects are retrieved for context-aware analysis. Loads are incremental: only bugs whose text or metadata changed are re-embedded, and bugs that left the source are removed.
 - **BYOK (Bring Your Own Key)** — Works with Groq (LLaMA 3.3 70b) or OpenAI (GPT-4o-mini). You provide your own API key.
-- **7-Page Dashboard** — Risk heatmap and trend charts, bug browser, live analysis, pattern detection, blind spot detection, webhook history, and self-service settings.
+- **4-Page Dashboard** — Genel Bakış (risk heatmap, trend charts, blind spots), Buglar (browser and pattern detection), Analiz (single, bulk and webhook analysis), Ayarlar (self-service settings).
 - **Pattern Detection** — Clusters similar bugs via vector similarity and extracts common root causes and duplicate candidates — no LLM call required.
 - **Blind Spot Detection** — Surfaces risky modules that were never analyzed, neglected critical bugs, and stale or rising-unattended areas.
 - **Circuit Breaker** — Bulk analysis stops on rate limit errors, protecting your API budget.
@@ -104,7 +104,7 @@ cp .env.example .env
 # 5. Start the dashboard — that is the whole application
 dra
 # ...or equivalently:
-streamlit run src/defect_risk_analyzer/dashboard.py --server.port 8501
+streamlit run src/defect_risk_analyzer/ui/app.py --server.port 8501
 ```
 
 `pip install -e .` is required — the modules live in `src/defect_risk_analyzer/` and import each other by package name.
@@ -345,7 +345,15 @@ defect-risk-analyzer/
 │   │   └── results_repository.py  # JSON persistence for results + density
 │   ├── services/
 │   │   └── analysis_service.py # Orchestration + LLM lock — the single entry point
-│   ├── dashboard.py            # Streamlit UI (7 pages, Turkish)
+│   ├── ui/                     # Everything the user reads (Turkish)
+│   │   ├── app.py             # Entry script AND the Genel Bakış page
+│   │   ├── pages/             # Buglar · Analiz · Ayarlar (Streamlit MPA-v1)
+│   │   ├── shell.py           # bootstrap(): page config, CSS, first-run gate, nav
+│   │   ├── service.py         # Shared AnalysisService handle + error boundary
+│   │   ├── theme.py           # Colors, chart styling, the stylesheet
+│   │   ├── results.py         # One analysis result, rendered
+│   │   ├── setup_wizard.py    # First-run flow — a flow, not a page
+│   │   └── messages.py        # Finding sentences (locales/ in Phase 5C)
 │   ├── ci_analyzer.py          # Headless CLI for GitHub Actions
 │   ├── api.py                  # Optional FastAPI service — webhook + REST
 │   ├── api_models.py           # Pydantic request/response models

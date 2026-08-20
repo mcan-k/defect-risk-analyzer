@@ -119,7 +119,7 @@ tespit edip tekilleştirebilir.
 
 ## Sidebar connection indicators show presence, not validity
 
-**Where:** [`src/defect_risk_analyzer/dashboard.py`](../src/defect_risk_analyzer/dashboard.py)
+**Where:** [`src/defect_risk_analyzer/ui/shell.py`](../src/defect_risk_analyzer/ui/shell.py)
 
 Sidebar'daki "✅ Jira: Bağlı" ve "✅ LLM: Groq" göstergeleri
 `config.is_jira_configured()` / `config.is_llm_configured()` sonucunu
@@ -513,6 +513,36 @@ testleri `pattern_detector` ile birlikte.
 
 ---
 
+## Sidebar navigasyonunu yalnız kaynak okuyan bir test koruyor
+
+**Where:** [`src/defect_risk_analyzer/ui/shell.py`](../src/defect_risk_analyzer/ui/shell.py),
+[`tests/test_dashboard_pages.py`](../tests/test_dashboard_pages.py)
+
+Faz 5B navigasyonu `st.page_link` ile çiziyor. Streamlit 1.41.1'in `AppTest`'i bu
+elemanı tanımıyor: `testing/v1/element_tree.py`'de karşılığı yok, `UnknownElement`
+olarak düşüyor. Yani render edilmiş sayfaya bakan hiçbir iddia sidebar'da dört
+bağlantı mı, üç mü, hiç mi olduğunu söyleyemez. Biri yanlışlıkla silinirse o sayfa
+erişilemez hâle gelir ve süit yeşil kalır.
+
+`test_nav_declares_all_four_pages` bu boşluğu kaynağı `ast` ile okuyarak kapatıyor:
+`page_link` çağrılarını topluyor, tam dördü olduğunu, hedeflerin sırasıyla
+`app.py`, `pages/buglar.py`, `pages/analiz.py`, `pages/ayarlar.py` olduğunu ve her
+birinin diskte var olduğunu doğruluyor. Mutasyonla sınandı: bir `page_link`
+silinince kırmızıya dönüyor.
+
+**Impact:** test çağrının **varlığını** görüyor, **çalıştığını** değil. Bir
+`page_link` koşullu bir dalın içine taşınırsa — `if config.is_llm_configured():`
+gibi — AST hâlâ dört çağrı sayar ve test yeşil kalır, ama kullanıcı üç bağlantı
+görür. Aynı şekilde `render_nav()` hiç çağrılmaz olursa da fark etmez; onu tutan
+tek şey `bootstrap()`'ın kendisi.
+
+**Planned fix:** yok, ve bilinçli. Doğru çözüm yukarı akışta — `AppTest`'in
+`page_link` için bir erişimci kazanması. Streamlit sürümü yükseltildiğinde
+`element_tree.py`'de `page_link` var mı diye bakılsın; varsa bu test render
+edilmiş ağaca karşı yeniden yazılabilir ve AST sürümü silinir.
+
+---
+
 ## ROADMAP Faz 3'te olup Faz 3'e alınmayanlar
 
 **Where:** [`docs/ROADMAP-v2.md`](ROADMAP-v2.md), [`tests/`](../tests/)
@@ -560,7 +590,7 @@ Faz 3 CI'a `ruff check .` eklerken, deponun bu komutu **hiç geçmediği** ortay
 
 | dosya | kural | adet |
 |---|---|---|
-| `dashboard.py` | E501 / F841 | 37 / 1 |
+| `dashboard.py` — Faz 5B'de temizlendi | E501 / F841 | 37 / 1 |
 | `api.py` | B904 | 9 |
 | `llm_provider.py` | B904 | 6 |
 | `ci_analyzer.py` — Faz 4(b)'de temizlendi | E501 | 5 |
@@ -581,8 +611,20 @@ için olabildiğince dar tutuldu.
 
 **Planned fix:** girdiler dosya bazında ve fazı yazılı olarak konuldu;
 `pyproject.toml`'daki her satırın üstünde hangi fazda kalkacağı yazıyor
-(dashboard.py → Faz 5, api.py → Faz 5, llm_provider.py → Faz 6, kalanlar
-sahipsiz). Silinmek için konuldular, büyütülmek için değil.
+(api.py → Faz 6, llm_provider.py → Faz 6, kalanlar sahipsiz). Silinmek için
+konuldular, büyütülmek için değil.
+
+**Kapanan:** `dashboard.py` → Faz 5B'de temizlendi (37 E501 + 1 F841).
+Taşımadan **önce** yapıldı: 37 uzun satırın yalnız biri yeniden yazımla ölüyordu
+(sidebar radio'sunun yedi etiketlik satır içi listesi), kalan 36'sı olduğu gibi
+`ui/` altına taşınacaktı ve orada hiçbir karantina yok — yani taşıma commit'i
+CI'da kırmızı olurdu. Sarmaların çoğu örtük dize birleştirmesi, yani yanlış
+konan bir boşluk kullanıcının okuduğu metni sessizce değiştirir; bir önceki
+commit'in içerik testleri değişmeden yeşil kaldığı için bu iddia denetlenebilir.
+F841 gerçek bir ölü atamaydı: `page_webhook_results` hiç kullanmadığı bir renk
+hesaplıyordu, `display_analysis_result` zaten kendi rengini üretiyor.
+`api.py`'nin `B904` girdisi Faz 5'i işaret ediyordu; beklediği sözleşme
+yeniden yazımı 5A'da chaining'e dokunulmadan yapıldı, girdi Faz 6'ya taşındı.
 
 **Kapanan:** `ci_analyzer.py` → Faz 4(b) Bölüm A'da temizlendi (5 E501). Satır
 sarma gerekmedi: rapor gövdesi yanlış pozitif düzeltmesi sırasında yeniden
@@ -591,5 +633,8 @@ Girdinin üstündeki yorum da yanlış teşhisi tekrar ediyordu ("Faz 4 aligns t
 module's component names with component_classifier"); bkz. `ROADMAP-v2.md` Faz 4.
 
 Yukarıdaki 70 / 54 / 5 sayıları Faz 3 anındaki ölçümdür ve geriye dönük
-düzeltilmiyor — tarihsel kayıt. Bugünkü bakiye ayrı bir sayıdır: **65 açık**
-(49 E501 + 15 B904 + 1 F841).
+düzeltilmiyor — tarihsel kayıt. Bugünkü bakiye ayrı bir sayıdır: **25 açık**
+(10 E501 + 15 B904). Faz 5B ölçümü: `ruff check --isolated --line-length 100
+--select E501,F841 src` → `api_models.py` 4, `prompt_templates.py` 3,
+`pattern_detector.py` 2, `anonymizer.py` 1. Hiçbiri sahipli bir faza bağlı
+değil.

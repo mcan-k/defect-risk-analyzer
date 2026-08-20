@@ -6,7 +6,8 @@ destructive index for callers that did not ask for one.
 
 The first is a bug. `refresh()` passed refresh_data()'s result straight into
 load_bugs() with no check (analysis_service.py:117-118), while every other caller
-of load_bugs guards with `if bugs:` (api.py:99, dashboard.py:237). refresh_data()
+of load_bugs guards with `if bugs:` (api.py:99, ui/service.py get_service()).
+refresh_data()
 returns [] for a missing bugs.json, an unreadable one, and an unconfigured Jira
 alike (jira_client.py:329-334, :383-385), so a misconfigured install turned
 `POST /refresh` and the dashboard's sync button into a delete: the empty list
