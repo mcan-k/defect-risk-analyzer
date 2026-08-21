@@ -212,9 +212,10 @@ def test_the_collection_follows_the_data_source(tmp_path, monkeypatch, mock_mode
 def test_flipping_mock_mode_reopens_under_the_new_name(tmp_path, monkeypatch):
     """C2 — the name is resolved per call, never frozen at construction.
 
-    This is not hypothetical tidiness. dashboard.save_multiple_env() writes
+    This is not hypothetical tidiness. ui.service.save_multiple_env() writes
     USE_MOCK_DATA and calls config.reload(), but the AnalysisService holding this
-    store is cached with @st.cache_resource and survives (dashboard.py:209-217).
+    store is cached with @st.cache_resource and survives (ui/service.py,
+    get_service).
     A name resolved in __init__ would send mock data into the live collection on
     the very first toggle — exactly the contamination this phase is removing.
     """

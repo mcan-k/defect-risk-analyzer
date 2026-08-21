@@ -456,6 +456,44 @@ def test_shipped_map_matches_this_repository(shipped: ModuleMap):
         assert infer_module_provenance([path], shipped) == expected, path
 
 
+@pytest.mark.parametrize(
+    "path",
+    [
+        "src/defect_risk_analyzer/ui/app.py",
+        "src/defect_risk_analyzer/ui/shell.py",
+        "src/defect_risk_analyzer/ui/messages.py",
+        "src/defect_risk_analyzer/ui/pages/buglar.py",
+    ],
+)
+def test_the_shipped_map_claims_the_whole_ui_package(shipped: ModuleMap, path: str):
+    """Every file under ui/ is Dashboard UI, at any depth.
+
+    Faz 5A measured the hole this closes: ui/messages.py and ui/__init__.py were
+    analysed and matched nothing, because the map named dashboard.py by its
+    exact path and knew no ui/ pattern at all. Faz 5B then moved dashboard.py
+    into that same unmapped package, which would have taken the whole UI out of
+    the report — silently, since an unmatched path is reported as "no mapping"
+    rather than as an error.
+
+    Parametrised over four depths deliberately: a trailing ** has to cross more
+    than one segment for ui/pages/ to be covered, and nothing else in the suite
+    pins that against the committed file.
+    """
+    assert infer_module_provenance([path], shipped) == {
+        "Dashboard UI": [(path, "src/defect_risk_analyzer/ui/**")]
+    }
+
+
+def test_the_shipped_map_has_no_pattern_for_a_deleted_file(shipped: ModuleMap):
+    """dashboard.py is gone; a pattern naming it would be dead weight.
+
+    An exact-path pattern for a file that no longer exists never matches and
+    never fails — it just sits there suggesting the map still covers something
+    it does not.
+    """
+    assert "src/defect_risk_analyzer/dashboard.py" not in shipped.modules
+
+
 def _tracked_files() -> list[str]:
     """Every file git tracks, in the POSIX form the diff parser also sees."""
     try:

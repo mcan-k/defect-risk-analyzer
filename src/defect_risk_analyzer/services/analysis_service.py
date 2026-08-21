@@ -138,7 +138,8 @@ class AnalysisService:
         bugs = refresh_data()
 
         if not bugs:
-            # The same guard api.py:99 and dashboard.py:237 have always had.
+            # The same guard api.py and ui/service.py's get_service() have
+            # always had before calling load_bugs().
             logger.warning("Refresh returned no bugs. Keeping the existing data and index.")
             return {
                 "bugs_fetched": 0,

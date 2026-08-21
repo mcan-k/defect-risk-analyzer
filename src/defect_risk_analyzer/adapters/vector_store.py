@@ -246,8 +246,8 @@ class VectorStore:
         Read at call time, never cached in __init__. The dashboard writes
         USE_MOCK_DATA and calls config.reload() while the AnalysisService
         holding this store stays alive behind @st.cache_resource
-        (dashboard.py:209-217), so a name frozen at construction would send mock
-        data into the live collection on the first toggle.
+        (ui/service.py, get_service), so a name frozen at construction would
+        send mock data into the live collection on the first toggle.
         """
         return COLLECTION_MOCK if config.USE_MOCK_DATA else COLLECTION_LIVE
 

@@ -82,12 +82,10 @@ select = ["E", "F", "I", "UP", "B"]
 # specific files would also be missed. Each entry is scoped as narrowly as
 # possible to limit that, and each is meant to be deleted, not extended.
 [tool.ruff.lint.per-file-ignores]
-# 37 long lines + 1 unused local. Faz 5 rewrites this file (7 pages -> 4,
-# native streamlit pages/, string-matched router deleted); clear both then.
-"src/defect_risk_analyzer/dashboard.py" = ["E501", "F841"]
-
-# 9 raise-without-from in the FastAPI handlers. Faz 5 reworks the API contract
-# (blind_spot_detector returns structured data); fix the chaining there.
+# 9 raise-without-from in the FastAPI handlers. Faz 6 — the contract rework this
+# entry was waiting for happened in Faz 5A (blind_spot_detector returns
+# structured data, BlindSpotReport pins the response) without touching the
+# chaining, so the fix has no phase of its own yet.
 "src/defect_risk_analyzer/api.py" = ["B904"]
 
 # 6 raise-without-from in the provider error mapping. Faz 6 revisits this code
