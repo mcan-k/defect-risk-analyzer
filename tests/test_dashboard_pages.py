@@ -176,7 +176,12 @@ FORBIDDEN = (
 # refresh_data() checks USE_MOCK_DATA before is_jira_configured(), so mock mode
 # wins. Nothing reaches an LLM either; analysis is button-triggered and no test
 # clicks it.
+#
+# DRA_LANGUAGE is pinned for the same reason the credentials are: every content
+# assertion in this file is a Turkish string, and without this line those pins
+# would quietly mean "whatever language the developer last picked".
 CONFIGURED_ENV = (
+    "DRA_LANGUAGE=tr\n"
     "USE_MOCK_DATA=True\n"
     "ANONYMIZE_DATA=False\n"
     "GROQ_SLEEP=0\n"
@@ -310,6 +315,17 @@ def _rewrite_env(text: str):
 def unconfigured():
     """A fresh install: no Jira, no LLM key, no mock mode — so is_first_run()."""
     yield from _rewrite_env("")
+
+
+@pytest.fixture
+def restorable_env():
+    """The configured install, with the .env restored afterwards.
+
+    For tests that make the app WRITE to .env. The module fixture writes
+    CONFIGURED_ENV once; without this, a test that changes a setting would
+    leave every later test looking at that change.
+    """
+    yield from _rewrite_env(CONFIGURED_ENV)
 
 
 @pytest.fixture
@@ -491,6 +507,54 @@ def test_the_webhook_tab_reads_without_an_llm(without_llm):
 
     assert _rendered(at, "tabs") == TABS["pages/analiz.py"]
     assert "Henüz webhook analiz sonucu yok." in _rendered(at, "info")
+
+
+# ---------------------------------------------------------------------------
+# Language picker
+# ---------------------------------------------------------------------------
+
+
+def test_the_sidebar_offers_the_language_picker():
+    """Every page draws it, because render_nav() is part of bootstrap()."""
+    at = _open()
+
+    pickers = [s for s in at.sidebar.selectbox if s.label == "Dil"]
+    assert pickers, f"no language picker in the sidebar: {[s.label for s in at.sidebar.selectbox]}"
+    # AppTest reports options as the strings the user actually sees, i.e. after
+    # format_func. Endonyms on purpose: a language picker written in the
+    # language you cannot read is the one control a lost user cannot use.
+    assert pickers[0].options == ["Türkçe", "English"]
+    assert pickers[0].value == "tr"
+
+
+def test_the_wizard_offers_the_language_picker_without_shifting_the_mode_radio(unconfigured):
+    """The wizard is the only screen a fresh install has, and it has no sidebar.
+
+    The second assertion is the reason the picker is a selectbox: the wizard's
+    mode picker is reached below as at.radio[0], and a radio-shaped language
+    control would take that index and make those tests drive the wrong widget
+    while still passing.
+    """
+    at = _open()
+
+    assert any(s.label == "Dil" for s in at.selectbox)
+    assert at.radio[0].label == "Mod seçin:"
+
+
+def test_choosing_a_language_persists_it_to_env(restorable_env):
+    """Live for this session, and still chosen after a restart.
+
+    session_state alone would forget on the next browser session; .env alone
+    would need a restart to take effect. The picker writes both, and this pins
+    the half that outlives the process.
+    """
+    at = _open()
+
+    picker = [s for s in at.sidebar.selectbox if s.label == "Dil"][0]
+    picker.set_value("en").run()
+
+    assert "DRA_LANGUAGE=en" in config.ENV_FILE.read_text(encoding="utf-8")
+    assert not at.exception, [f"{e.value}" for e in at.exception]
 
 
 # ---------------------------------------------------------------------------

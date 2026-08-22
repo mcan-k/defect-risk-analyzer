@@ -10,11 +10,22 @@ import time
 
 import streamlit as st
 
+from defect_risk_analyzer.ui import language
 from defect_risk_analyzer.ui.service import save_multiple_env
 
 
 def render_setup_wizard():
     """First-run setup wizard for new users."""
+    # A fresh install has no sidebar — bootstrap() stops the script before the
+    # navigation — so this is the only place the language can be chosen, and a
+    # non-Turkish user would otherwise be locked inside a Turkish setup.
+    #
+    # st.selectbox, NOT st.radio: tests/test_dashboard_pages.py reaches the
+    # mode picker below as at.radio[0], and a second radio above it would
+    # silently make that test drive the wrong widget.
+    _, picker = st.columns([3, 1])
+    language.render_selector(picker)
+
     st.title("🚀 Defect Risk Analyzer — İlk Kurulum")
     st.markdown("Hoş geldiniz! Uygulamayı kullanmaya başlamak için aşağıdaki adımları tamamlayın.")
     st.markdown("---")

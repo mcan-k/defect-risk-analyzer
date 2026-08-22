@@ -12,6 +12,7 @@ did when the wizard was a full-screen page inside a single-script app.
 import streamlit as st
 
 from defect_risk_analyzer import config
+from defect_risk_analyzer.ui import language
 from defect_risk_analyzer.ui.service import call, get_service, get_status
 from defect_risk_analyzer.ui.setup_wizard import render_setup_wizard
 from defect_risk_analyzer.ui.theme import inject_css
@@ -30,6 +31,11 @@ def bootstrap() -> None:
     # The single bootstrap point for this process: creates data/ and reads
     # .env. Idempotent, so the Streamlit rerun loop does not re-read the file.
     config.init()
+
+    # Before anything reads a message, and after config.init() has supplied the
+    # persisted default. The wizard is on the far side of the gate below and
+    # renders in this language too.
+    language.apply()
 
     if config.is_first_run():
         render_setup_wizard()
@@ -57,6 +63,11 @@ def render_nav() -> None:
     st.sidebar.page_link("pages/buglar.py", label="🐛 Buglar")
     st.sidebar.page_link("pages/analiz.py", label="⚡ Analiz")
     st.sidebar.page_link("pages/ayarlar.py", label="⚙️ Ayarlar")
+
+    # Under the links rather than above them: the four pages are what the
+    # sidebar is for, and a settings-shaped control should not be the first
+    # thing in it. Placed before the divider so the block count is unchanged.
+    language.render_selector(st.sidebar)
 
     st.sidebar.markdown("---")
 

@@ -193,6 +193,13 @@ MAX_RETRIES: int = 2
 # Mock Data Mode
 USE_MOCK_DATA: bool = False
 
+# Interface language — the persisted default a fresh process starts with. The
+# live value for a browser session lives in st.session_state; see
+# ui/language.py. Not validated here: ui/i18n.set_language() normalises an
+# unknown code to the source language and logs it, and duplicating that check
+# would mean two places to update when a locale is added.
+LANGUAGE: str = "tr"
+
 # Data Anonymization
 ANONYMIZE_DATA: bool = True
 
@@ -220,6 +227,7 @@ def reload() -> None:
     global MAX_DAILY_REQUESTS, GROQ_SLEEP, MAX_RETRIES
     global USE_MOCK_DATA
     global ANONYMIZE_DATA
+    global LANGUAGE
     global API_HOST, API_PORT, STREAMLIT_PORT, LOG_LEVEL
 
     # Re-read .env (override=True forces refresh)
@@ -244,6 +252,8 @@ def reload() -> None:
 
     USE_MOCK_DATA = _get_env_bool("USE_MOCK_DATA", False)
     ANONYMIZE_DATA = _get_env_bool("ANONYMIZE_DATA", True)
+
+    LANGUAGE = _get_env("DRA_LANGUAGE", "tr").lower()
 
     API_HOST = _get_env("API_HOST", "0.0.0.0")
     API_PORT = _get_env_int("API_PORT", 8000)
