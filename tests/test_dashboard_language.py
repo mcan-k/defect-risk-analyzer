@@ -67,6 +67,8 @@ def english_dashboard(sandbox_dir, sample_bugs_path):
     config.ENV_FILE.write_text(ENGLISH_ENV, encoding="utf-8")
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(sample_bugs_path, config.SAMPLE_BUGS_FILE)
+    # Both demo sets, so config.sample_bugs_file() has a real choice to make.
+    shutil.copyfile(sample_bugs_path.parent / "sample_bugs_en.json", config.SAMPLE_BUGS_EN_FILE)
 
     mp.setattr(config, "_initialized", False)
     mp.setattr(analysis_service_module, "VectorStore", StubVectorStore)
@@ -187,6 +189,26 @@ def test_the_language_picker_reports_english():
     pickers = [s for s in at.sidebar.selectbox if s.label == i18n.catalog("en")["sidebar.language"]]
     assert pickers, "no language picker on an English page"
     assert pickers[0].value == "en"
+
+
+def test_the_english_page_shows_the_english_demo_bugs():
+    """End to end: the menus and the content are in the same language.
+
+    Translating the interface around 20 Turkish bug reports would be half an
+    i18n. This reads the bug table on the Buglar page and asserts it holds the
+    English summaries — the keys stay AP-101 and friends in both files, so the
+    summary text is what distinguishes them.
+    """
+    at = _open("pages/buglar.py")
+
+    summaries = []
+    for element in at.dataframe:
+        if "summary" in element.value.columns:
+            summaries += element.value["summary"].tolist()
+
+    assert summaries, "the bug list rendered no rows"
+    assert any("No error message shown" in text for text in summaries), summaries[:3]
+    assert not any(TURKISH_LETTERS & set(text) for text in summaries), summaries[:3]
 
 
 def test_the_risk_table_headers_are_translated():

@@ -317,7 +317,7 @@ def load_bugs_from_file(file_path=None) -> list[dict[str, Any]]:
     """
     if file_path is None:
         if config.USE_MOCK_DATA:
-            file_path = config.SAMPLE_BUGS_FILE
+            file_path = config.sample_bugs_file()
         else:
             file_path = config.BUGS_FILE
 
@@ -377,8 +377,9 @@ def refresh_data() -> list[dict[str, Any]]:
         List of bug dictionaries.
     """
     if config.USE_MOCK_DATA:
-        logger.info("Mock mode active — loading sample_bugs.json.")
-        return load_bugs_from_file(config.SAMPLE_BUGS_FILE)
+        sample = config.sample_bugs_file()
+        logger.info("Mock mode active — loading %s.", sample.name)
+        return load_bugs_from_file(sample)
 
     if not config.is_jira_configured():
         logger.warning("Jira not configured. Attempting to load existing bugs.json.")

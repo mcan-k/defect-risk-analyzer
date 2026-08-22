@@ -72,6 +72,7 @@ MODULE_MAP_FILE = BASE_DIR / "module-map.json"
 # Data File Paths (static)
 BUGS_FILE: Path = DATA_DIR / "bugs.json"
 SAMPLE_BUGS_FILE: Path = DATA_DIR / "sample_bugs.json"
+SAMPLE_BUGS_EN_FILE: Path = DATA_DIR / "sample_bugs_en.json"
 ANALYSIS_RESULTS_FILE: Path = DATA_DIR / "analysis_results.json"
 DEFECT_DENSITY_FILE: Path = DATA_DIR / "defect_density.json"
 ANON_MAP_FILE: Path = DATA_DIR / "anon_map.json"
@@ -272,6 +273,29 @@ def get_llm_model() -> str:
     if LLM_PROVIDER == "openai":
         return DEFAULT_OPENAI_MODEL
     return DEFAULT_GROQ_MODEL
+
+
+def sample_bugs_file() -> Path:
+    """The demo bug set matching the PERSISTED interface language.
+
+    Read from LANGUAGE, not from whatever a browser session currently shows,
+    and that is a deliberate limit rather than an oversight.
+
+    The dashboard's service handle is @st.cache_resource and loads bugs once
+    per process. Making the demo set follow the live language would mean
+    clearing that cache on every toggle, which means reloading and RE-INDEXING
+    into ChromaDB. Faz 4(a) exists because indexing used to happen as a silent
+    side effect of unrelated actions; a presentation control triggering it
+    again would be the same mistake with a new trigger.
+
+    So the language picker changes the interface immediately and the demo data
+    follows on the next explicit sync or the next start. Falls back to the
+    Turkish set when the English one is absent: a missing translation should
+    leave a working demo, not an empty bug list.
+    """
+    if LANGUAGE == "en" and SAMPLE_BUGS_EN_FILE.is_file():
+        return SAMPLE_BUGS_EN_FILE
+    return SAMPLE_BUGS_FILE
 
 
 def is_jira_configured() -> bool:
