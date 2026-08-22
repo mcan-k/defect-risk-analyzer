@@ -13,12 +13,17 @@ is only "the text moved" if the strings are still character for character the
 same, and that is what these compare.
 """
 
+import ast
 import json
+import re
+from pathlib import Path
 
 import pytest
 
 from defect_risk_analyzer.ui import i18n
 from defect_risk_analyzer.ui.messages import TEMPLATES
+
+UI_DIR = Path(i18n.__file__).resolve().parent
 
 
 @pytest.fixture(scope="module")
@@ -204,3 +209,208 @@ def test_t_renders_in_the_active_language():
 
     assert "AP-1" in english and "AP-1" in turkish
     assert english != turkish
+
+
+# =============================================================================
+# The source and the catalogs agree — both directions
+# =============================================================================
+
+#: t() called with a computed key. Each entry is a prefix whose whole namespace
+#: is reachable that way, and the list is deliberately closed: a new dynamic
+#: call site fails test_dynamic_t_calls_are_all_declared until it is added here
+#: with a reason. Without that, one f-string would silently excuse every unused
+#: key in the catalog from the "is it used?" check below.
+DYNAMIC_PREFIXES = {
+    "chart.status.": "ui/app.py — open/closed, from the status column",
+    "severity.": "ui/pages/buglar.py — pattern severity, from the detector",
+    "finding.": "ui/messages.py — blind spot codes, from the detector",
+}
+
+
+def _ui_sources() -> list[Path]:
+    return sorted(UI_DIR.rglob("*.py"))
+
+
+def _collect_t_calls() -> tuple[set[str], list[str]]:
+    """Every t() key in ui/, split into literal keys and dynamic call sites."""
+    literal: set[str] = set()
+    dynamic: list[str] = []
+
+    for path in _ui_sources():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not node.args:
+                continue
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            if name != "t":
+                continue
+
+            first = node.args[0]
+            if isinstance(first, ast.Constant) and isinstance(first.value, str):
+                literal.add(first.value)
+            else:
+                dynamic.append(f"{path.name}:{node.lineno}")
+
+    return literal, dynamic
+
+
+def test_every_t_key_exists_in_every_locale(catalogs):
+    """The failure this prevents: a key is renamed in one place and not the other.
+
+    UnknownMessageKey would surface it, but only on the code path that renders
+    that one message — which may be a branch no test walks. This sees all of
+    them at parse time.
+    """
+    literal, _ = _collect_t_calls()
+
+    missing = sorted(
+        f"{language}:{key}"
+        for language, catalog in catalogs.items()
+        for key in literal
+        if key not in catalog
+    )
+    assert not missing, f"t() calls with no message: {missing}"
+
+
+def test_every_message_is_actually_used(catalogs):
+    """The other direction: a key nothing renders is either dead or a typo.
+
+    Both are worth knowing. A dead key costs a translator real work on a string
+    no user will read, and a typo shows up here as the *old* key going unused
+    while test_every_t_key_exists reports the new one missing.
+    """
+    literal, _ = _collect_t_calls()
+
+    unused = sorted(
+        key
+        for key in catalogs[i18n.SOURCE_LANGUAGE]
+        if key not in literal
+        and not any(key.startswith(prefix) for prefix in DYNAMIC_PREFIXES)
+    )
+    assert not unused, f"messages nothing renders: {unused}"
+
+
+def test_dynamic_t_calls_are_all_declared():
+    """One call site per declared prefix, and no undeclared ones."""
+    _, dynamic = _collect_t_calls()
+
+    assert len(dynamic) == len(DYNAMIC_PREFIXES), (
+        f"t() call sites with a computed key: {dynamic}. Every one needs an entry "
+        f"in DYNAMIC_PREFIXES, otherwise it silently excuses unused messages."
+    )
+
+
+# =============================================================================
+# No bare user-facing literal is left in ui/
+# =============================================================================
+
+#: Strings that reach a streamlit call but are not text a user reads. This list
+#: IS the record of what was deliberately left alone; it is meant to shrink or
+#: stay put, never to grow without a reason.
+NOT_TRANSLATABLE = {
+    # st.page_link targets — file paths, pinned separately by
+    # test_nav_declares_all_four_pages in tests/test_dashboard_pages.py.
+    "app.py", "pages/buglar.py", "pages/analiz.py", "pages/ayarlar.py",
+    # Provider identifiers: values written to .env and compared against
+    # config.LLM_PROVIDER, not labels.
+    "groq", "openai",
+    # Placeholders that are examples of a format, not sentences.
+    "you@company.com", "AP", "gsk_...", "sk-...", "ATATT3x...",
+}
+
+_HTML_TAG = re.compile(r"<[^>]*>")
+_HTML_ENTITY = re.compile(r"&[a-zA-Z]+;")
+
+_RENDERERS = frozenset({
+    "title", "header", "subheader", "markdown", "caption", "info", "warning",
+    "error", "success", "metric", "text_input", "text_area", "multiselect",
+    "selectbox", "radio", "button", "toggle", "number_input", "tabs", "expander",
+    "dataframe", "code", "progress", "spinner", "write", "text", "checkbox",
+    "slider", "download_button", "page_link", "link_button", "toast",
+})
+
+#: Keyword arguments that carry text a user reads.
+_VISIBLE_KW = frozenset({"label", "help", "placeholder", "text", "body", "caption"})
+
+#: Keyword arguments that never do — values, flags, geometry, widget keys.
+_INVISIBLE_KW = frozenset({
+    "key", "language", "type", "index", "value", "use_container_width",
+    "hide_index", "horizontal", "label_visibility", "min_value", "max_value",
+    "step", "default", "options", "column_config", "unsafe_allow_html",
+    "on_change", "format_func",
+})
+
+
+def _strings_in(node: ast.AST):
+    """Every string literal reachable from an argument expression.
+
+    f-strings collapse to their constant parts with {} where a value goes, so
+    "**{name}** — {n} bug" is judged on "**{}** — {} bug".
+    """
+    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+        yield node.value
+    elif isinstance(node, ast.JoinedStr):
+        yield "".join(p.value if isinstance(p, ast.Constant) else "{}" for p in node.values)
+    elif isinstance(node, ast.List | ast.Tuple):
+        for element in node.elts:
+            yield from _strings_in(element)
+    elif isinstance(node, ast.BinOp):
+        for side in (node.left, node.right):
+            yield from _strings_in(side)
+    elif isinstance(node, ast.IfExp):
+        for side in (node.body, node.orelse):
+            yield from _strings_in(side)
+
+
+def _is_prose(text: str) -> bool:
+    """True if anything is left to read once markup and values are removed."""
+    stripped = _HTML_ENTITY.sub("", _HTML_TAG.sub("", text)).replace("{}", "")
+    return any(character.isalpha() for character in stripped)
+
+
+def _on_logger(call: ast.Call) -> bool:
+    """logger.info/warning/error share names with st.* but are not user-facing."""
+    func = call.func
+    return (
+        isinstance(func, ast.Attribute)
+        and isinstance(func.value, ast.Name)
+        and func.value.id == "logger"
+    )
+
+
+def test_no_bare_user_facing_literal_survives_in_ui():
+    """Every sentence the user reads goes through t(), or is listed above.
+
+    This is the mechanised form of the Faz 5C measurement — 227 call sites
+    across eight files — and its real job is the next change rather than this
+    one: adding st.subheader("Yeni Bölüm") to a page would ship a string no
+    locale can reach, and nothing else in the suite would notice.
+    """
+    offenders = []
+
+    for path in _ui_sources():
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or _on_logger(node):
+                continue
+            func = node.func
+            name = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", None)
+            if name not in _RENDERERS:
+                continue
+
+            values = [text for arg in node.args for text in _strings_in(arg)]
+            for keyword in node.keywords:
+                if keyword.arg in _INVISIBLE_KW:
+                    continue
+                if keyword.arg in _VISIBLE_KW or keyword.arg is None:
+                    values += list(_strings_in(keyword.value))
+
+            for text in values:
+                if text in NOT_TRANSLATABLE or text.strip().startswith(("<style", "http")):
+                    continue
+                if not _is_prose(text):
+                    continue
+                offenders.append(f"{path.name}:{node.lineno} st.{name}({text[:60]!r})")
+
+    assert not offenders, "untranslated literals: " + "; ".join(offenders)
