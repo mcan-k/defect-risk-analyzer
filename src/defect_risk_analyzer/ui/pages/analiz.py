@@ -19,6 +19,7 @@ from defect_risk_analyzer.ui.i18n import t
 from defect_risk_analyzer.ui.results import display_analysis_result
 from defect_risk_analyzer.ui.service import call, get_service
 from defect_risk_analyzer.ui.shell import bootstrap
+from defect_risk_analyzer.ui.theme import risk_level_label
 
 bootstrap()
 
@@ -116,7 +117,7 @@ def render_bulk_analysis():
                                 "analysis.bulk.item",
                                 bug_key=r.get("bug_key", "?"),
                                 risk_score=r.get("risk_score", 0),
-                                risk_level=r.get("risk_level", "?"),
+                                risk_level=risk_level_label(r.get("risk_level", "?")),
                             )
                         ):
                             display_analysis_result(r)

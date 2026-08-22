@@ -22,7 +22,13 @@ from defect_risk_analyzer.ui.i18n import t
 from defect_risk_analyzer.ui.messages import format_finding
 from defect_risk_analyzer.ui.service import call, get_service
 from defect_risk_analyzer.ui.shell import bootstrap
-from defect_risk_analyzer.ui.theme import CHART_COLORS, RISK_COLORS, apply_chart_theme
+from defect_risk_analyzer.ui.theme import (
+    CHART_COLORS,
+    RISK_COLORS,
+    apply_chart_theme,
+    risk_color_map,
+    risk_level_label,
+)
 
 bootstrap()
 
@@ -68,7 +74,10 @@ def render_risk_overview():
             {
                 "module": name,
                 "risk_score": data.get("score", 0),
-                "risk_level": data.get("level", "LOW"),
+                # The legend shows this column, so it holds the label. The
+                # colour still comes from the English level — see
+                # theme.risk_color_map().
+                "risk_level_label": risk_level_label(data.get("level", "LOW")),
                 "bug_count": data.get("bug_count", 0),
             }
             for name, data in module_risks.items()
@@ -79,13 +88,13 @@ def render_risk_overview():
             x="risk_score",
             y="module",
             orientation="h",
-            color="risk_level",
-            color_discrete_map=RISK_COLORS,
+            color="risk_level_label",
+            color_discrete_map=risk_color_map(),
             text="risk_score",
             labels={
                 "risk_score": t("col.risk_score"),
                 "module": t("col.module"),
-                "risk_level": t("col.risk_level"),
+                "risk_level_label": t("col.risk_level"),
             },
         )
         fig.update_traces(textposition="outside")
@@ -114,7 +123,7 @@ def render_risk_overview():
         table_data.append({
             "module": name,
             "risk_score": data.get("score", 0),
-            "risk_level": data.get("level", "LOW"),
+            "risk_level_label": risk_level_label(data.get("level", "LOW")),
             "bug_count": data.get("bug_count", 0),
             "open_count": data.get("open_count", 0),
         })
@@ -128,7 +137,7 @@ def render_risk_overview():
         column_config={
             "module": st.column_config.TextColumn(t("col.module")),
             "risk_score": st.column_config.NumberColumn(t("col.risk_score")),
-            "risk_level": st.column_config.TextColumn(t("col.level")),
+            "risk_level_label": st.column_config.TextColumn(t("col.level")),
             "bug_count": st.column_config.NumberColumn(t("col.total_bugs")),
             "open_count": st.column_config.NumberColumn(t("col.open_bugs")),
         },
@@ -324,7 +333,7 @@ def render_blind_spots():
             st.markdown(
                 f"**{item.get('module', '?')}** — "
                 f"<span style='background-color:{color}; color:white; padding:2px 8px; "
-                f"border-radius:4px;'>{risk_level}</span> "
+                f"border-radius:4px;'>{risk_level_label(risk_level)}</span> "
                 f"{detail}",
                 unsafe_allow_html=True,
             )

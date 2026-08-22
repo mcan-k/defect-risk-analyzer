@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from defect_risk_analyzer.ui import i18n
+from defect_risk_analyzer.ui import i18n, theme
 from defect_risk_analyzer.ui.messages import TEMPLATES
 
 UI_DIR = Path(i18n.__file__).resolve().parent
@@ -212,6 +212,63 @@ def test_t_renders_in_the_active_language():
 
 
 # =============================================================================
+# Risk levels: translated on screen, English everywhere else
+# =============================================================================
+
+def test_risk_level_colours_survive_translation():
+    """The colour follows the level, never the words used for it.
+
+    Faz 5C spells CRITICAL as "KRİTİK" in Turkish, which means the Plotly
+    legend is keyed by translated text. The map for it has to be DERIVED from
+    RISK_COLORS rather than rewritten per language — otherwise a level whose
+    wording changed would silently fall through to Plotly's default palette and
+    the chart would still render, just in the wrong colours.
+    """
+    previous = i18n.get_language()
+    try:
+        for language in i18n.LANGUAGES:
+            i18n.set_language(language)
+            colour_map = theme.risk_color_map()
+
+            assert len(colour_map) == len(theme.RISK_COLORS), (
+                f"{language}: two levels share a label, so one colour was lost"
+            )
+            for level, colour in theme.RISK_COLORS.items():
+                label = theme.risk_level_label(level)
+                assert colour_map[label] == colour, f"{language}: {level} lost its colour"
+    finally:
+        i18n.set_language(previous)
+
+
+def test_turkish_spells_the_risk_levels_out():
+    """The declared exception to "Turkish is preserved verbatim".
+
+    Before 5C the interface printed CRITICAL/HIGH/MEDIUM/LOW raw while pattern
+    severities on the same screen already read KRİTİK/YÜKSEK/ORTA/DÜŞÜK. This
+    pins the decision that closed that inconsistency, and pins that the two
+    vocabularies agree.
+    """
+    previous = i18n.get_language()
+    try:
+        i18n.set_language("tr")
+        assert theme.risk_level_label("CRITICAL") == "KRİTİK"
+        assert theme.risk_level_label("LOW") == "DÜŞÜK"
+        assert [i18n.t(f"risk.level.{level.lower()}") for level in theme.RISK_COLORS] == [
+            i18n.t(f"severity.{level.lower()}") for level in theme.RISK_COLORS
+        ]
+
+        i18n.set_language("en")
+        assert theme.risk_level_label("CRITICAL") == "CRITICAL"
+    finally:
+        i18n.set_language(previous)
+
+
+def test_an_unrecognised_level_is_passed_through():
+    """Stored analysis results are outside data; an odd value must still render."""
+    assert theme.risk_level_label("UNKNOWN") == "UNKNOWN"
+
+
+# =============================================================================
 # The source and the catalogs agree — both directions
 # =============================================================================
 
@@ -224,6 +281,7 @@ DYNAMIC_PREFIXES = {
     "chart.status.": "ui/app.py — open/closed, from the status column",
     "severity.": "ui/pages/buglar.py — pattern severity, from the detector",
     "finding.": "ui/messages.py — blind spot codes, from the detector",
+    "risk.level.": "ui/theme.py — risk level, from core/scoring.py",
 }
 
 

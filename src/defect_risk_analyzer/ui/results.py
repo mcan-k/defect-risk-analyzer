@@ -7,7 +7,7 @@ payload shape, which is why the two ended up on one page in Faz 5B.
 import streamlit as st
 
 from defect_risk_analyzer.ui.i18n import t
-from defect_risk_analyzer.ui.theme import RISK_COLORS
+from defect_risk_analyzer.ui.theme import RISK_COLORS, risk_level_label
 
 
 def display_analysis_result(result: dict):
@@ -20,7 +20,7 @@ def display_analysis_result(result: dict):
         f"### {t('result.risk_score')}: "
         f"<span style='color:{color}; font-size:1.5em;'>{risk_score}</span> "
         f"<span style='background-color:{color}; color:white; padding:2px 10px; "
-        f"border-radius:4px;'>{risk_level}</span>",
+        f"border-radius:4px;'>{risk_level_label(risk_level)}</span>",
         unsafe_allow_html=True,
     )
 
