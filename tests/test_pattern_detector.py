@@ -1,11 +1,15 @@
 """What detect_patterns returns, pinned before Faz 5C converts it.
 
 Written FIRST, deliberately, and this is the same sequencing Faz 5A used on
-blind_spot_detector: the sentence the detector builds today is asserted here as
-a literal, so the commit that moves that wording into locales/tr.json can be
-read as a move rather than believed to be one. The next commit takes the
-literal out of this file; the diff shows tr.json gaining exactly what
-pattern_detector.py and this file lose.
+blind_spot_detector: the sentence the detector built was asserted here as a
+literal, so the commit that moved that wording into locales/tr.json could be
+read as a move rather than believed to be one. That commit took the literals
+out of this file — the diff shows tests/test_i18n_locales.py and tr.json
+gaining exactly what this file and pattern_detector.py lost.
+
+What is left here is structure: codes, params, keys, counts, severity. The
+wording is the presentation layer's problem and is asserted where the renderer
+lives, which is the same division 5A settled on.
 
 ChromaDB is never involved. detect_patterns takes the collection as an
 argument, so a stub that answers count() and query() is enough — which is also
@@ -82,15 +86,24 @@ def no_keywords() -> dict:
 
 
 # =============================================================================
-# The two sentences, as they read before the conversion
+# Structural, not a sentence
 # =============================================================================
 
-def test_summary_names_the_common_theme(one_keyword):
-    assert one_keyword["summary"] == "3 bug — ortak tema: timeout"
+def test_the_theme_is_a_code_and_params_rather_than_a_sentence(one_keyword, no_keywords):
+    """This file used to assert the two Turkish sentences here.
 
+    They moved to ui/locales/{tr,en}.json in the same commit that added this
+    test, and tests/test_i18n_locales.py now holds the literals character for
+    character. The diff of that commit is the evidence: the strings leave this
+    file and pattern_detector.py, and arrive in tr.json.
+    """
+    assert "summary" not in one_keyword, "the detector is building sentences again"
 
-def test_summary_falls_back_when_nothing_is_common(no_keywords):
-    assert no_keywords["summary"] == "2 bug — ortak tema: benzer içerik"
+    assert one_keyword["code"] == "pattern_theme"
+    assert one_keyword["params"] == {"bug_count": 3, "keywords": ["timeout"]}
+
+    assert no_keywords["code"] == "pattern_theme"
+    assert no_keywords["params"] == {"bug_count": 2, "keywords": []}
 
 
 # =============================================================================

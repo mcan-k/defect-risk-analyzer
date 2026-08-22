@@ -38,6 +38,19 @@ from defect_risk_analyzer.ui import i18n
 #: TEMPLATES equals exactly the set of codes the *blind spot* detector emits.
 FINDING_PREFIX = "finding."
 
+#: Pattern findings live OUTSIDE the `finding.` namespace on purpose. TEMPLATES
+#: below is derived from that prefix, and tests/test_ui_messages.py asserts it
+#: equals exactly the set of codes the BLIND SPOT detector emits. Sharing the
+#: namespace would widen that assertion silently — an equality test that has to
+#: be relaxed is worth less than the separation.
+#:
+#: The keys themselves are written as literals at the call site rather than
+#: through constants: tests/test_i18n_locales.py collects t() keys by reading
+#: the source, and a name it cannot resolve counts as a dynamic call that
+#: excuses a whole namespace from the "is this message used?" check. The
+#: indirection reads slightly better and is worth less than the guard.
+PATTERN_CODE = "pattern_theme"
+
 
 class UnknownFindingCode(i18n.UnknownMessageKey):
     """Raised for a finding code with no template.
@@ -99,3 +112,38 @@ def format_finding(finding: dict[str, Any]) -> str:
         return i18n.t(f"{FINDING_PREFIX}{code}", **finding.get("params", {}))
     except i18n.UnknownMessageKey:
         raise UnknownFindingCode(code) from None
+
+
+def format_pattern_summary(pattern: dict[str, Any]) -> str:
+    """Render one pattern's theme as a sentence.
+
+    pattern_detector used to build this string itself. It now emits
+    {"code": "pattern_theme", "params": {"bug_count": …, "keywords": [...]}},
+    and the two wordings — the sentence and the "nothing in common" stand-in —
+    live in the locale files.
+
+    The keyword list is joined HERE rather than in the detector. Deciding that
+    five keywords read as "a, b, c" and an empty list reads as a phrase is a
+    presentation decision, and leaving it in the detector is what put a Turkish
+    sentence in business logic in the first place.
+
+    Args:
+        pattern: One item from detect_patterns.
+
+    Returns:
+        The rendered sentence, in the active language.
+
+    Raises:
+        UnknownFindingCode: the pattern carries a code this does not know.
+    """
+    code = pattern.get("code")
+    if code != PATTERN_CODE:
+        raise UnknownFindingCode(code)
+
+    params = dict(pattern.get("params", {}))
+    keywords = params.pop("keywords", None) or []
+    params["keywords"] = (
+        ", ".join(keywords) if keywords else i18n.t("pattern.theme.no_keywords")
+    )
+
+    return i18n.t("pattern.theme", **params)

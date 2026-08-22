@@ -117,6 +117,8 @@
   "overview.trend.open_closed": "**Açık vs Kapalı Bug Dağılımı**",
   "overview.trend.title": "📈 Bug Trend Analizi",
   "overview.trend.weekly": "**Haftalık Bug Oluşturma Trendi**",
+  "pattern.theme": "{bug_count} bug — ortak tema: {keywords}",
+  "pattern.theme.no_keywords": "benzer içerik",
   "patterns.bugs_in": "**Bu pattern'daki bug'lar:** {bug_keys}",
   "patterns.caption": "Benzer bug'ları otomatik gruplar ve olası ortak nedenleri tespit eder.",
   "patterns.common_priority_label": "**Yaygın Öncelik:**",

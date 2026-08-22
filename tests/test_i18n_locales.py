@@ -21,7 +21,11 @@ from pathlib import Path
 import pytest
 
 from defect_risk_analyzer.ui import i18n, theme
-from defect_risk_analyzer.ui.messages import TEMPLATES
+from defect_risk_analyzer.ui.messages import (
+    TEMPLATES,
+    UnknownFindingCode,
+    format_pattern_summary,
+)
 
 UI_DIR = Path(i18n.__file__).resolve().parent
 
@@ -115,6 +119,62 @@ BLIND_SPOT_SENTENCES_TR = {
 @pytest.mark.parametrize("key,sentence", sorted(BLIND_SPOT_SENTENCES_TR.items()))
 def test_the_turkish_finding_templates_are_unchanged(key, sentence, catalogs):
     assert catalogs[i18n.SOURCE_LANGUAGE][key] == sentence
+
+
+#: pattern_detector.py's two wordings, as they read before Faz 5C converted it
+#: to code/params. They arrived here from tests/test_pattern_detector.py in the
+#: same commit that removed them from the detector — the same movement, and the
+#: same evidence, as the four sentences above.
+PATTERN_SENTENCES_TR = {
+    "pattern.theme": "{bug_count} bug — ortak tema: {keywords}",
+    "pattern.theme.no_keywords": "benzer içerik",
+}
+
+
+@pytest.mark.parametrize("key,sentence", sorted(PATTERN_SENTENCES_TR.items()))
+def test_the_turkish_pattern_templates_are_unchanged(key, sentence, catalogs):
+    assert catalogs[i18n.SOURCE_LANGUAGE][key] == sentence
+
+
+def test_the_rendered_pattern_summary_reads_as_it_did(catalogs):
+    """The whole sentence, end to end, through the new path.
+
+    The template above could match while the renderer joined the keywords with
+    the wrong separator or dropped the fallback, and the page would still look
+    plausible. This asserts the finished string.
+    """
+    previous = i18n.get_language()
+    try:
+        i18n.set_language("tr")
+        assert format_pattern_summary({
+            "code": "pattern_theme",
+            "params": {"bug_count": 3, "keywords": ["bağlantı", "checkout", "ödeme"]},
+        }) == "3 bug — ortak tema: bağlantı, checkout, ödeme"
+
+        assert format_pattern_summary({
+            "code": "pattern_theme",
+            "params": {"bug_count": 2, "keywords": []},
+        }) == "2 bug — ortak tema: benzer içerik"
+    finally:
+        i18n.set_language(previous)
+
+
+def test_an_unknown_pattern_code_raises():
+    """Same policy as format_finding — silence is how a missing sentence hides."""
+    with pytest.raises(UnknownFindingCode):
+        format_pattern_summary({"code": "no_such_code", "params": {}})
+
+
+def test_pattern_wording_stays_out_of_the_finding_namespace(catalogs):
+    """TEMPLATES must keep meaning "the blind spot codes", nothing more.
+
+    tests/test_ui_messages.py asserts TEMPLATES equals exactly what
+    blind_spot_detector emits. Putting the pattern sentence under `finding.`
+    would have widened that equality silently, so it lives under `pattern.`
+    instead and this pins the separation.
+    """
+    assert not any(key.startswith("finding.pattern") for key in catalogs["tr"])
+    assert "pattern_theme" not in TEMPLATES
 
 
 def test_templates_exposes_exactly_the_finding_namespace(catalogs):

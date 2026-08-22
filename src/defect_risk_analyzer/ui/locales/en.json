@@ -117,6 +117,8 @@
   "overview.trend.open_closed": "**Open vs Closed Bug Distribution**",
   "overview.trend.title": "📈 Bug Trend Analysis",
   "overview.trend.weekly": "**Weekly Bug Creation Trend**",
+  "pattern.theme": "{bug_count} bugs — common theme: {keywords}",
+  "pattern.theme.no_keywords": "similar content",
   "patterns.bugs_in": "**Bugs in this pattern:** {bug_keys}",
   "patterns.caption": "Groups similar bugs automatically and points at their likely shared cause.",
   "patterns.common_priority_label": "**Common Priority:**",
