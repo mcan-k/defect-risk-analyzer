@@ -18,6 +18,11 @@ holds the four expected strings that tests/test_blind_spots.py asserted before
 four strings character for character. That is what keeps "the text moved" a
 checkable claim across two migrations rather than an asserted one.
 
+The one exception is declared rather than silent: the unanalyzed-module
+sentence named the "Canlı Analiz" page, which Faz 5B merged away, so 5C fixed
+the page name in a commit of its own before any migration. See the note in
+tests/test_ui_messages.py.
+
 `params` is self-contained: every value a template needs is in it, so this
 module never reads the rest of the finding. That is what let 5C swap the dict
 for a locale file without the detector knowing.

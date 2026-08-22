@@ -91,7 +91,7 @@ def test_keys_are_flat_and_sorted(catalogs):
 BLIND_SPOT_SENTENCES_TR = {
     "finding.unanalyzed_risky_module": (
         "{module} modülü {risk_level} risk seviyesinde ancak henüz analiz "
-        "edilmemiş. Canlı Analiz sayfasından analiz yapın."
+        "edilmemiş. Analiz sayfasından analiz yapın."
     ),
     "finding.neglected_critical_bug": (
         "{key} — {priority} öncelikli bug {days_open} gündür '{status}' "

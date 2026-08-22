@@ -321,7 +321,7 @@ def render_blind_spots():
     actions = []
     if unanalyzed:
         actions.append(
-            f"⚡ {len(unanalyzed)} riskli modülü **Canlı Analiz** sayfasından analiz edin"
+            f"⚡ {len(unanalyzed)} riskli modülü **Analiz** sayfasından analiz edin"
         )
     if neglected:
         actions.append(f"🚨 {len(neglected)} kritik bug'a kaynak atayın veya öncelik güncelleyin")

@@ -12,6 +12,15 @@ false.
 The detector's own tests no longer look at wording at all. They assert the
 code and params; the text is this layer's problem, and in Phase 5C it becomes
 locales/{tr,en}.json.
+
+ONE sentence has since been edited on purpose, and this note exists so the
+paragraph above stops being true quietly. The unanalyzed-module sentence said
+"Canlı Analiz sayfasından analiz yapın" — but Faz 5B merged that page into
+"Analiz" and the name disappeared from the interface, so the sentence was
+pointing at a page nobody could find. 5C changed it to "Analiz sayfasından
+analiz yapın" in a commit of its own, before any text moved into the locale
+files, so the edit is visible on its own rather than buried inside a 227-string
+migration. The other three are still character for character what 5A moved.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -35,7 +44,7 @@ def test_unanalyzed_risky_module_sentence():
         "params": {"module": "Authentication", "risk_level": "CRITICAL"},
     }) == (
         "Authentication modülü CRITICAL risk seviyesinde ancak henüz analiz "
-        "edilmemiş. Canlı Analiz sayfasından analiz yapın."
+        "edilmemiş. Analiz sayfasından analiz yapın."
     )
 
 
