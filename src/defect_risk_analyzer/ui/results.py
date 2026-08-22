@@ -6,6 +6,7 @@ payload shape, which is why the two ended up on one page in Faz 5B.
 
 import streamlit as st
 
+from defect_risk_analyzer.ui.i18n import t
 from defect_risk_analyzer.ui.theme import RISK_COLORS
 
 
@@ -16,7 +17,8 @@ def display_analysis_result(result: dict):
     color = RISK_COLORS.get(risk_level, "#666")
 
     st.markdown(
-        f"### Risk Skoru: <span style='color:{color}; font-size:1.5em;'>{risk_score}</span> "
+        f"### {t('result.risk_score')}: "
+        f"<span style='color:{color}; font-size:1.5em;'>{risk_score}</span> "
         f"<span style='background-color:{color}; color:white; padding:2px 10px; "
         f"border-radius:4px;'>{risk_level}</span>",
         unsafe_allow_html=True,
@@ -24,7 +26,7 @@ def display_analysis_result(result: dict):
 
     reasoning = result.get("reasoning", "")
     if reasoning:
-        st.markdown("**Analiz:**")
+        st.markdown(t("result.reasoning"))
         st.markdown(reasoning)
 
     col1, col2 = st.columns(2)
@@ -32,24 +34,27 @@ def display_analysis_result(result: dict):
     with col1:
         modules = result.get("affected_modules", [])
         if modules:
-            st.markdown("**Etkilenen Modüller:**")
+            st.markdown(t("result.affected_modules"))
             for m in modules:
                 st.markdown(f"- {m}")
 
         scenarios = result.get("test_scenarios", [])
         if scenarios:
-            st.markdown("**Test Senaryoları:**")
+            st.markdown(t("result.test_scenarios"))
             for s in scenarios:
                 st.markdown(f"- {s}")
 
     with col2:
         actions = result.get("recommended_actions", [])
         if actions:
-            st.markdown("**Önerilen Aksiyonlar:**")
+            st.markdown(t("result.recommended_actions"))
             for a in actions:
                 st.markdown(f"- {a}")
 
     st.caption(
-        f"Kaynak: {result.get('source', '?')} | "
-        f"Tarih: {result.get('analyzed_at', '?')[:19]}"
+        t(
+            "result.footer",
+            source=result.get("source", "?"),
+            date=result.get("analyzed_at", "?")[:19],
+        )
     )
