@@ -36,6 +36,7 @@ both fixed by the fixture below:
 """
 
 import ast
+import json
 import os
 import shutil
 from pathlib import Path
@@ -419,6 +420,39 @@ def test_page_renders_all_of_its_sections(script: str):
     ]
 
     assert not missing, f"{script} no longer renders: " + ", ".join(missing)
+
+
+@pytest.mark.parametrize("script", SCRIPTS)
+def test_dataframe_headers_are_configured_for_columns_that_exist(script: str):
+    """A typo in column_config is silent, and worse than unlabelled.
+
+    MEASURED, because the plan was unsure: streamlit 1.41.1 does not validate
+    column_config against the DataFrame at all. A key naming no column raises
+    nothing, warns nothing, and is serialised to the frontend as written — so
+    the real column keeps its raw name as the header. Since Faz 5C renamed
+    every DataFrame column to a stable English key, that failure now shows the
+    user "risk_score" where "Risk Skoru" belongs, in neither language, and
+    every other assertion in this file stays green.
+
+    Probed with three dataframes (all keys right / one misspelled / all wrong):
+    no exception in any case, and proto.columns carried the bad key verbatim.
+    That probe is also what makes this check possible — the config arrives as
+    JSON on the element, next to the frame it configures.
+    """
+    at = _open(script)
+
+    stray = []
+    for element in at.dataframe:
+        configured = json.loads(element.proto.columns)
+        columns = set(element.value.columns)
+        stray += [
+            f"{script}: column_config key {key!r} is not a column ({sorted(columns)})"
+            for key in configured
+            # "_index" is streamlit's own handle for the index, not a column.
+            if not key.startswith("_") and key not in columns
+        ]
+
+    assert not stray, "; ".join(stray)
 
 
 def test_sync_button_is_present_and_works():
