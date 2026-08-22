@@ -1,0 +1,6 @@
+{
+  "finding.neglected_critical_bug": "{key} — a {priority} priority bug has been '{status}' for {days_open} days. Needs attention now.",
+  "finding.rising_unattended_module": "Bug count is climbing in {module} ({recent_bugs} new bugs) but nobody is working on any of them. Consider assigning resources to this module.",
+  "finding.stale_bug": "{key} — open for {days_open} days. Resolution time is above expectation.",
+  "finding.unanalyzed_risky_module": "{module} is at {risk_level} risk level but has not been analysed yet. Run an analysis from the Analysis page."
+}
