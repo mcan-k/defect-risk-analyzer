@@ -192,25 +192,34 @@ def test_persist_language_writes_the_file_and_the_global(uninitialized_config):
     sample_bugs_file() then keeps serving the boot language.
 
     Narrower than reload() on purpose: one global, not seventeen. A language
-    picker has no business re-reading Jira credentials or rate limits, so the
-    last assertion pins that it does not — same shape as ensure_api_key().
+    picker has no business re-reading Jira credentials or rate limits, nor
+    picking up a half-finished .env edit as a side effect of a language toggle.
+
+    WHY THE FILE IS EDITED FIRST. Asserting "the other settings did not change"
+    means nothing while .env and the globals still agree — a re-read returns
+    the same values and the assertion holds either way. Measured: an early
+    version of this test let a `reload()` inside persist_language survive
+    untouched. Making the file disagree first is what gives the assertion teeth.
     """
     cfg = uninitialized_config
     cfg.init()
     assert cfg.LANGUAGE == "en"
 
-    untouched = cfg.LLM_PROVIDER, cfg.GROQ_API_KEY, cfg.MAX_DAILY_REQUESTS, cfg.USE_MOCK_DATA
+    untouched = cfg.LLM_PROVIDER, cfg.GROQ_API_KEY, cfg.MAX_DAILY_REQUESTS
+    assert untouched == ("openai", "groq-sentinel", 7)
+
+    # Somebody else's edit, or a half-written file. persist_language must not
+    # adopt it; only an explicit reload() may.
+    cfg.ENV_FILE.write_text(
+        "LLM_PROVIDER=groq\nGROQ_API_KEY=rewritten\nMAX_DAILY_REQUESTS=99\n",
+        encoding="utf-8",
+    )
 
     cfg.persist_language("tr")
 
     assert cfg.LANGUAGE == "tr"
     assert "DRA_LANGUAGE=tr" in cfg.ENV_FILE.read_text(encoding="utf-8")
-    assert (
-        cfg.LLM_PROVIDER,
-        cfg.GROQ_API_KEY,
-        cfg.MAX_DAILY_REQUESTS,
-        cfg.USE_MOCK_DATA,
-    ) == untouched
+    assert (cfg.LLM_PROVIDER, cfg.GROQ_API_KEY, cfg.MAX_DAILY_REQUESTS) == untouched
 
 
 def test_persist_language_normalizes_the_code(uninitialized_config):
