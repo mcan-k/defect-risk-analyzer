@@ -207,6 +207,8 @@
   "sidebar.jira.connected": "✅ Jira: Connected",
   "sidebar.jira.unconfigured": "⚠️ Jira: Not configured",
   "sidebar.language": "Language",
+  "sidebar.language.help.jira": "Interface language only. Bug texts stay as Jira delivers them.",
+  "sidebar.language.help.mock": "Press {action} to load the sample data in the language you picked.",
   "sidebar.llm.connected": "✅ LLM: {provider}",
   "sidebar.llm.missing_key": "⚠️ LLM: API key missing",
   "sidebar.metric.bugs_loaded": "Bugs Loaded",

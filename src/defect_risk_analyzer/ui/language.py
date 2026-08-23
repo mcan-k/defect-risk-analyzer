@@ -57,13 +57,35 @@ def apply() -> str:
 
 
 def render_selector(container=st) -> None:
-    """Draw the language picker into `container` (st, or st.sidebar)."""
+    """Draw the language picker into `container` (st, or st.sidebar).
+
+    The help text tells the user what to DO, not what happened: the interface
+    switches at once but the demo bugs do not, and without a sentence saying so
+    the only way to learn it is to sync and wonder why the text did not change.
+
+    Two sentences rather than one, because the honest answer depends on the
+    mode. Under mock data the demo set follows on the next sync; against a real
+    Jira the bug text comes from Jira and the language never touches it, so a
+    single "the data updates" line would promise something that cannot happen.
+    config.USE_MOCK_DATA is safe to read live here — the Settings page saves it
+    through save_multiple_env, which reloads.
+
+    Two literal t() calls, not t() on a computed key: a computed key would need
+    an entry in test_i18n_locales.DYNAMIC_PREFIXES, which exists to excuse keys
+    that no literal call site names — and these two have one.
+    """
+    if config.USE_MOCK_DATA:
+        help_text = i18n.t("sidebar.language.help.mock", action=i18n.t("sidebar.sync"))
+    else:
+        help_text = i18n.t("sidebar.language.help.jira")
+
     container.selectbox(
         i18n.t("sidebar.language"),
         options=list(i18n.LANGUAGES),
         format_func=lambda code: i18n.LANGUAGES[code],
         key=SESSION_KEY,
         on_change=_persist,
+        help=help_text,
     )
 
 

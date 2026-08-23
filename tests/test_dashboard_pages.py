@@ -598,6 +598,62 @@ def test_choosing_a_language_persists_it_to_env(restorable_env):
     assert not at.exception, [f"{e.value}" for e in at.exception]
 
 
+class _Recorder:
+    """A stand-in for st / st.sidebar that just keeps the selectbox kwargs.
+
+    render_selector() touches nothing else on the container, so this needs no
+    script run context — which is the only way to read the help text at all:
+    AppTest's Selectbox wrapper exposes value/options/format_func and no help.
+    """
+
+    def __init__(self) -> None:
+        self.kwargs: dict = {}
+
+    def selectbox(self, label, **kwargs):
+        self.kwargs = dict(kwargs, label=label)
+
+
+@pytest.mark.parametrize(
+    ("mock_mode", "expected", "forbidden"),
+    [
+        (True, "Senkronize", "Jira'dan geldiği"),
+        (False, "Jira'dan geldiği", "Senkronize"),
+    ],
+)
+def test_the_language_picker_tells_the_user_what_to_do_about_the_data(
+    monkeypatch, mock_mode, expected, forbidden
+):
+    """The other half of the gap this fix closes.
+
+    Making the sync work is not enough if nothing tells the user a sync is
+    needed: the interface flips at once and the bug text does not, and the
+    picker said nothing at all about that before.
+
+    Mode-dependent because the honest sentence differs. Under mock data the
+    demo set follows the next sync; against a real Jira the text comes from
+    Jira and the language never touches it, so the mock sentence would be a
+    promise the code cannot keep. Inverting the branch fails here.
+    """
+    from defect_risk_analyzer.ui import i18n, language
+
+    # Every other test here gets Turkish from _open() -> bootstrap() ->
+    # language.apply(). This one drives render_selector directly, so it would
+    # otherwise inherit whatever language ran last — test_dashboard_language.py
+    # leaves English behind, and these assertions are Turkish sentences.
+    monkeypatch.setattr(i18n, "_active", "tr")
+    monkeypatch.setattr(config, "USE_MOCK_DATA", mock_mode)
+    recorder = _Recorder()
+
+    language.render_selector(recorder)
+
+    help_text = recorder.kwargs["help"]
+    assert expected in help_text
+    assert forbidden not in help_text
+    # The button name is interpolated from sidebar.sync rather than copied, so
+    # renaming the button cannot leave this sentence pointing at a dead label.
+    assert "{action}" not in help_text
+
+
 def test_choosing_a_language_makes_the_next_sync_load_the_matching_demo_set(restorable_env):
     """The live path Faz 5C promised and did not deliver.
 
