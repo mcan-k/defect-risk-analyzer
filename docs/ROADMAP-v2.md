@@ -417,6 +417,36 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       ChromaDB'ye yeniden indekslemek demekti — Faz 4(a)'nın kaldırdığı sessiz
       yan etkinin yeni tetikleyicisi. Demo veri bir sonraki açık
       senkronizasyonda ya da açılışta değişiyor.
+
+      **Düzeltme (5C sonrası):** bu vaadin senkronizasyon yarısı kapanışta
+      **çalışmıyordu**. Seçici `.env`'e `config.set_env_value` ile yazıyordu; o
+      çağrı dosyayı ve `os.environ`'ı güncelliyor ama `config.LANGUAGE` modül
+      global'ini bırakıyor. `LANGUAGE`'ı yazan tek yer `reload()`, seçici onun
+      yolunda değil, `init()` de `_initialized` bayrağıyla korunduğu için asla
+      yetişmiyor. Sonuç: `LANGUAGE` sürecin açıldığı değerde donuyor ve
+      `sample_bugs_file()` o donmuş değeri okuyor.
+
+      Bu bir EN→TR hatası değildi. Ölçüm iki yönde de aynı sonucu verdi:
+      **seçicinin veri seçimine katkısı sıfırdı.** Sürecin açıldığı dile geçmek
+      çalışıyormuş gibi görünüyor (`LANGUAGE` zaten o değerde), o dilden çıkmak
+      hiçbir zaman çalışmıyor. "Çalışan" durum tesadüftü. Kaza onarım yolu da
+      vardı: Ayarlar'da herhangi bir kayıt `save_multiple_env` → `reload()`
+      üzerinden global'i sessizce düzeltiyor, bu da hatayı "bazen oluyor" gibi
+      gösteriyordu.
+
+      `config.persist_language()` eklendi — `ensure_api_key()` ile aynı şekil:
+      dosyayı yaz, sahibi olduğun tek global'i güncelle. `reload()` değil; o on
+      yedi ayarı diskten yeniden okur ve bir sunum kontrolünün Jira kimlik
+      bilgilerini yeniden okumakta işi yok. LLM sağlayıcısı düşmüyor: `_llm`'i
+      düşüren tek şey `reset_llm()` ve bu yolda değil. Faz 4(a) kararı da
+      korunuyor — seçici hâlâ hiçbir şey indekslemiyor, servis cache'ini hâlâ
+      temizlemiyor; yeniden indeksleme yalnız kullanıcının açık senkronizasyon
+      tıklamasında oluyor.
+
+      Ölçüldü: düzeltmeden sonra **senkronizasyon tek başına yetiyor**, yeniden
+      açılış gerekmiyor. Seçiciye ayrıca yönlendirici bir `help` metni eklendi
+      (moda göre iki cümle); daha önce hiç yoktu, yani vaat hiçbir kullanıcı
+      yüzeyinde yazılı değildi. 440 → 445 test.
 - [ ] N+1 API çağrısı ve her render'daki `config.reload()` düzeltmesi
 
       Faz 5B notu: **ölçülmedi**, muhtemelen bayat. `config.init()`
