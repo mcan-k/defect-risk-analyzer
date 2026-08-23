@@ -207,6 +207,8 @@
   "sidebar.jira.connected": "✅ Jira: Bağlı",
   "sidebar.jira.unconfigured": "⚠️ Jira: Yapılandırılmamış",
   "sidebar.language": "Dil",
+  "sidebar.language.help.jira": "Yalnız arayüz dili. Bug metinleri Jira'dan geldiği gibi kalır.",
+  "sidebar.language.help.mock": "Örnek veriler seçtiğiniz dilde gelsin diye {action} düğmesine basın.",
   "sidebar.llm.connected": "✅ LLM: {provider}",
   "sidebar.llm.missing_key": "⚠️ LLM: API Key eksik",
   "sidebar.metric.bugs_loaded": "Yüklü Bug",

@@ -259,6 +259,13 @@ def dashboard_env(sandbox_dir, sample_bugs_path):
     # Mock mode loads config.SAMPLE_BUGS_FILE, which the sandbox redirected.
     config.DATA_DIR.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(sample_bugs_path, config.SAMPLE_BUGS_FILE)
+    # Both demo sets, so config.sample_bugs_file() has a real choice to make —
+    # without the English one the language walk below would "pass" on the
+    # Turkish fallback and prove nothing. Copied per module rather than once
+    # per session on purpose: test_sample_data_parity.py unlinks the English
+    # file to exercise that fallback and does not put it back, and the two
+    # share a single sandbox.
+    shutil.copyfile(sample_bugs_path.parent / "sample_bugs_en.json", config.SAMPLE_BUGS_EN_FILE)
 
     # Let bootstrap's config.init() actually run and read the file above.
     mp.setattr(config, "_initialized", False)
@@ -588,6 +595,110 @@ def test_choosing_a_language_persists_it_to_env(restorable_env):
     picker.set_value("en").run()
 
     assert "DRA_LANGUAGE=en" in config.ENV_FILE.read_text(encoding="utf-8")
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+
+
+class _Recorder:
+    """A stand-in for st / st.sidebar that just keeps the selectbox kwargs.
+
+    render_selector() touches nothing else on the container, so this needs no
+    script run context — which is the only way to read the help text at all:
+    AppTest's Selectbox wrapper exposes value/options/format_func and no help.
+    """
+
+    def __init__(self) -> None:
+        self.kwargs: dict = {}
+
+    def selectbox(self, label, **kwargs):
+        self.kwargs = dict(kwargs, label=label)
+
+
+@pytest.mark.parametrize(
+    ("mock_mode", "expected", "forbidden"),
+    [
+        (True, "Senkronize", "Jira'dan geldiği"),
+        (False, "Jira'dan geldiği", "Senkronize"),
+    ],
+)
+def test_the_language_picker_tells_the_user_what_to_do_about_the_data(
+    monkeypatch, mock_mode, expected, forbidden
+):
+    """The other half of the gap this fix closes.
+
+    Making the sync work is not enough if nothing tells the user a sync is
+    needed: the interface flips at once and the bug text does not, and the
+    picker said nothing at all about that before.
+
+    Mode-dependent because the honest sentence differs. Under mock data the
+    demo set follows the next sync; against a real Jira the text comes from
+    Jira and the language never touches it, so the mock sentence would be a
+    promise the code cannot keep. Inverting the branch fails here.
+    """
+    from defect_risk_analyzer.ui import i18n, language
+
+    # Every other test here gets Turkish from _open() -> bootstrap() ->
+    # language.apply(). This one drives render_selector directly, so it would
+    # otherwise inherit whatever language ran last — test_dashboard_language.py
+    # leaves English behind, and these assertions are Turkish sentences.
+    monkeypatch.setattr(i18n, "_active", "tr")
+    monkeypatch.setattr(config, "USE_MOCK_DATA", mock_mode)
+    recorder = _Recorder()
+
+    language.render_selector(recorder)
+
+    help_text = recorder.kwargs["help"]
+    assert expected in help_text
+    assert forbidden not in help_text
+    # The button name is interpolated from sidebar.sync rather than copied, so
+    # renaming the button cannot leave this sentence pointing at a dead label.
+    assert "{action}" not in help_text
+
+
+def test_choosing_a_language_makes_the_next_sync_load_the_matching_demo_set(restorable_env):
+    """The live path Faz 5C promised and did not deliver.
+
+    Nothing else walked it. test_sample_data_parity.py pins sample_bugs_file()
+    by monkeypatching config.LANGUAGE, which steps straight over the edge that
+    was missing: the picker wrote .env and left the module global on whatever
+    the process booted with, so a sync after a switch reloaded the boot
+    language. Not an EN-to-TR bug — the picker contributed nothing to the data
+    choice in either direction, and switching TO the boot language only looked
+    like it worked.
+
+    Why AppTest and not a service-level call: the defect lives in the wiring
+    between the widget callback and config, so a test that calls the config
+    helper itself would stay green even if _persist() never called it. Driving
+    the real selectbox is the only level that can fail for the right reason.
+
+    The LLM sentinel is the other half of the contract. Routing the picker
+    through ui.service.save_multiple_env would also fix the language and would
+    drop the provider on every toggle; this is what keeps that from happening.
+    """
+    from defect_risk_analyzer.ui.service import get_service
+
+    at = _open()
+
+    service = get_service()
+    llm = object()
+    service._llm = llm
+
+    picker = [s for s in at.sidebar.selectbox if s.label == "Dil"][0]
+    picker.set_value("en").run()
+
+    # The fix itself, then the setting that reads it.
+    assert config.LANGUAGE == "en"
+    assert config.sample_bugs_file() == config.SAMPLE_BUGS_EN_FILE
+
+    # The button's own label is translated too, so by now it reads in English.
+    sync = [b for b in at.sidebar.button if "Sync from Jira" in b.label]
+    assert sync, f"no sync button in the sidebar: {[b.label for b in at.sidebar.button]}"
+    sync[0].click().run()
+
+    # The payoff: the bugs actually in memory are the English set, verbatim.
+    expected = json.loads(config.SAMPLE_BUGS_EN_FILE.read_text(encoding="utf-8"))
+    assert [b["summary"] for b in service.get_bugs()] == [b["summary"] for b in expected]
+
+    assert service._llm is llm, "the language picker dropped the LLM provider"
     assert not at.exception, [f"{e.value}" for e in at.exception]
 
 

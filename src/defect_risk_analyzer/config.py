@@ -135,6 +135,38 @@ def set_env_value(key: str, value: str) -> None:
     os.environ[key] = str(value)
 
 
+def persist_language(code: str) -> None:
+    """
+    Persist the interface language and make it live for this process.
+
+    `set_env_value` alone is not enough. It updates `.env` and `os.environ`,
+    but `LANGUAGE` is a module global written only by `reload()`, and `init()`
+    is guarded by `_initialized` — so a language chosen mid-session left
+    `LANGUAGE` on whatever the process booted with, and `sample_bugs_file()`
+    kept serving that boot language until a restart.
+
+    Deliberately narrower than `reload()`. Both would fix `LANGUAGE`, but
+    `reload()` re-reads every setting from disk, and a presentation control has
+    no business re-reading Jira credentials or rate limits — nor picking up a
+    half-finished `.env` edit as a side effect of a language toggle. This is
+    the same shape `ensure_api_key()` uses: write the file, update the one
+    global it owns.
+
+    Nothing here touches the LLM provider. Only `AnalysisService.reset_llm()`
+    does that, and it is not on this path — which is why the picker calls this
+    rather than `ui.service.save_multiple_env()`.
+
+    Lowercased once, so the file and the global cannot disagree: `reload()`
+    lowercases what it reads, and a stored "EN" would mean one demo set now and
+    the other after a restart.
+    """
+    global LANGUAGE
+
+    code = code.strip().lower()
+    set_env_value("DRA_LANGUAGE", code)
+    LANGUAGE = code
+
+
 def ensure_api_key(*, rotate: bool = False) -> str:
     """
     Return the API key, generating and persisting one when needed.
@@ -194,11 +226,14 @@ MAX_RETRIES: int = 2
 # Mock Data Mode
 USE_MOCK_DATA: bool = False
 
-# Interface language — the persisted default a fresh process starts with. The
+# Interface language — the persisted choice, read by sample_bugs_file(). The
 # live value for a browser session lives in st.session_state; see
-# ui/language.py. Not validated here: ui/i18n.set_language() normalises an
-# unknown code to the source language and logs it, and duplicating that check
-# would mean two places to update when a locale is added.
+# ui/language.py. Unlike every other global here it is also written outside
+# reload(), by persist_language(): a language picked mid-session has to reach
+# this variable, or the demo set stays on the boot language until a restart.
+# Not validated here: ui/i18n.set_language() normalises an unknown code to the
+# source language and logs it, and duplicating that check would mean two places
+# to update when a locale is added.
 LANGUAGE: str = "tr"
 
 # Data Anonymization
@@ -289,9 +324,11 @@ def sample_bugs_file() -> Path:
     again would be the same mistake with a new trigger.
 
     So the language picker changes the interface immediately and the demo data
-    follows on the next explicit sync or the next start. Falls back to the
-    Turkish set when the English one is absent: a missing translation should
-    leave a working demo, not an empty bug list.
+    follows on the next explicit sync or the next start. That promise needs
+    persist_language() to hold: LANGUAGE used to move only at startup, so the
+    sync half of it silently did nothing. Falls back to the Turkish set when
+    the English one is absent: a missing translation should leave a working
+    demo, not an empty bug list.
     """
     if LANGUAGE == "en" and SAMPLE_BUGS_EN_FILE.is_file():
         return SAMPLE_BUGS_EN_FILE

@@ -595,6 +595,54 @@ testleri `AppTest`'e devredilmeli — o takas o zaman ölçülsün.
 
 ---
 
+## `DRA_LANGUAGE` test izolasyonu dolaylı — `_CONFIG_KEYS` değil, `.env` içeriği koruyor
+
+**Where:** [`tests/test_dashboard_pages.py`](../tests/test_dashboard_pages.py)
+(`_CONFIG_KEYS`, `_rewrite_env`, `restorable_env`, `unconfigured`)
+
+`config.set_env_value` `.env`'in yanında `os.environ`'a da yazıyor, dolayısıyla
+`.env`'e yazan bir test süreç ortamını da kirletiyor. `_rewrite_env` bunu
+`_CONFIG_KEYS` listesindeki anahtarları teardown'da `os.environ`'dan silerek
+çözüyor — ama `DRA_LANGUAGE` o listede **yok**, hâlbuki dil seçicisini süren
+iki test tam olarak o anahtarı yazıyor.
+
+**Ölçüm:** bir pytest eklentisiyle, izlenen testlerin teardown'ı *bittikten*
+sonra durum okundu (`pytest_runtest_logreport(when="teardown")`; ilk denemede
+kullanılan `pytest_runtest_teardown` hook'u fixture finalizer'larını sarmaladığı
+için onlardan **önce** çalışıyor ve yanıltıcı bir `'en'` gösteriyordu):
+
+```
+before test_choosing_a_lan os.environ='tr'  config.LANGUAGE='tr'  sample=sample_bugs.json
+after  test_choosing_a_lan os.environ='tr'  config.LANGUAGE='tr'  sample=sample_bugs.json
+session end                os.environ='tr'  config.LANGUAGE='tr'  sample=sample_bugs.json
+```
+
+Yani **bugün sızıntı yok.** Anahtar `_CONFIG_KEYS`'e eklenmedi, çünkü ölçüm
+gerekmediğini gösterdi.
+
+**Neden çalışıyor:** `_CONFIG_KEYS` sayesinde değil. Teardown'daki
+`config.reload()` → `load_dotenv(ENV_FILE, override=True)`, geri yazılan
+`CONFIGURED_ENV` bloğu `DRA_LANGUAGE=tr` satırını **içerdiği** için değeri
+`os.environ`'a geri basıyor. Koruma, silme listesinden değil, dosya
+içeriğinden geliyor.
+
+**Impact:** bugün sıfır; latent. `load_dotenv` yalnız dosyada adı geçen
+anahtarları override ettiği için, boş `.env` yazan bir fixture (`unconfigured`
+→ `_rewrite_env("")`) ile `DRA_LANGUAGE` yazan bir test birleşirse anahtar
+`os.environ`'da hayatta kalır ve sonraki testler yanlış dilde koşar. Bugünkü
+`unconfigured` testleri dil yazmıyor, o yüzden birleşim hiç oluşmuyor —
+ölçüldü, o yol da `'tr'` gösteriyor.
+
+**Planned fix:** bir faza bağlanmadı. Tetikleyicisi net: `unconfigured` (ya da
+boş `.env` yazan başka bir fixture) kullanan bir teste dil yazımı eklenirse,
+aynı commit'te `DRA_LANGUAGE` `_CONFIG_KEYS`'e girmeli. Asıl kalıcı çözüm
+`_CONFIG_KEYS`'i elle bakımdan çıkarmak — silinecek anahtarları
+`CONFIGURED_ENV`'den türetmek — ama bu, listenin bugünkü ikinci işini (ilk
+çalıştırma denetiminin baktığı anahtarları temizlemek) de kapsayacak şekilde
+ayrıca ölçülmeli.
+
+---
+
 ## `calculate_risk_for_query`'nin sıfır-skor guard'ı — latent, canlı değil
 
 **Where:** [`src/defect_risk_analyzer/services/analysis_service.py:226-232`](../src/defect_risk_analyzer/services/analysis_service.py)

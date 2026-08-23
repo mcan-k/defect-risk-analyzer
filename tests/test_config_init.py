@@ -37,6 +37,7 @@ CONFIG_DEFAULTS = {
     "MAX_RETRIES": 2,
     "USE_MOCK_DATA": False,
     "ANONYMIZE_DATA": True,
+    "LANGUAGE": "tr",
     "API_HOST": "0.0.0.0",
     "API_PORT": 8000,
     "STREAMLIT_PORT": 8501,
@@ -57,6 +58,7 @@ MAX_DAILY_REQUESTS=7
 GROQ_SLEEP=0
 USE_MOCK_DATA=True
 ANONYMIZE_DATA=False
+DRA_LANGUAGE=en
 LOG_LEVEL=debug
 """
 
@@ -139,6 +141,7 @@ def test_init_populates_settings_from_env_file(uninitialized_config):
     assert uninitialized_config.MAX_DAILY_REQUESTS == 7
     assert uninitialized_config.USE_MOCK_DATA is True
     assert uninitialized_config.ANONYMIZE_DATA is False
+    assert uninitialized_config.LANGUAGE == "en"
     # Normalized on read: provider lowercased, log level uppercased.
     assert uninitialized_config.LLM_PROVIDER == "openai"
     assert uninitialized_config.LOG_LEVEL == "DEBUG"
@@ -174,3 +177,63 @@ def test_init_is_guarded_by_the_initialized_flag(uninitialized_config):
     # reload() bypasses the guard, which is how /reload-config picks up edits.
     uninitialized_config.reload()
     assert uninitialized_config.MAX_DAILY_REQUESTS == 99
+
+
+# ===========================================================================
+# Persisting one setting without re-reading the rest
+# ===========================================================================
+
+def test_persist_language_writes_the_file_and_the_global(uninitialized_config):
+    """The edge the language picker was missing.
+
+    set_env_value() alone updates .env and os.environ but leaves config.LANGUAGE
+    on whatever the process booted with, and init() will not re-read it — the
+    _initialized guard above is exactly why. Everything downstream of
+    sample_bugs_file() then keeps serving the boot language.
+
+    Narrower than reload() on purpose: one global, not seventeen. A language
+    picker has no business re-reading Jira credentials or rate limits, nor
+    picking up a half-finished .env edit as a side effect of a language toggle.
+
+    WHY THE FILE IS EDITED FIRST. Asserting "the other settings did not change"
+    means nothing while .env and the globals still agree — a re-read returns
+    the same values and the assertion holds either way. Measured: an early
+    version of this test let a `reload()` inside persist_language survive
+    untouched. Making the file disagree first is what gives the assertion teeth.
+    """
+    cfg = uninitialized_config
+    cfg.init()
+    assert cfg.LANGUAGE == "en"
+
+    untouched = cfg.LLM_PROVIDER, cfg.GROQ_API_KEY, cfg.MAX_DAILY_REQUESTS
+    assert untouched == ("openai", "groq-sentinel", 7)
+
+    # Somebody else's edit, or a half-written file. persist_language must not
+    # adopt it; only an explicit reload() may.
+    cfg.ENV_FILE.write_text(
+        "LLM_PROVIDER=groq\nGROQ_API_KEY=rewritten\nMAX_DAILY_REQUESTS=99\n",
+        encoding="utf-8",
+    )
+
+    cfg.persist_language("tr")
+
+    assert cfg.LANGUAGE == "tr"
+    assert "DRA_LANGUAGE=tr" in cfg.ENV_FILE.read_text(encoding="utf-8")
+    assert (cfg.LLM_PROVIDER, cfg.GROQ_API_KEY, cfg.MAX_DAILY_REQUESTS) == untouched
+
+
+def test_persist_language_normalizes_the_code(uninitialized_config):
+    """.env and the global must never disagree about the same choice.
+
+    config.reload() lowercases what it reads (config.py: DRA_LANGUAGE), so a
+    stored "EN" would mean sample_bugs_file() picked the English set now and
+    the Turkish one after a restart — the same split-brain this whole fix is
+    about, just one process later.
+    """
+    cfg = uninitialized_config
+    cfg.init()
+
+    cfg.persist_language("EN")
+
+    assert cfg.LANGUAGE == "en"
+    assert "DRA_LANGUAGE=en" in cfg.ENV_FILE.read_text(encoding="utf-8")
