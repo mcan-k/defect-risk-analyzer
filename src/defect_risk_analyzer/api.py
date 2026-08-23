@@ -44,6 +44,7 @@ from defect_risk_analyzer.api_models import (
     BulkAnalyzeResponse,
     ErrorResponse,
     HealthResponse,
+    PatternResponse,
     RateLimitStatus,
     RiskSummary,
     WebhookPayload,
@@ -432,11 +433,17 @@ async def get_bugs():
 
 @app.get(
     "/patterns",
+    response_model=list[PatternResponse],
     dependencies=[Depends(require_api_key)],
     tags=["Analysis"],
 )
 async def get_patterns():
-    """Detect bug patterns — groups of similar bugs that may share a root cause."""
+    """Detect bug patterns — groups of similar bugs that may share a root cause.
+
+    include_bugs=False is load-bearing for the response model: PatternResponse
+    has no `bugs` field because this branch removes the key. Changing it to
+    True would have FastAPI drop the bug objects silently.
+    """
     try:
         return await asyncio.to_thread(analyzer.detect_patterns, include_bugs=False)
     except Exception as e:

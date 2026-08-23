@@ -384,6 +384,215 @@ endpoint'in HTTP davranışı hâlâ test edilmiyor — pakette API test altyap�
 (`TestClient` yok, `api.py` modül seviyesinde `analyzer` singleton'ı kuruyor,
 route API anahtarı bağımlılığı taşıyor). Sözleşme servis seviyesinde pinlendi.
 
+**Faz 5C eki:** aynı boşluk `GET /patterns`'te de vardı ve aynı şekilde
+kapatıldı — `PatternResponse` + `response_model=`, dolu payload'la round-trip
+(`tests/test_pattern_contract.py`). 5C `summary` alanını `code`/`params` ile
+değiştirdiği için kırılma yine olacaktı; bu kez model kırılmadan önce eklendi.
+5A'nın bıraktığı fallback sorusu — "çalışma zamanı locale dosyalarına geçerken
+eksik anahtar çökme mi hak eder" — `ui/i18n.py::UnknownMessageKey`'de
+kapandı: bir locale'de eksik anahtar kaynak dile düşüyor ve log'a uyarı
+yazıyor, her iki locale'de de eksik anahtar fırlıyor. Birinci yol sevk edilen
+üründe erişilemez, çünkü `test_locale_key_sets_match` iki dosyanın anlaşmasını
+zorunlu kılıyor.
+
+---
+
+## Görünen metinle karşılaştırma — üçüncü kez çıkan kalıp hatası
+
+**Where:** [`src/defect_risk_analyzer/ui/setup_wizard.py`](../src/defect_risk_analyzer/ui/setup_wizard.py),
+[`src/defect_risk_analyzer/ui/pages/analiz.py`](../src/defect_risk_analyzer/ui/pages/analiz.py),
+[`src/defect_risk_analyzer/ci_analyzer.py`](../src/defect_risk_analyzer/ci_analyzer.py)
+
+Bu depoda üç kez aynı hata yapıldı: bir dalın kararı, kullanıcıya **gösterilen**
+dizeye bağlandı. Gösterilen dize sunum katmanının çıktısıdır — dile,
+biçimlendirmeye, emoji'ye, kısaltmaya göre değişir. Karar her zaman sabit bir
+anahtara bağlanmalı. Üçü de düzeltildi; kayıt düzeltme için değil, **nasıl
+bulundukları** için.
+
+| nerede | ne yapıyordu | nasıl bulundu |
+|---|---|---|
+| `ci_analyzer.infer_modules_from_files` (Faz 4(b) A) | yol içinde çıplak alt dizge: `auth` ∈ `docs/probe/auth-probe.md` | iki probe PR'ıyla ölçülerek |
+| `setup_wizard.py` — `if "Demo" in mode:` | görünen radio etiketinde alt dizge arıyordu | i18n taşıması |
+| `pages/analiz.py` — `if analysis_type == "Bug Key ile":` | Türkçe literal ile karşılaştırma | i18n taşıması |
+
+**Impact:** ikincisi İngilizce'de **tesadüfen** çalışmaya devam ediyordu —
+"Demo Mode" da "Demo" içeriyor — yani bir sonraki locale bütün dalı kazara
+belirlerdi. Üçüncüsü İngilizce arayüzde **her zaman** `False` verirdi: tekli
+analiz sekmesi sessizce serbest metin moduna düşer, kullanıcı Bug Key alanını
+hiç göremezdi. Hiçbiri istisna atmıyor, hiçbiri loglamıyor.
+
+**İkisi de i18n taşıması olmadan görünmezdi.** Türkçe tek dil olduğu sürece
+literal her zaman eşleşiyordu; hatayı ortaya çıkaran şey testler değil, ikinci
+bir dilin var olmasıydı. Bu, fazın beklenmedik kazancı ve kaydın asıl sebebi.
+
+**Planned fix:** yok — üçü de kapalı. Kural ileriye dönük: `if <widget değeri>
+== <literal>` görüldüğünde literalin bir locale değeri olup olmadığına
+bakılmalı. Öyleyse ya sabit anahtarlı `options` + `format_func` kullanılmalı, ya
+da karşılaştırma `t(...)` çağrısının kendisiyle yapılmalı. 5C ikincisini seçti,
+çünkü birincisi `at.radio.set_value()` ile sürülen 5B testlerini kırardı.
+
+---
+
+## `common_keywords` sırası her süreçte değişiyor — kullanıcı iki farklı kök neden görüyor
+
+**Where:** [`src/defect_risk_analyzer/pattern_detector.py`](../src/defect_risk_analyzer/pattern_detector.py)
+
+`_extract_common_keywords` kelimeleri `set(words)` üzerinden sayıyor ve
+`Counter.most_common` eşit sayıdaki kelimeleri **ekleme sırasına** göre
+sıralıyor. Ekleme sırası set yineleme sırasıdır, o da string hash
+randomizasyonuna bağlıdır. Yani eşit sıklıktaki anahtar kelimeler her süreçte
+farklı sırada çıkıyor.
+
+**Ölçüm** (aynı girdi, altı ayrı süreç, `tests/test_pattern_detector.py`
+fixture'larıyla aynı bug kümesi):
+
+```
+'3 bug — ortak tema: ödeme, timeout, bağlantı, checkout'
+'3 bug — ortak tema: checkout, bağlantı, timeout, ödeme'
+'3 bug — ortak tema: bağlantı, ödeme, checkout, timeout'
+'3 bug — ortak tema: timeout, ödeme, checkout, bağlantı'
+'3 bug — ortak tema: bağlantı, timeout, checkout, ödeme'
+'3 bug — ortak tema: ödeme, checkout, bağlantı, timeout'
+```
+
+**Impact:** bu bir ürün hatası, test rahatsızlığı değil. Buglar sayfasındaki
+"💡 Olası Ortak Neden" önerisi `keywords[0]` ve `keywords[1]`'i adlandırıyor
+(`ui/pages/buglar.py`). Kullanıcı aynı bug kümesine iki kez baktığında —
+uygulamayı kapatıp açmak yeter — **iki farklı kök neden** öneriliyor. Anahtar
+kelime etiketleri de aynı şekilde karışıyor. Hiçbir şey hata vermiyor; öneri
+her seferinde makul görünüyor, sadece aynı değil.
+
+**Neden 5C kapsamı dışı:** düzeltme `_extract_common_keywords`'ün sıralamasını
+değiştirmek demek — iş mantığı davranışı, ve kullanıcının gördüğü çıktıyı
+değiştirir. 5C bir çeviri fazı; taşıdığı cümleyi aynı bırakmakla yükümlü.
+Kararsızlık taşımadan önce de vardı.
+
+**Planned fix:** `most_common`'a kararlı bir ikincil ölçüt eklemek —
+`sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))` — eşitlikleri
+alfabetik olarak çözer ve süreçler arası kararlı hâle getirir. `pattern_detector`
+testleriyle birlikte, Faz 6. Testler bunu gizlemiyor: birebir cümle pin'i tek
+ortak anahtar kelimesi olan bir kümede kurulu, anahtar kelime listesi ise küme
+karşılaştırmasıyla doğrulanıyor.
+
+---
+
+## Paket verisi wheel'e giriyor mu — testle görülemeyen sınıf
+
+**Where:** [`pyproject.toml`](../pyproject.toml),
+[`src/defect_risk_analyzer/ui/locales/`](../src/defect_risk_analyzer/ui/locales/)
+
+`ui/locales/*.json` bir paket değil (`__init__.py` yok), yani
+`packages.find` onları görmüyor ve wheel'e yalnız paket verisi olarak
+girebiliyorlar. Faz 5C planı bunu "girdi olmadan wheel locale'siz çıkar" diye
+öngörmüştü. **Öncül ölçümle çürüdü.**
+
+**Ölçüm:** setuptools 84.0.0 (izole build ortamının çektiği sürüm) `pyproject.toml`
+ile yapılandırılmış projelerde `include_package_data`'yı zaten `True` yapıyor.
+Her iki locale dosyası `[tool.setuptools.package-data]` girdisi **olmadan da**
+wheel'e giriyor — temiz bir `build/` ile iki kez doğrulandı. İlk ölçüm
+geçersizdi: bayat bir `build/` ağacı ikinci build'i bedavaya geçiriyordu.
+
+Girdi yine de duruyor, çünkü kural "paket dizinindeki her şey" değil: aynı
+build'de `ui/` altına konan bir `.txt` probe wheel'e **girmedi**. Yani dahil
+etme kuralı uzantıya ya da desene bağlı ve bu projenin denetiminde değil.
+**Probe deneyi kirliydi** — hem uzantı hem dizin değişti, dolayısıyla kuralın
+tam olarak ne olduğu belirlenmedi.
+
+**Impact:** bu sınıfın tamamı testle görülemez. Kaynak checkout'ta dosyalar
+zaten oradadır; eksiklik yalnız kurulmuş bir wheel'de ortaya çıkar ve orada
+`dra` açılır, sayfa yapılandırmasını çizer, ilk `t()` çağrısında
+`FileNotFoundError` fırlatır. Aynı sınıfta iki komşu daha var: `module-map.json`
+ve `data/sample_bugs*.json` — ikisi de `src/` dışında, wheel'e **hiç** girmiyor,
+`config` onları `BASE_DIR` üzerinden diskten okuyor. Bu bilinçli
+(`_resolve_base_dir()` girdisine bakınız) ama aynı görünmezliği paylaşıyor.
+
+**Planned fix:** yok. Doğrulama yöntemi kayıt altında: wheel kurup içeriğini
+listelemek, ve **önce `build/` silmek** — bayat bir ağaç kontrolü bedavaya
+geçirir. Faz 7'nin "temiz makinede `pipx install`" maddesi bunu doğal olarak
+kapsıyor.
+
+---
+
+## `format_pattern_summary`'nin UI'da çağıranı yok
+
+**Where:** [`src/defect_risk_analyzer/ui/messages.py`](../src/defect_risk_analyzer/ui/messages.py)
+
+Faz 5C `pattern_detector`'ın ürettiği cümleyi `ui/messages.py`'ye taşıdı, ama
+hiçbir sayfa onu render etmiyor. Bugün yalnız testler çağırıyor.
+
+**Detail:** bu 5C'nin yarattığı bir durum değil, devraldığı bir durum. Taşınan
+`summary` alanını da hiçbir UI sayfası okumuyordu — `ui/pages/buglar.py`
+`pattern_id`, `bug_count`, `common_component`, `common_keywords`,
+`common_priority`, `severity` ve `bug_keys` kullanıyor. Alan yalnızca
+`GET /patterns` tarafından dönüyordu ve dönmeye devam ediyor.
+
+Fonksiyon yine de doğru yerde: mimari kural 3 kullanıcıya görünen metnin `ui/`
+katmanında üretilmesini istiyor, cümlenin bir sahibi olmak zorunda, ve
+`GET /patterns` tüketicisi için referans render bu. Silinseydi locale
+anahtarları Python'dan erişilemez kalırdı — ki `test_every_message_is_actually_used`
+bunu zaten yakalardı.
+
+**Planned fix:** karar, silmek değil kullanmak yönünde olmalı: pattern
+expander'ının içinde tema cümlesini göstermek bugün gösterilmeyen gerçek bir
+bilgi eklerdi. Bir UI kararı olduğu için 5C'de yapılmadı (faz metni taşıyor,
+eklemiyor). Faz 7'nin vitrin çalışmasıyla birlikte değerlendirilsin.
+
+---
+
+## İstisna metinleri çevrilmiyor — i18n'in sınırı `ui/` katmanında bitiyor
+
+**Where:** [`src/defect_risk_analyzer/ui/service.py`](../src/defect_risk_analyzer/ui/service.py)
+
+Hata sınırı (`call()`) beş `st.error` üretiyor ve hepsi locale'den geliyor —
+ama içindeki `{detail}` istisnanın kendi mesajı ve o **İngilizce**. İngilizce
+arayüzde fark edilmiyor; Türkçe arayüzde "⚠️ LLM hatası: Rate limit exceeded"
+gibi karışık bir cümle çıkıyor.
+
+**Impact:** düşük ama gerçek. Kullanıcı hatayı Türkçe bir çerçeve içinde
+İngilizce okuyor. Ayrıca `services/analysis_service.py` ve `adapters/`
+katmanlarındaki istisna mesajları da mimari kural 3'ün kapsamına girer:
+kullanıcıya ulaşan metin oradan geliyor.
+
+**Neden 5C'de yapılmadı:** düzeltmek istisnaları da yapısal veriye çevirmek
+demek — her `raise ValueError("...")`'ın bir `code` + `params` taşıması, yani
+5A'nın kalıbının üç modüle daha uygulanması. Kapsam olarak 5C'nin iki katı ve
+`core/` saflığına da dokunur. 5C sınırı bilinçli olarak `ui/` katmanının kendi
+ürettiği metinde çizdi.
+
+**Planned fix:** 5A/5C kalıbının `services/` ve `adapters/` istisnalarına
+uygulanması. Faz 6, `keyring` ve `SECURITY.md` işiyle birlikte —
+`llm_provider.py`'nin sağlayıcıya göre değişen hata eşleşmesi
+(`per-file-ignores` girdisinde kayıtlı) zaten aynı kodu açıyor.
+
+---
+
+## Aktif dil bir modül global'i — çok oturumlu kullanımda yarışıyor
+
+**Where:** [`src/defect_risk_analyzer/ui/i18n.py`](../src/defect_risk_analyzer/ui/i18n.py),
+[`src/defect_risk_analyzer/ui/language.py`](../src/defect_risk_analyzer/ui/language.py)
+
+`i18n._active` bir modül global'i ve `shell.bootstrap()` her script koşusunda
+onu o oturumun `session_state`'inden set ediyor. Streamlit ise eşzamanlı tarayıcı
+oturumlarını **aynı süreçte ayrı thread'lerde** koşturuyor. İki oturum farklı
+dil seçerse son yazan kazanır ve öteki oturum bir sonraki yeniden çiziminde
+yanlış dilde render olabilir.
+
+**Neden böyle:** alternatifi `t()`'nin her çağrıda `st.session_state` okuması.
+O da `i18n.py`'yi streamlit'e bağlardı, ki bugün bağlı değil — ve
+`tests/test_i18n_locales.py`'nin 40+ testi (anahtar kümeleri, fallback, çıplak
+literal taraması) `AppTest` maliyeti olmadan, script bağlamı olmadan koşuyor.
+Ayrıca `t()` bir yeniden çizimde birkaç yüz kez çağrılıyor.
+
+**Impact:** yerel, tek kullanıcılı bir masaüstü aracı için sıfır. `dra` tek
+kullanıcının makinesinde tek tarayıcı sekmesi açıyor. Streamlit Cloud demosunda
+(Faz 7) ise gerçek: aynı anda iki ziyaretçi farklı dil seçerse birbirlerini
+etkiler.
+
+**Planned fix:** Faz 7 Streamlit Cloud demosunu kurarken yeniden
+değerlendirilmeli. Demo tek dile sabitlenirse (dil seçici gizlenir) sorun
+ortadan kalkar; seçici kalacaksa `t()` `session_state`'e taşınmalı ve locale
+testleri `AppTest`'e devredilmeli — o takas o zaman ölçülsün.
+
 ---
 
 ## `calculate_risk_for_query`'nin sıfır-skor guard'ı — latent, canlı değil

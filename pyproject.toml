@@ -42,6 +42,28 @@ webhook = { file = ["requirements-webhook.txt"] }
 [tool.setuptools.packages.find]
 where = ["src"]
 
+# ui/locales/ holds the message catalogs. It is NOT a package — no __init__.py —
+# so packages.find never sees it, and the files reach a wheel only as package
+# data.
+#
+# MEASURED, and not what was expected: with setuptools 84.0.0 in the isolated
+# build environment, both locale files land in the wheel with AND without this
+# entry, because setuptools defaults include_package_data to True for projects
+# configured through pyproject.toml. So this entry is redundant today. It stays
+# anyway, for two reasons. It is not universally true that everything under a
+# package directory is picked up — a probe .txt file in ui/ was NOT included in
+# the same build — so inclusion depends on a rule this project does not
+# control. And the failure it guards against is silent and late: `dra` would
+# start, draw the page config, then raise FileNotFoundError on the first t()
+# call, and no test in a source checkout can see it, because there the files
+# are simply present.
+#
+# Re-verify by building a wheel and listing it, NOT by reading this comment;
+# delete `build/` first, or a stale tree makes the check pass for free. See
+# docs/KNOWN-DEBT.md, "Paket verisi wheel'e giriyor mu — testle görülemeyen sınıf".
+[tool.setuptools.package-data]
+"defect_risk_analyzer.ui" = ["locales/*.json"]
+
 # =============================================================================
 # Testing
 # =============================================================================

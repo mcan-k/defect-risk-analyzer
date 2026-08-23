@@ -1,0 +1,344 @@
+[
+  {
+    "key": "AP-101",
+    "summary": "No error message shown when the wrong password is entered at sign-in",
+    "description": "When a wrong password is entered on the login page the user gets no error message at all. The page simply reloads. This seriously hurts the user experience.",
+    "priority": "High",
+    "status": "Open",
+    "component": "Authentication",
+    "created": "2026-03-15T10:30:00.000+0300",
+    "updated": "2026-03-16T08:00:00.000+0300",
+    "assignee": "James Wilson",
+    "reporter": "Emma Clarke",
+    "resolution": "",
+    "labels": [
+      "login",
+      "ux"
+    ]
+  },
+  {
+    "key": "AP-102",
+    "summary": "User is not signed out automatically once the session token expires",
+    "description": "The user stays in an active session even after the JWT token has expired. This creates a security hole. Token expiry is never checked.",
+    "priority": "Highest",
+    "status": "Open",
+    "component": "Authentication",
+    "created": "2026-03-18T14:00:00.000+0300",
+    "updated": "2026-03-19T09:15:00.000+0300",
+    "assignee": "James Wilson",
+    "reporter": "Michael Turner",
+    "resolution": "",
+    "labels": [
+      "security",
+      "token"
+    ]
+  },
+  {
+    "key": "AP-103",
+    "summary": "Password reset link is still valid 24 hours later",
+    "description": "The link in the password reset email should expire after 1 hour, but it stays active for 24 hours. This breaks the security policy.",
+    "priority": "High",
+    "status": "Open",
+    "component": "Authentication",
+    "created": "2026-03-10T09:00:00.000+0300",
+    "updated": "2026-03-11T11:30:00.000+0300",
+    "assignee": "Sarah Bennett",
+    "reporter": "David Foster",
+    "resolution": "",
+    "labels": [
+      "security",
+      "password"
+    ]
+  },
+  {
+    "key": "AP-104",
+    "summary": "Two-factor authentication code is not sent over SMS",
+    "description": "Users with 2FA enabled never receive the SMS verification code. The SMS gateway integration times out. Those users cannot sign in at all.",
+    "priority": "Highest",
+    "status": "Open",
+    "component": "Authentication",
+    "created": "2026-03-20T16:45:00.000+0300",
+    "updated": "2026-03-21T10:00:00.000+0300",
+    "assignee": "James Wilson",
+    "reporter": "Emma Clarke",
+    "resolution": "",
+    "labels": [
+      "2fa",
+      "sms",
+      "blocker"
+    ]
+  },
+  {
+    "key": "AP-105",
+    "summary": "Brute force protection does not work — unlimited sign-in attempts are possible",
+    "description": "Rate limiting is disabled on the login endpoint. The account should lock after 5 failed attempts, but there is no limit of any kind.",
+    "priority": "Highest",
+    "status": "In Progress",
+    "component": "Authentication",
+    "created": "2026-03-19T11:20:00.000+0300",
+    "updated": "2026-03-20T14:30:00.000+0300",
+    "assignee": "Sarah Bennett",
+    "reporter": "Michael Turner",
+    "resolution": "",
+    "labels": [
+      "security",
+      "rate-limit"
+    ]
+  },
+  {
+    "key": "AP-106",
+    "summary": "LDAP integration cannot authenticate usernames containing special characters",
+    "description": "LDAP users whose username contains Turkish characters (ş, ç, ğ, ı, ö, ü) cannot sign in. There is an encoding problem.",
+    "priority": "High",
+    "status": "Open",
+    "component": "Authentication",
+    "created": "2026-03-12T13:00:00.000+0300",
+    "updated": "2026-03-13T09:00:00.000+0300",
+    "assignee": "James Wilson",
+    "reporter": "David Foster",
+    "resolution": "",
+    "labels": [
+      "ldap",
+      "encoding"
+    ]
+  },
+  {
+    "key": "AP-201",
+    "summary": "3D Secure verification fails for credit card payments",
+    "description": "The callback URL comes back wrong after the 3D Secure redirect, so the payment never completes. This affects every credit card transaction.",
+    "priority": "Highest",
+    "status": "Open",
+    "component": "Payment",
+    "created": "2026-03-17T08:30:00.000+0300",
+    "updated": "2026-03-18T10:00:00.000+0300",
+    "assignee": "Chris Palmer",
+    "reporter": "Emma Clarke",
+    "resolution": "",
+    "labels": [
+      "payment",
+      "3dsecure",
+      "blocker"
+    ]
+  },
+  {
+    "key": "AP-202",
+    "summary": "Refund amount is calculated incorrectly — VAT is left out",
+    "description": "When a product is returned, the amount refunded to the customer excludes VAT. Customers are being underpaid.",
+    "priority": "High",
+    "status": "Open",
+    "component": "Payment",
+    "created": "2026-03-14T15:00:00.000+0300",
+    "updated": "2026-03-15T09:30:00.000+0300",
+    "assignee": "Chris Palmer",
+    "reporter": "Michael Turner",
+    "resolution": "",
+    "labels": [
+      "refund",
+      "calculation"
+    ]
+  },
+  {
+    "key": "AP-203",
+    "summary": "Bank reference number is not stored for wire transfer payments",
+    "description": "When a customer pays by wire transfer the bank reference number is never written to the database, which makes reconciliation impossible.",
+    "priority": "Medium",
+    "status": "In Progress",
+    "component": "Payment",
+    "created": "2026-02-20T10:00:00.000+0300",
+    "updated": "2026-03-01T14:00:00.000+0300",
+    "assignee": "Chris Palmer",
+    "reporter": "David Foster",
+    "resolution": "",
+    "labels": [
+      "payment",
+      "bank-transfer"
+    ]
+  },
+  {
+    "key": "AP-301",
+    "summary": "Infinite scroll does not work on the product list page",
+    "description": "Scrolling down on the product list page loads no further products. Only the first 20 are visible. The pagination API is never called.",
+    "priority": "Medium",
+    "status": "Open",
+    "component": "Frontend",
+    "created": "2026-03-08T11:00:00.000+0300",
+    "updated": "2026-03-09T10:00:00.000+0300",
+    "assignee": "Laura Hayes",
+    "reporter": "Emma Clarke",
+    "resolution": "",
+    "labels": [
+      "ui",
+      "pagination"
+    ]
+  },
+  {
+    "key": "AP-302",
+    "summary": "Menu button cannot be tapped in the mobile view",
+    "description": "A z-index problem makes the hamburger menu button untappable in the responsive layout. Navigation is unusable below 768px.",
+    "priority": "High",
+    "status": "Closed",
+    "component": "Frontend",
+    "created": "2026-02-15T09:00:00.000+0300",
+    "updated": "2026-02-28T16:00:00.000+0300",
+    "assignee": "Laura Hayes",
+    "reporter": "Michael Turner",
+    "resolution": "Fixed",
+    "labels": [
+      "mobile",
+      "css"
+    ]
+  },
+  {
+    "key": "AP-303",
+    "summary": "Form fields are unreadable while dark mode is on",
+    "description": "With the dark theme active, the text colour and background colour of input fields are identical. Users cannot see what they are typing.",
+    "priority": "Low",
+    "status": "Closed",
+    "component": "Frontend",
+    "created": "2026-02-10T14:30:00.000+0300",
+    "updated": "2026-02-20T11:00:00.000+0300",
+    "assignee": "Laura Hayes",
+    "reporter": "David Foster",
+    "resolution": "Fixed",
+    "labels": [
+      "dark-mode",
+      "css"
+    ]
+  },
+  {
+    "key": "AP-304",
+    "summary": "Product quantity can be pushed below zero on the cart page",
+    "description": "The decrease button lets the quantity in the cart drop below 0. Values like -1 and -2 are accepted. Input validation is missing.",
+    "priority": "Medium",
+    "status": "Closed",
+    "component": "Frontend",
+    "created": "2026-01-25T10:00:00.000+0300",
+    "updated": "2026-02-05T09:00:00.000+0300",
+    "assignee": "Laura Hayes",
+    "reporter": "Emma Clarke",
+    "resolution": "Fixed",
+    "labels": [
+      "validation",
+      "cart"
+    ]
+  },
+  {
+    "key": "AP-401",
+    "summary": "Date filter returns the wrong results in the order report",
+    "description": "The date range filter in the reporting module converts between UTC and local time incorrectly. A range picked in Turkish local time is off by 3 hours.",
+    "priority": "Medium",
+    "status": "Open",
+    "component": "Reporting",
+    "created": "2026-03-05T16:00:00.000+0300",
+    "updated": "2026-03-06T09:00:00.000+0300",
+    "assignee": "Ryan Cole",
+    "reporter": "Michael Turner",
+    "resolution": "",
+    "labels": [
+      "reporting",
+      "timezone"
+    ]
+  },
+  {
+    "key": "AP-402",
+    "summary": "Excel export times out beyond 10,000 rows",
+    "description": "Exporting a large report to Excel returns a 504 Gateway Timeout once it passes 10,000 rows. An asynchronous export mechanism is needed.",
+    "priority": "Medium",
+    "status": "Open",
+    "component": "Reporting",
+    "created": "2026-02-25T11:00:00.000+0300",
+    "updated": "2026-02-26T10:00:00.000+0300",
+    "assignee": "Ryan Cole",
+    "reporter": "David Foster",
+    "resolution": "",
+    "labels": [
+      "export",
+      "performance"
+    ]
+  },
+  {
+    "key": "AP-501",
+    "summary": "Stock quantity hits a race condition with simultaneous orders",
+    "description": "When two users add the last item to their cart at the same time, stock drops to -1. The database transaction isolation level is too weak.",
+    "priority": "High",
+    "status": "Open",
+    "component": "Inventory",
+    "created": "2026-03-01T09:00:00.000+0300",
+    "updated": "2026-03-02T11:00:00.000+0300",
+    "assignee": "Chris Palmer",
+    "reporter": "Emma Clarke",
+    "resolution": "",
+    "labels": [
+      "concurrency",
+      "database"
+    ]
+  },
+  {
+    "key": "AP-502",
+    "summary": "Stock quantity takes 30 minutes to update after a warehouse transfer",
+    "description": "Stock data is not refreshed immediately after a transfer between warehouses. There is a cache invalidation problem, and data is 30 minutes stale.",
+    "priority": "Medium",
+    "status": "Closed",
+    "component": "Inventory",
+    "created": "2026-01-15T14:00:00.000+0300",
+    "updated": "2026-01-30T16:00:00.000+0300",
+    "assignee": "Chris Palmer",
+    "reporter": "Michael Turner",
+    "resolution": "Fixed",
+    "labels": [
+      "cache",
+      "sync"
+    ]
+  },
+  {
+    "key": "AP-601",
+    "summary": "Push notifications are not shown on Android 14 devices",
+    "description": "Push notifications are not displayed because of the new notification permission policy introduced in Android 14. The runtime permission has to be requested.",
+    "priority": "Medium",
+    "status": "Closed",
+    "component": "Notifications",
+    "created": "2026-01-10T10:00:00.000+0300",
+    "updated": "2026-01-20T15:00:00.000+0300",
+    "assignee": "Laura Hayes",
+    "reporter": "David Foster",
+    "resolution": "Fixed",
+    "labels": [
+      "android",
+      "notification"
+    ]
+  },
+  {
+    "key": "AP-602",
+    "summary": "Email notifications land in the spam folder",
+    "description": "Order confirmation and shipping notification emails sent by the system land in the spam folder the vast majority of the time. The SPF and DKIM records are missing.",
+    "priority": "Low",
+    "status": "Closed",
+    "component": "Notifications",
+    "created": "2025-12-20T09:00:00.000+0300",
+    "updated": "2026-01-05T14:00:00.000+0300",
+    "assignee": "Ryan Cole",
+    "reporter": "Emma Clarke",
+    "resolution": "Fixed",
+    "labels": [
+      "email",
+      "spam"
+    ]
+  },
+  {
+    "key": "AP-603",
+    "summary": "Notification preferences are not saved — they reset on every sign-in",
+    "description": "A user sets their notification preferences (email, SMS, push), but signing out and back in returns every preference to its default. These should be stored in the backend rather than in LocalStorage.",
+    "priority": "Low",
+    "status": "Closed",
+    "component": "Notifications",
+    "created": "2025-12-15T11:00:00.000+0300",
+    "updated": "2025-12-28T10:00:00.000+0300",
+    "assignee": "Laura Hayes",
+    "reporter": "Michael Turner",
+    "resolution": "Fixed",
+    "labels": [
+      "preferences",
+      "storage"
+    ]
+  }
+]

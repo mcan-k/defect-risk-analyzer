@@ -4,6 +4,12 @@ Pattern Detector — Groups similar bugs and identifies common themes.
 Uses ChromaDB similarity search to find clusters of related bugs.
 Extracts common keywords from each cluster to suggest root causes.
 No LLM needed — pure similarity + keyword extraction.
+
+Emits structural data only. Each pattern carries {"code", "params"} instead of
+a ready-made sentence, the same shape Faz 5A gave blind_spot_detector, so the
+wording can live in ui/locales/{tr,en}.json. Nothing in this module is text a
+user reads — the Turkish that remains is STOP_WORDS, which is matched against
+bug text and belongs to the corpus rather than to the interface.
 """
 
 import logging
@@ -74,7 +80,8 @@ def detect_patterns(
                 "common_keywords": ["timeout", "API", "bağlantı"],
                 "common_component": "Backend API",
                 "common_priority": "High",
-                "summary": "3 bug — ortak tema: timeout, API, bağlantı",
+                "code": "pattern_theme",
+                "params": {"bug_count": 3, "keywords": ["timeout", "API", "bağlantı"]},
                 "severity": "high",
             },
             ...
@@ -188,10 +195,6 @@ def detect_patterns(
         # Determine severity based on cluster size and priority
         severity = _calculate_pattern_severity(cluster_bugs)
 
-        # Build summary
-        keyword_str = ", ".join(keywords[:5]) if keywords else "benzer içerik"
-        summary = f"{len(cluster_bugs)} bug — ortak tema: {keyword_str}"
-
         patterns.append({
             "pattern_id": i,
             "bug_keys": sorted(cluster_keys),
@@ -199,7 +202,19 @@ def detect_patterns(
             "common_keywords": keywords[:8],
             "common_component": common_component,
             "common_priority": common_priority,
-            "summary": summary,
+            # Structural, not a sentence. This module used to build
+            # "3 bug — ortak tema: timeout" here, which put user-facing Turkish
+            # in business logic — the same rule-3 violation Faz 5A fixed in
+            # blind_spot_detector. The wording lives in ui/locales now and
+            # ui/messages.py::format_pattern_summary renders it.
+            "code": "pattern_theme",
+            "params": {
+                "bug_count": len(cluster_bugs),
+                # Five, not the eight in common_keywords: the sentence has
+                # always named fewer than the tag list. params is
+                # self-contained, so the renderer never reads the rest.
+                "keywords": keywords[:5],
+            },
             "severity": severity,
             "bug_count": len(cluster_bugs),
         })

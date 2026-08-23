@@ -18,6 +18,7 @@ from defect_risk_analyzer.services.analysis_service import (
     AnalysisService,
     BugNotFoundError,
 )
+from defect_risk_analyzer.ui.i18n import t
 
 logger = logging.getLogger(__name__)
 
@@ -64,16 +65,16 @@ def call(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
     except RateLimitError as e:
-        st.error(f"⚠️ Kota doldu: {e}")
+        st.error(t("error.quota", detail=e))
     except LLMError as e:
-        st.error(f"⚠️ LLM hatası: {e}")
+        st.error(t("error.llm", detail=e))
     except BugNotFoundError as e:
-        st.error(f"⚠️ {e}")
+        st.error(t("error.plain", detail=e))
     except ValueError as e:
-        st.error(f"⚠️ {e}")
+        st.error(t("error.plain", detail=e))
     except Exception as e:
         logger.exception("Service call %s failed", getattr(fn, "__name__", fn))
-        st.error(f"⚠️ İşlem başarısız: {e}")
+        st.error(t("error.unexpected", detail=e))
     return None
 
 def get_status() -> dict:

@@ -16,6 +16,12 @@ overlays assume; the rules themselves stay here.
 
 import streamlit as st
 
+from defect_risk_analyzer.ui.i18n import t
+
+#: Risk level → colour. Keyed by the value core/scoring.py::get_risk_level()
+#: returns, in English, and that stays true in every language. Faz 5C
+#: translates how a level is SPELLED on screen, never what it IS: the value
+#: travels through BlindSpotReport, the API responses and tests/data/ untouched.
 RISK_COLORS = {
     "CRITICAL": "#DC2626",
     "HIGH": "#F97316",
@@ -27,6 +33,31 @@ CHART_COLORS = [
     "#8B5CF6", "#22C55E", "#F97316", "#3B82F6",
     "#EC4899", "#EAB308", "#06B6D4", "#F43F5E",
 ]
+
+
+def risk_level_label(level: str) -> str:
+    """How a risk level is spelled on screen, in the active language.
+
+    Takes the English value — "CRITICAL", "HIGH", "MEDIUM", "LOW" — and returns
+    the wording for it. An unrecognised level is passed through unchanged rather
+    than raising: it is data from outside, and a stored analysis result carrying
+    something unexpected should still render.
+    """
+    key = f"risk.level.{level.lower()}"
+    return t(key) if level in RISK_COLORS else level
+
+
+def risk_color_map() -> dict[str, str]:
+    """Plotly legend labels → colours, DERIVED from the English keys.
+
+    Plotly matches a legend entry by the value in the column it colours by, so
+    a translated legend needs a map whose keys are the translated labels. The
+    direction matters and is what test_risk_level_colours_survive_translation
+    pins: the colour is looked up by the English level and the label is
+    computed from it, never the other way round. Nothing anywhere resolves a
+    colour by reading text off the screen.
+    """
+    return {risk_level_label(level): colour for level, colour in RISK_COLORS.items()}
 
 
 def inject_css() -> None:

@@ -202,6 +202,37 @@ class BlindSpotReport(BaseModel):
     summary: BlindSpotSummary = Field(default_factory=BlindSpotSummary)
 
 
+class PatternResponse(BaseModel):
+    """One item of GET /patterns.
+
+    Added in Faz 5C for the same reason BlindSpotReport was added in 5A: the
+    endpoint returned the detector's dict raw, with no response_model and no
+    model here, so its literal shape WAS the contract — and 5C changed that
+    shape by replacing the ready-made "summary" sentence with code/params.
+    Without a model the break would have shipped unobserved a second time.
+
+    No `bugs` field, deliberately. The route calls detect_patterns with
+    include_bugs=False and that branch pops the key entirely
+    (services/analysis_service.py), so it is never in the HTTP response.
+    Declaring it optional would make model_dump() put a null back and break the
+    round-trip comparison that makes this model checkable at all.
+    """
+    pattern_id: int = Field(description="1-based index within this response.")
+    bug_keys: list[str] = Field(default_factory=list, description="Jira keys in the cluster.")
+    common_keywords: list[str] = Field(
+        default_factory=list, description="Up to 8 words shared by two or more bugs."
+    )
+    common_component: str = Field("Genel", description="Modal component across the cluster.")
+    common_priority: str = Field("Medium", description="Modal Jira priority.")
+    code: str = Field(description="Finding type. Always 'pattern_theme' today.")
+    params: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Values the sentence needs: bug_count and up to 5 keywords.",
+    )
+    severity: str = Field("low", description="critical / high / medium / low.")
+    bug_count: int = Field(0, description="Bugs in the cluster.")
+
+
 class HealthResponse(BaseModel):
     """Health check response."""
     status: str = Field("ok", description="Service status.")

@@ -12,6 +12,8 @@ did when the wizard was a full-screen page inside a single-script app.
 import streamlit as st
 
 from defect_risk_analyzer import config
+from defect_risk_analyzer.ui import language
+from defect_risk_analyzer.ui.i18n import t
 from defect_risk_analyzer.ui.service import call, get_service, get_status
 from defect_risk_analyzer.ui.setup_wizard import render_setup_wizard
 from defect_risk_analyzer.ui.theme import inject_css
@@ -30,6 +32,11 @@ def bootstrap() -> None:
     # The single bootstrap point for this process: creates data/ and reads
     # .env. Idempotent, so the Streamlit rerun loop does not re-read the file.
     config.init()
+
+    # Before anything reads a message, and after config.init() has supplied the
+    # persisted default. The wizard is on the far side of the gate below and
+    # renders in this language too.
+    language.apply()
 
     if config.is_first_run():
         render_setup_wizard()
@@ -51,12 +58,17 @@ def render_nav() -> None:
     and that guard is both simpler and harder to fool against four literal
     calls with literal targets. See test_nav_declares_all_four_pages.
     """
-    st.sidebar.title("🔍 Defect Risk Analyzer")
+    st.sidebar.title(t("sidebar.title"))
 
-    st.sidebar.page_link("app.py", label="📊 Genel Bakış")
-    st.sidebar.page_link("pages/buglar.py", label="🐛 Buglar")
-    st.sidebar.page_link("pages/analiz.py", label="⚡ Analiz")
-    st.sidebar.page_link("pages/ayarlar.py", label="⚙️ Ayarlar")
+    st.sidebar.page_link("app.py", label=t("nav.overview"))
+    st.sidebar.page_link("pages/buglar.py", label=t("nav.bugs"))
+    st.sidebar.page_link("pages/analiz.py", label=t("nav.analysis"))
+    st.sidebar.page_link("pages/ayarlar.py", label=t("nav.settings"))
+
+    # Under the links rather than above them: the four pages are what the
+    # sidebar is for, and a settings-shaped control should not be the first
+    # thing in it. Placed before the divider so the block count is unchanged.
+    language.render_selector(st.sidebar)
 
     st.sidebar.markdown("---")
 
@@ -66,39 +78,39 @@ def render_status() -> None:
     # Local status — the analysis engine runs inside this process
     status = get_status()
     col1, col2 = st.sidebar.columns(2)
-    col1.metric("Yüklü Bug", status["bugs_loaded"])
+    col1.metric(t("sidebar.metric.bugs_loaded"), status["bugs_loaded"])
     col2.metric(
-        "Günlük İstek",
+        t("sidebar.metric.daily_requests"),
         f"{status['daily_requests_used']}/{status['daily_requests_limit']}",
     )
 
     if status["mock_mode"]:
-        st.sidebar.info("🎭 Mock Data Modu Aktif")
+        st.sidebar.info(t("sidebar.mock_mode"))
 
     if status["bugs_loaded"] == 0:
-        st.sidebar.warning("⚠️ Bug verisi yok. Aşağıdan senkronize edin.")
+        st.sidebar.warning(t("sidebar.no_bugs"))
 
     st.sidebar.markdown("---")
 
     # Connection status indicators
     if config.is_jira_configured():
-        st.sidebar.success("✅ Jira: Bağlı")
+        st.sidebar.success(t("sidebar.jira.connected"))
     else:
-        st.sidebar.warning("⚠️ Jira: Yapılandırılmamış")
+        st.sidebar.warning(t("sidebar.jira.unconfigured"))
 
     if config.is_llm_configured():
-        st.sidebar.success(f"✅ LLM: {config.LLM_PROVIDER.capitalize()}")
+        st.sidebar.success(t("sidebar.llm.connected", provider=config.LLM_PROVIDER.capitalize()))
     else:
-        st.sidebar.warning("⚠️ LLM: API Key eksik")
+        st.sidebar.warning(t("sidebar.llm.missing_key"))
 
     st.sidebar.markdown("---")
 
     # Refresh button — unconditional. It used to be gated behind a reachable
     # backend; with the service in-process there is nothing to be unreachable,
     # and a hidden button would leave the user unable to load any data.
-    if st.sidebar.button("🔄 Jira'dan Senkronize Et", use_container_width=True):
-        with st.spinner("Veriler senkronize ediliyor..."):
+    if st.sidebar.button(t("sidebar.sync"), use_container_width=True):
+        with st.spinner(t("sidebar.sync.running")):
             result = call(get_service().refresh)
         if result:
-            st.sidebar.success(f"✅ {result.get('bugs_fetched', 0)} bug yüklendi!")
+            st.sidebar.success(t("sidebar.sync.done", count=result.get("bugs_fetched", 0)))
             st.rerun()

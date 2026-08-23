@@ -275,9 +275,10 @@ Reddedildi (ertelenmedi):
 
 ### Faz 5 — UI + i18n (2 gün)
 
-Faz 5 üçe bölündü. **5A** (sözleşme) tamam; **5B** sayfa birleştirme ve dosya
-taşıma; **5C** i18n. Sıra zorunlu: 5B sayfaları taşıyacak ve testsiz bir
-davranışı taşımak sessiz kayıp demektir.
+Faz 5 üçe bölündü ve üçü de kapandı. **5A** sözleşme, **5B** sayfa birleştirme
+ve dosya taşıma, **5C** i18n. Sıra zorunluydu: 5B sayfaları taşıdı ve testsiz
+bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar üzerinde
+çalıştı.
 
 - [x] **Faz 5A** — `blind_spot_detector` yapısal veri dönüyor: her bulgu
       `recommendation` cümlesi yerine `code` + `params` taşıyor, cümleler
@@ -344,9 +345,78 @@ davranışı taşımak sessiz kayıp demektir.
 
       Kalan iş: kuralların gerçekten temaya çevrilmesi bir tasarım işi, sürüm
       yükseltmesi de gerektirebilir. Sahipli bir faza bağlanmadı.
-- [ ] `locales/tr.json` + `locales/en.json`, sidebar'da dil seçici → **5C**
+- [x] **Faz 5C** — `locales/{tr,en}.json`, `t()`, sidebar'da dil seçici
+
+      Ölçüm 5B öncesine aitti ve yenilendi: `ui/` altındaki sekiz dosyada
+      **227 çağrı yeri / 207 farklı dize** (288 rakamı `dashboard.py`
+      dönemindendi). 251 anahtar, iki locale'de de aynı küme.
+
+      `ui/i18n.py` streamlit import etmiyor: aktif dil bir modül global'i,
+      `bootstrap()` her koşuda `session_state`'ten set ediyor. Bedeli budur ki
+      locale sözleşmesinin 40+ testi `AppTest` maliyeti olmadan koşuyor;
+      çok oturumlu yarış `KNOWN-DEBT.md`'de.
+
+      5A'nın açık bıraktığı fallback sorusu kapandı: bir locale'de eksik
+      anahtar kaynak dile düşüyor + uyarı, her ikisinde de eksik anahtar
+      `UnknownMessageKey` fırlatıyor. Birinci yol sevk edilen üründe
+      erişilemez, çünkü `test_locale_key_sets_match` iki dosyanın anlaşmasını
+      zorunlu kılıyor — yani fallback bir mazeret değil güvenlik ağı.
+
+      **Katman 2 çözüldü:** DataFrame kolonları artık İngilizce ve sabit;
+      etiket `column_config` ve `labels=` ile render anında veriliyor. Önceden
+      kolon adı etiketin kendisiydi (`px.bar(x="Risk Skoru")`), yani dil
+      değiştirmek veri çerçevesini değiştirmek demekti. Ölçüm: streamlit
+      1.41.1 `column_config`'i DataFrame'e karşı **hiç doğrulamıyor**, yanlış
+      anahtar sessizce ham kolon adını başlık bırakıyor — bu yüzden her
+      sayfadaki her tablo için anahtarların gerçek kolon olduğunu doğrulayan
+      bir test var.
+
+      **Beyan edilmiş metin değişikliği:** risk seviyeleri Türkçe arayüzde
+      artık KRİTİK / YÜKSEK / ORTA / DÜŞÜK. Aynı ekranda pattern önemleri
+      zaten öyleydi. Değer katmanı (`core/scoring.py`, `BlindSpotReport`,
+      API yanıtları, `tests/data/`, `RISK_COLORS` anahtarları) İngilizce
+      kaldı; çeviri yalnız render anında. Renk haritası İngilizce
+      anahtarlardan **türetiliyor**, tersi değil.
+
+      **İkinci beyan edilmiş değişiklik:** kör nokta cümlesi ve Önerilen
+      Aksiyonlar satırı "Canlı Analiz sayfasından" diyordu — 5B o sayfa adını
+      kaldırmıştı, yani cümle var olmayan bir sayfaya yönlendiriyordu.
+      "Analiz sayfasından" oldu, kendi commit'inde.
+
+      Taşıma üç kusur ortaya çıkardı, ikisi i18n olmadan görünmezdi:
+      `"Demo" in mode`, `analysis_type == "Bug Key ile"` (İngilizce arayüzde
+      tekli analizi sessizce bozardı) ve ölü `col.rank` anahtarı. Kalıp hatası
+      `KNOWN-DEBT.md`'de kayıtlı — bu depoda üçüncü kez.
+
+      `pattern_detector` de 5A muamelesi gördü (`code` + `params`,
+      `PatternResponse` + `response_model=`). `component_classifier`
+      **bilinçli olarak** görmedi: anahtarları Jira bileşen adlarıyla eşleşmek
+      zorunda, listelerdeki Türkçe bug metnine karşı arama anahtarı, ve tek
+      çıktısı `"Genel"` bir modül **adı** — cümle değil. Gerekçe commit
+      mesajında ve `KNOWN-DEBT.md`'de.
+
+      363 → 440 test.
 - [ ] Renk sadece risk seviyesini kodlasın → 5B kapsamına alınmadı
-- [ ] `data/sample_bugs_en.json` (İngilizce demo için) → **5C**
+- [x] `data/sample_bugs_en.json` (İngilizce demo için)
+
+      Brifing "demo veri tamamen İngilizce" diyordu; ölçüm tersini gösterdi —
+      20 bug'ın 20'sinin `summary`/`description`'ı **Türkçe**, İngilizce olan
+      yalnız `component`/`priority`/`status` enum'ları. Yani bu bir çeviri
+      işiydi, kopya değil.
+
+      Sadece prose çevrildi (`summary`, `description`, `assignee`, `reporter`);
+      `key`, `created`, `updated`, `priority`, `status`, `component`,
+      `resolution`, `labels` kaynak dict'ten kopyalandı. Denklik testi bunu
+      türeterek doğruluyor: yedi skorlama alanı bug bug eşit, dört prose alanı
+      gerçekten değişmiş, `calculate_module_stats` + `calculate_risk_score`
+      bit bit aynı, **ve** ikisi de `tests/data/scores-aff55c6-now2026-04-01.json`
+      ile hâlâ uyuşuyor. Snapshot yalnız okunuyor.
+
+      Hangi dosyanın yükleneceği `config.LANGUAGE`'ten, canlı oturum dilinden
+      değil: canlı dile bağlamak her geçişte servis cache'ini temizlemek, yani
+      ChromaDB'ye yeniden indekslemek demekti — Faz 4(a)'nın kaldırdığı sessiz
+      yan etkinin yeni tetikleyicisi. Demo veri bir sonraki açık
+      senkronizasyonda ya da açılışta değişiyor.
 - [ ] N+1 API çağrısı ve her render'daki `config.reload()` düzeltmesi
 
       Faz 5B notu: **ölçülmedi**, muhtemelen bayat. `config.init()`
