@@ -111,19 +111,23 @@ Yapıldı:
       (Faz 5B'de dört sayfaya göre yeniden yazıldı ve içerik doğrulaması eklendi)
 - [x] CI'a `pytest` + `ruff` adımları (`.github/workflows/tests.yml`)
 
-Yapılmadı — Faz 5'e taşındı (gerekçeleri `KNOWN-DEBT.md`'de):
-- [ ] `tests/test_adf_parser.py` — saf fonksiyon, en yüksek getiri
+Yapılmadı — ~~Faz 5'e taşındı~~ **Faz 5 kapandı; bu maddeler Faz 6A'da yeniden
+sahiplendirildi** (gerekçeleri `KNOWN-DEBT.md`'de):
+- [ ] `tests/test_adf_parser.py` — saf fonksiyon, en yüksek getiri → **Faz 6E**
 - [ ] `tests/test_anonymizer.py` — round-trip + **telefon regex'i düzeltmesi**
       (sürüm numarası, sipariş kodu, tarih maskelenmemeli). Eksik test değil,
-      yaşayan hata.
+      yaşayan hata. → **Faz 6B** (`anon_map.json` ile aynı çalışma)
 - [ ] `pattern_detector` / `component_classifier` testleri
-      (`blind_spot_detector` Faz 5A'da karşılandı)
-- [x] `compare_service.py` emekliye ayrılırken kaybedilen üç regresyon bölümü:
-      `risk_for_query`, `defect_density`, `blind_spots` — **Faz 5A**. Üçü de
-      sıfırdan yazıldı: bu testler git geçmişinde hiç yoktu, `baseline/`
-      versiyon kontrolü dışında bir scratch dizinmiş. Kayıp da Faz 3'te oldu,
-      Faz 2'de değil.
-- [ ] CI'a `pip-audit` adımı
+      (`blind_spot_detector` Faz 5A'da karşılandı) → **Faz 6E**
+- [x] `compare_service.py` emekliye ayrılırken düşen üç **karşılaştırma
+      bölümü**: `risk_for_query`, `defect_density`, `blind_spots` — karşılıkları
+      **Faz 5A**'da sıfırdan yazıldı. İki ayrı özne, çelişki değil: düşen şey
+      izlenmeyen scratch script'in bölümleriydi (Faz 3'te, Faz 2'de değil); bu
+      üçünü sınayan bir **test** ise git geçmişinde hiç var olmadı. Ölçüldü:
+      `git log --all --diff-filter=D -- 'tests/*'` boş (hiçbir test dosyası
+      silinmemiş), üç terim de `tests/` altına ekleme commit'leriyle girmiş ve
+      `baseline/` hiç commit'lenmemiş. Ayrıntı: `KNOWN-DEBT.md`.
+- [ ] CI'a `pip-audit` adımı → **Faz 6D** (Dependabot ile aynı çalışma)
 
 Reddedildi (ertelenmedi):
 - ~~Kapsam rozeti~~ — yüzde hedefi, kapsamı yükseltmek için zayıf test yazma
@@ -455,6 +459,16 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       ölçüm gerekiyor.
 
 ### Faz 6 — Güven katmanı (yarım gün)
+- [x] **Faz 6A — `.env` tekilleştirme ve yapılandırma bütünlüğü.**
+      `set_env_value()` artık dotenv'in okuduğu **son** satırı yazıyor; önceki
+      mükerrerleri silmiyor, işaretleyip yorumluyor. Yazma atomik (`.env.tmp` +
+      `os.replace`), kodlama iki tarafta da açıkça UTF-8, satır sonu ve POSIX
+      izin bitleri korunuyor. `BASLAT.bat`'ın her taze kurulumda mükerrer
+      `USE_MOCK_DATA` üreten append bloğu kaldırıldı — o satır `is_first_run()`
+      üzerinden ilk kurulum sihirbazını da atlatıyordu. Bir AST bekçisi sekiz
+      giriş noktasının `config.init()`'e ulaştığını CI'da doğruluyor.
+      445 → **473 toplanan test** (biri Windows'ta atlanıyor: POSIX izin testi,
+      CI'da koştuğu henüz doğrulanmadı). Kalan borçlar: `KNOWN-DEBT.md`.
 - [ ] **Jira token'ı `keyring`'e taşı** — düz metin `.env`'de kimlik bilgisi kalmasın
       (`.env` sadece dil, port, mock modu gibi hassas olmayan ayarları tutar)
 - [ ] `SECURITY.md`: veri akışı (ne maskeleniyor, hangi API'ye ne gidiyor, ne saklanıyor),
