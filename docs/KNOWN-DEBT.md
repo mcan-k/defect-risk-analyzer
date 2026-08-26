@@ -93,27 +93,97 @@ uyarısı göstersin.
 **Where:** `.env` (kullanıcı dosyası) ve
 [`src/defect_risk_analyzer/config.py`](../src/defect_risk_analyzer/config.py)
 
-`.env` iki `API_KEY=` satırı içerebiliyor: biri `.env.example`'dan gelen boş
-satır, diğeri eski otomatik üretimin dosya sonuna eklediği dolu satır. Bugün
-doğru anahtar okunuyor çünkü `python-dotenv` aynı anahtarın **sonuncusunu**
-kazandırıyor — yani davranış satır sırasına bağlı, tasarıma değil.
+**Durum: yazma tarafı Faz 6A'da kapandı.** `set_env_value()` artık bir anahtarın
+**son** eşleşen satırını — dotenv'in zaten okuduğu satırı — güncelliyor ve
+önceki eşleşmeleri `# [duplicate removed by set_env_value]` işaretiyle
+yorumluyor. Silmiyor: `.env` kimlik bilgisi tutuyor ve satır silmek kullanıcının
+geri alamayacağı bir işlem. Yazma atomik (aynı dizinde `.env.tmp` +
+`os.replace`), kodlama iki tarafta da açıkça UTF-8, satır sonu ve izin bitleri
+korunuyor.
 
-**Detail:** `config.set_env_value()` replace-or-append çalışıyor ve **ilk**
-eşleşen satırı güncelliyor. Mükerrer satır varsa yeni değer boş olan üstteki
-satıra yazılır, alttaki eski satır olduğu yerde kalır ve `reload()` sonrasında
-yine o kazanır. Ayarlar sayfasındaki "API Key Yenile" butonu bu durumda
-başarılı görünür (yeni key ekranda gösterilir, `os.environ` güncellenir) ama
-bir sonraki `reload()`'da eski anahtara geri döner. Sessiz geri alma.
+**Tarihsel kayıt (6A öncesi):** `set_env_value()` **ilk** eşleşen satırı
+güncelliyordu, `python-dotenv` ise **sonuncusunu** kazandırıyor. Mükerrer satırı
+olan bir dosyada yeni değer üstteki satıra yazılıyor, alttaki eski satır olduğu
+yerde kalıyor ve `reload()` sonrasında yine o kazanıyordu. Ayarlar'daki "API Key
+Yenile" butonu başarılı görünüyor ama bir sonraki `reload()`'da eski anahtara
+dönüyordu. Sessiz geri alma.
 
-**Impact:** yalnız mükerrer satırı olan `.env` dosyalarında. Anahtar üretimi
-artık örtük olmadığı için yeni kurulumlarda mükerrer satır oluşmuyor;
-sorun mevcut dosyalardan miras.
+Bu depodaki geliştirici makinesinin canlı `.env`'i tam olarak bu şekildeydi: iki
+`API_KEY=` satırı, ikisi de dolu ve birbirinden farklı (ölçüldü — ham değerler
+değil, uzunluk ve SHA-256 öneki karşılaştırıldı). **Satır numaraları o dosyaya
+özgüdür, genel bir olgu değildir**; başka bir kurulumda mükerrer satırlar başka
+yerlerde olur ya da hiç olmaz.
 
-**Workaround until then:** `.env` içindeki boş `API_KEY=` satırını elle silin.
+**Mükerrer üreteci de kapandı:** `BASLAT.bat` her taze kurulumda `.env` sonuna
+bir `USE_MOCK_DATA=True` satırı ekliyordu. Kontrol hiç tutmuyordu çünkü
+`.env.example` `USE_MOCK_DATA=False` gönderiyor ve `findstr /C:` harfe duyarlı
+(ölçüldü). O satır ayrıca `is_first_run()`'ı False yapıp ilk kurulum sihirbazını
+atlatıyordu (ölçüldü). Append bloğu kaldırıldı.
 
-**Planned fix (Phase 6):** kimlik bilgileri `keyring`'e taşınırken `API_KEY`
-de `.env`'den çıkacak. O zamana kadar `set_env_value()` mükerrer satırları
-tespit edip tekilleştirebilir.
+**Kalan iş:** kullanıcının mevcut `.env`'i kendiliğinden düzelmiyor —
+implementasyon kullanıcı dosyasına dokunmuyor. İlk kayıtta (ör. API anahtarı
+yenileme) tekilleşir; o ana kadar bugünkü davranış sürer, son satır etkin.
+
+**Planned fix (Faz 6B):** kimlik bilgileri `keyring`'e taşınırken `API_KEY` de
+`.env`'den çıkacak; yorumlanmış eski sır satırları da o sırada temizlenecek.
+
+---
+
+## `.env` yazıcısının 6A sonrası bıraktıkları
+
+**Where:** [`config.py`](../src/defect_risk_analyzer/config.py)
+(`set_env_value`, `_atomic_write_lines`),
+[`ui/service.py`](../src/defect_risk_analyzer/ui/service.py), `BASLAT.bat`
+
+Hiçbiri bugün bir kullanıcıyı vurmuyor; hepsi 6A'nın kapsamı dışında bırakılmış
+bilinçli sınırlar.
+
+| Borç | İşaret |
+|---|---|
+| Yorumlanmış eski sır satırları `.env`'de düz metin kalıyor | **6B** — keyring taşımasıyla birlikte temizlenecek |
+| `export KEY=v` ve `KEY = v` biçimleri yazıcı tarafından görülmüyor (dotenv okuyor). Yazma bunları eşleştiremez, sona yeni satır ekler; etkin değer doğru olur ama bayat satır kalır | Tetikleyici: **`.env`'e üçüncü parti bir araç yazmaya başladığında**; aksi hâlde **v1.1** |
+| Tırnaklama: boşluk ya da `#` içeren bir değer tırnaksız yazılıyor | Tetikleyici: **6B sonrası `.env`'de kalan bir ayar tırnak gerektiren değer aldığında**; aksi hâlde **v1.1** |
+| `save_multiple_env` her anahtar için ayrı atomik yazma yapıyor — tek tek atomik, bütün olarak değil; yarıda çökerse anahtarların bir kısmı kaydedilmiş olur | Tetikleyici: **Ayarlar kaydetme yolu bir daha değiştiğinde**; aksi hâlde **v1.1** |
+| `save_multiple_env` yolunda `OSError` UI'da ham traceback olarak yüzeye çıkıyor (`ui.service.call()` ile sarmalı değil) | **6E** |
+| `BASLAT.bat` fallback'i (`.env.example` yokken) 19 anahtardan 1'ini üretiyor. İşlevsel kayıp yok — 19'unun da modül default'u var ve yazılan tek değer default'una eşit — ama `.env.example`'ın 49 satırlık dokümantasyonu kayboluyor | Tetikleyici: **`.env.example` olmadan dağıtılan bir paket üretildiğinde**; aksi hâlde **v1.1** |
+
+---
+
+## `config.init()` çağrılmadan okuma hâlâ sessiz
+
+**Where:** [`config.py`](../src/defect_risk_analyzer/config.py),
+[`tests/test_entry_points.py`](../tests/test_entry_points.py)
+
+Faz 6A bir AST bekçisi ekledi: sevk edilen sekiz giriş noktası `config.init()`'e
+ulaşmak zorunda — doğrudan, ya da tek sıçramada (`bootstrap()`, ve sıçramanın
+kendisi de AST ile doğrulanıyor, sabit bir isim listesine güvenilmiyor). Bu,
+tehdidi **sevk öncesi** yakalıyor.
+
+Çalışma zamanında hâlâ hiçbir şey tutmuyor: `init()` çağrılmadan okunan her
+değer sessizce modül default'una düşüyor. `tests/test_config_init.py` bu
+davranışı belgeliyor ve 6A'da değiştirilmedi.
+
+| Borç | İşaret |
+|---|---|
+| `init()` çağrılmadan değer okumaları sessizce default dönüyor; bekçi bunu yalnız sevk öncesi yakalıyor | Tetikleyici: **config erişim yoluna bir daha dokunulduğunda** (`_initialized` etrafındaki her dokunuş 5C'de hata üretti) |
+| `is_first_run()` semantiği denetlenmedi. Ölçüldü: `USE_MOCK_DATA=True` → `is_first_run()` False → sihirbaz atlanıyor. Kusur `is_first_run()`'da değildi, kullanıcı adına yapılandırma yazan kurulumdaydı; 6A onu kapattı | Tetikleyici: **ilk kurulum akışı bir daha değiştiğinde**; aksi hâlde **v1.1** |
+| Bekçinin beyan edilmiş kör noktaları: dolaylı config kullanıcıları, koşullu `init()` (çağrıyı görür, yolu görmez), dinamik dispatch, `__main__`'sız `python -m`, repo dışı tüketici | Tetikleyici: **`src/` dışına yeni bir çalıştırılabilir araç eklendiğinde** |
+
+---
+
+## `tests/tools/` araçlarının bıraktıkları
+
+**Where:** [`tests/tools/chroma_cleanup.py`](../tests/tools/chroma_cleanup.py),
+[`tests/tools/make_baseline.py`](../tests/tools/make_baseline.py)
+
+Faz 6A'nın giriş noktası bekçisi bu iki aracı incelemiyor: `chroma_cleanup`
+`config`'i doğrudan import etmiyor, `make_baseline` ise zaten `init()`
+çağırıyor. Aşağıdakiler bekçinin konusu değil, araçların kendi borçları.
+
+| Borç | İşaret |
+|---|---|
+| `chroma_cleanup` bugün zararsız ama yapısal olarak değil: `vector_store`'dan yalnız iki modül sabiti alıyor ve iki koleksiyonu da koruyor. "Şu anki koleksiyon"u sormaya başlarsa `USE_MOCK_DATA`'yı `init()`'siz okur ve default `False` → `COLLECTION_LIVE` görür. ChromaDB yolu (`CHROMA_DB_DIR`) import sabiti olduğu için yanlış yol riski yok — ölçüldü | **6E**, tetikleyici: **`chroma_cleanup` mevcut koleksiyonu sormaya başladığında** |
+| `make_baseline.py:120` `config.get_risk_level` çağırıyor; `config.py`'de böyle bir fonksiyon yok (`core/scoring.py`'de var). Dosya kendi docstring'inde (20-23) dalın çalışamaz olduğunu yazıyor — belgelenmiş ölü dal, ama yine de mayın | **6E**, tetikleyici: **`make_baseline` bir daha çalıştırıldığında** |
 
 ---
 

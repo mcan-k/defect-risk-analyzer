@@ -59,14 +59,14 @@ if not exist ".venv\Scripts\activate.bat" (
         if exist ".env.example" (
             copy .env.example .env >nul
         ) else (
-            echo USE_MOCK_DATA=True> .env
+            echo USE_MOCK_DATA=False> .env
         )
     )
 
-    findstr /C:"USE_MOCK_DATA=True" .env >nul 2>&1
-    if errorlevel 1 (
-        echo USE_MOCK_DATA=True>> .env
-    )
+    REM .env kopyalandiktan sonra bir daha duzenlenmiyor: buradaki append
+    REM her taze kurulumda mukerrer bir USE_MOCK_DATA satiri uretiyordu ve
+    REM ilk kurulum sihirbazini da atlatiyordu. Bir gun .env'e karsi kontrol
+    REM gerekirse kalip: findstr /I /B /C:"KEY=" .env  (deger degil anahtar).
 
     echo.
     echo   ========================================================
