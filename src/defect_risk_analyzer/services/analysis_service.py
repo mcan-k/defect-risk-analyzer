@@ -356,36 +356,41 @@ class AnalysisService:
 
             similar_bugs = self.find_similar_bugs(query, n_results=5)
 
-            # Anonymize before the LLM call (if enabled)
-            if config.ANONYMIZE_DATA:
-                anon_query = self._anonymizer.anonymize_query(query)
-                anon_bug_data = None
-                if bug_data:
-                    anon_bugs = self._anonymizer.anonymize_bugs([bug_data])
-                    anon_bug_data = anon_bugs[0] if anon_bugs else None
-                anon_similar = (
-                    self._anonymizer.anonymize_bugs(similar_bugs) if similar_bugs else []
+            # One anonymization scope per call. It has to span the whole
+            # masking → LLM → unmasking round trip, because the tokens the
+            # prompt carries are only meaningful to the mapping that issued
+            # them. It must not span more than that: a mapping that outlives
+            # the call can write this bug's addresses into the next one's
+            # reasoning. Opened inside `_llm_lock`, so no other caller is ever
+            # mid-round-trip against a different scope.
+            with self._anonymizer.session() as anon:
+                if config.ANONYMIZE_DATA:
+                    anon_query = anon.anonymize_query(query)
+                    anon_bug_data = None
+                    if bug_data:
+                        anon_bugs = anon.anonymize_bugs([bug_data])
+                        anon_bug_data = anon_bugs[0] if anon_bugs else None
+                    anon_similar = anon.anonymize_bugs(similar_bugs) if similar_bugs else []
+                else:
+                    anon_query = query
+                    anon_bug_data = bug_data
+                    anon_similar = similar_bugs
+
+                user_prompt = build_user_prompt(
+                    query=anon_query,
+                    risk_score=risk_score,
+                    risk_level=risk_level,
+                    module_stats=module_stats,
+                    similar_bugs=anon_similar,
+                    bug_data=anon_bug_data,
                 )
-            else:
-                anon_query = query
-                anon_bug_data = bug_data
-                anon_similar = similar_bugs
 
-            user_prompt = build_user_prompt(
-                query=anon_query,
-                risk_score=risk_score,
-                risk_level=risk_level,
-                module_stats=module_stats,
-                similar_bugs=anon_similar,
-                bug_data=anon_bug_data,
-            )
+                llm_response = self._call_llm(user_prompt)
 
-            llm_response = self._call_llm(user_prompt)
-
-            # De-anonymize LLM output (if anonymization was used)
-            reasoning = llm_response.get("reasoning", "")
-            if config.ANONYMIZE_DATA:
-                reasoning = self._anonymizer.deanonymize_text(reasoning)
+                # De-anonymize LLM output (if anonymization was used)
+                reasoning = llm_response.get("reasoning", "")
+                if config.ANONYMIZE_DATA:
+                    reasoning = anon.deanonymize_text(reasoning)
 
             result = {
                 "bug_key": bug_data.get("key") if bug_data else None,
@@ -423,26 +428,27 @@ class AnalysisService:
             risk_score = self.calculate_risk_score(module, stats_for_module)
             risk_level = scoring.get_risk_level(risk_score)
 
-            # Anonymize (if enabled)
-            if config.ANONYMIZE_DATA:
-                anon_bugs = self._anonymizer.anonymize_bugs([bug_data])
-                anon_bug_data = anon_bugs[0] if anon_bugs else bug_data
-            else:
-                anon_bug_data = bug_data
+            # One scope per call — same rule as analyze_bug_risk above.
+            with self._anonymizer.session() as anon:
+                if config.ANONYMIZE_DATA:
+                    anon_bugs = anon.anonymize_bugs([bug_data])
+                    anon_bug_data = anon_bugs[0] if anon_bugs else bug_data
+                else:
+                    anon_bug_data = bug_data
 
-            # Webhook prompt skips similar bugs for speed
-            user_prompt = build_webhook_prompt(
-                bug_data=anon_bug_data,
-                risk_score=risk_score,
-                risk_level=risk_level,
-                module_stats=module_stats,
-            )
+                # Webhook prompt skips similar bugs for speed
+                user_prompt = build_webhook_prompt(
+                    bug_data=anon_bug_data,
+                    risk_score=risk_score,
+                    risk_level=risk_level,
+                    module_stats=module_stats,
+                )
 
-            llm_response = self._call_llm(user_prompt)
+                llm_response = self._call_llm(user_prompt)
 
-            reasoning = llm_response.get("reasoning", "")
-            if config.ANONYMIZE_DATA:
-                reasoning = self._anonymizer.deanonymize_text(reasoning)
+                reasoning = llm_response.get("reasoning", "")
+                if config.ANONYMIZE_DATA:
+                    reasoning = anon.deanonymize_text(reasoning)
 
             result = {
                 "bug_key": bug_data.get("key"),

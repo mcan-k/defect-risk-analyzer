@@ -39,30 +39,29 @@ from defect_risk_analyzer.anonymizer import DataAnonymizer
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def anon(tmp_path):
+def anon():
     """A fresh anonymizer.
 
-    ADIM 2: becomes `return DataAnonymizer()`. Today the explicit `map_file` is
-    load-bearing — `DataAnonymizer()` would resolve `config.ANON_MAP_FILE`,
-    which is one shared path for the whole session, so `_load_map()` would hand
-    each test whatever the previous one persisted. Once persistence is gone that
-    coupling goes with it and the parameter is no longer needed.
+    ADIM 2 APPLIED. Before the fix this took `map_file=tmp_path / ...`, which
+    was load-bearing: `DataAnonymizer()` resolved `config.ANON_MAP_FILE`, one
+    shared path for the whole session, so `_load_map()` handed each test
+    whatever the previous one had persisted. Persistence is gone and that
+    coupling went with it.
     """
-    return DataAnonymizer(map_file=tmp_path / "anon_map.json")
+    return DataAnonymizer()
 
 
 @contextlib.contextmanager
 def scope(anonymizer):
     """One analysis call's anonymisation scope.
 
-    ADIM 2: becomes `with anonymizer.session() as s: yield s`.
-
-    Today it yields the instance unchanged, because today there IS no scope —
-    the mapping lives on the instance and outlives every call. That absence is
-    exactly what `test_a_scope_does_not_restore_another_scopes_value` measures,
-    so this helper must not paper over it.
+    ADIM 2 APPLIED. Before the fix this yielded the instance unchanged, because
+    there was no scope — the mapping lived on the instance and outlived every
+    call. Every assertion in this file was written through this helper for that
+    reason, and not one of them changed when the real scope landed.
     """
-    yield anonymizer
+    with anonymizer.session() as scoped:
+        yield scoped
 
 
 # ---------------------------------------------------------------------------
@@ -84,7 +83,8 @@ def test_d8_1_long_digit_runs_are_not_phone_numbers(anon, text):
     one run, so the LLM receives `Build [PHONE_001] failed` and loses the
     identifier the whole report is about.
     """
-    assert anon._anonymize_string(text) == text
+    with scope(anon) as s:
+        assert s._anonymize_string(text) == text
 
 
 @pytest.mark.parametrize(
@@ -103,7 +103,8 @@ def test_d8_2_number_triples_are_not_phone_numbers(anon, text):
     Measurements, sizes and quantities are the common case in a bug report, and
     all of them are being replaced with a PHONE token today.
     """
-    assert anon._anonymize_string(text) == text
+    with scope(anon) as s:
+        assert s._anonymize_string(text) == text
 
 
 def test_d8_3_a_partial_match_never_leaves_a_fragment(anon):
@@ -120,7 +121,8 @@ def test_d8_3_a_partial_match_never_leaves_a_fragment(anon):
     beside a token.
     """
     text = "Card ending 4111 1111 2222 3333 rejected"
-    result = anon._anonymize_string(text)
+    with scope(anon) as s:
+        result = s._anonymize_string(text)
 
     if result == text:
         return  # not matched at all — an acceptable outcome
@@ -148,7 +150,8 @@ def test_d8_these_already_pass_through_and_must_keep_doing_so(anon, text):
     written to solve a problem that does not exist — and so that a fix which
     tightens the pattern too far shows up here instead of in production.
     """
-    assert anon._anonymize_string(text) == text
+    with scope(anon) as s:
+        assert s._anonymize_string(text) == text
 
 
 @pytest.mark.parametrize(
@@ -165,7 +168,8 @@ def test_d8_real_phone_numbers_are_still_masked(anon, text):
     a fix that simply stops matching would pass all three RED tests above and
     silently remove the only PII category this pattern exists for.
     """
-    result = anon._anonymize_string(text)
+    with scope(anon) as s:
+        result = s._anonymize_string(text)
     assert result != text
     assert "PHONE_" in result
 
@@ -248,6 +252,71 @@ def test_a_scope_does_not_restore_another_scopes_value(anon):
 
 
 # ---------------------------------------------------------------------------
+# session() — the contract, added in Adım 3
+# ---------------------------------------------------------------------------
+
+def test_a_scope_is_dropped_even_when_the_block_raises(anon):
+    """EXPECTED GREEN.
+
+    `_call_llm` raises LLMError and RateLimitError, both from inside the scope.
+    If a failed analysis left its mapping behind, the next analysis would
+    inherit it — the same leak as
+    `test_a_scope_does_not_restore_another_scopes_value`, reached by the error
+    path instead of the success path, which is the path least likely to be
+    exercised by hand.
+
+    Asserted through a LATER scope rather than by reading the mapping after the
+    block. There is no mapping to read: the scope is a local, so the guarantee
+    is that nothing survives to reach the next call, and that is what this
+    measures. Reading a drained attribute would instead measure a cleanup step
+    this design does not have.
+    """
+    with pytest.raises(RuntimeError):
+        with anon.session() as failing:
+            failing.anonymize_query("page alice@example.invalid")
+            raise RuntimeError("LLM call failed")
+
+    with anon.session() as later:
+        restored = later.deanonymize_text("retry the page to [EMAIL_001]")
+
+    assert "alice@example.invalid" not in restored
+
+
+def test_a_scope_cannot_open_another_scope(anon):
+    """EXPECTED GREEN.
+
+    Nesting is prevented rather than defined. `session()` is public, so leaving
+    nested use undefined would be a shape someone eventually relies on; but
+    defining it means choosing whether the inner scope inherits the outer
+    mapping, and no caller asks — the analysis path opens exactly one scope,
+    under `_llm_lock`. So the scope simply does not carry the method, and a
+    nested attempt fails at the point of misuse instead of quietly doing
+    whichever thing was chosen.
+    """
+    with anon.session() as scoped:
+        assert not hasattr(scoped, "session")
+        with pytest.raises(AttributeError):
+            scoped.session()
+
+
+def test_the_anonymizer_itself_holds_no_mapping(anon):
+    """EXPECTED GREEN.
+
+    The structural half of the isolation rule. The dashboard shares one
+    anonymizer across every browser session via `@st.cache_resource`; that is
+    safe only because there is nothing on it to share. Pinned as an absence, so
+    that moving any of these three back onto the instance — the obvious
+    refactor for someone who wants stable token numbering — fails here.
+    """
+    with anon.session() as scoped:
+        scoped.anonymize_query("mail alice@example.invalid")
+        assert scoped._forward, "the scope should hold the mapping"
+
+    for attribute in ("_forward", "_reverse", "_counters"):
+        assert not hasattr(anon, attribute), f"{attribute} leaked onto the anonymizer"
+
+
+# ---------------------------------------------------------------------------
 # PERSON — the dead counter, recorded rather than fixed
 # ---------------------------------------------------------------------------
 
@@ -261,14 +330,21 @@ def test_person_names_are_not_masked(anon):
     that says what today actually does.
     """
     text = "Ahmet Yilmaz reported the crash and Mehmet Demir confirmed it"
-    assert anon._anonymize_string(text) == text
+    with scope(anon) as s:
+        assert s._anonymize_string(text) == text
 
 
 def test_the_person_counter_exists_but_never_moves(anon):
-    """EXPECTED GREEN. The dead counter itself, pinned."""
+    """EXPECTED GREEN. The dead counter itself, pinned.
+
+    Read through the scope, not off the instance: `_counters` is scope-owned
+    state, and Adım 2 shortens its lifetime to one call. Reading `anon._counters`
+    after the block would have measured the lifetime instead of the rule, and
+    would have had to be rewritten in Adım 2.
+    """
     with scope(anon) as s:
         s.anonymize_query("Ahmet Yilmaz saw it at alice@example.invalid")
 
-    assert "PERSON" in anon._counters
-    assert anon._counters["PERSON"] == 0
-    assert anon._counters["EMAIL"] == 1
+        assert "PERSON" in s._counters
+        assert s._counters["PERSON"] == 0
+        assert s._counters["EMAIL"] == 1
