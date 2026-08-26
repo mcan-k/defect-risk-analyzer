@@ -21,9 +21,24 @@ changes take effect without a restart. API key generation is explicit via
 
 import os
 import secrets
+import stat
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+# The codec for .env, on both the read and the write side. Named once because
+# the two sides disagreeing is silent: python-dotenv reads UTF-8 (load_dotenv's
+# default, forwarded to DotEnv), while an open() without an explicit encoding
+# falls back to the locale codec — cp1254 on a Turkish Windows install. A Jira
+# e-mail or a project name with a non-ASCII character would round-trip through
+# two different codecs and come back mangled, or raise on the next read.
+_ENV_ENCODING = "utf-8"
+
+# Left on a duplicate line that is being retired. The line is commented rather
+# than deleted: dotenv ignores comments, so the duplicate stops competing, but
+# nothing is destroyed — .env holds credentials and a bad line-removal rule is
+# not something the user can undo.
+_DUPLICATE_MARKER = "# [duplicate removed by set_env_value]"
 
 # ---------------------------------------------------------------------------
 # Paths (these never change)
@@ -106,31 +121,146 @@ def _get_env_int(key: str, default: int = 0) -> int:
         return default
 
 
+def _is_assignment_line(line: str, key: str) -> bool:
+    """True if `line` is the assignment dotenv would read for `key`.
+
+    Comments are never assignments, and the `{key}=` prefix is the whole reason
+    why: a commented line starts with `#`, so it cannot match. The writer used
+    to carry an explicit `# {key}=` branch as well, which made a comment a valid
+    write target — that is what turned documentation into a live setting, and it
+    also left a loop open, since the retired duplicates below are commented out
+    and would be selected again on the next write. dotenv never reads a comment,
+    so a comment can never be the effective value either.
+
+    An explicit `startswith("#") -> False` guard stood here briefly. The
+    mutation audit removed it and not one test went red: the `{key}=` prefix
+    already covers every commented form, so the guard could not fail. It was
+    dropped rather than kept as decoration — a line no test can kill is a line
+    that documents an intention it does not enforce. What enforces it is
+    test_t5 and test_t6 against the mutation that restores the old branch.
+
+    The trailing `=` carries the other half: without it `USE_MOCK_DATA` would
+    also match `USE_MOCK_DATA_EXTRA`.
+    """
+    # Comment lines are excluded on purpose, by the `=` suffix alone: `# KEY=`
+    # does not start with `KEY=`. Loosen this match — case-insensitivity, a
+    # regex, a wider strip — and comments become write targets again, which is
+    # both the overwritten-documentation bug and the retire-your-own-marker
+    # loop. test_t5 and test_t6 are what hold that shut.
+    return line.strip().startswith(f"{key}=")
+
+
+def _line_terminator(lines: list[str]) -> str:
+    """The terminator the file already uses, for a line being appended.
+
+    Read from the end because that is where the append lands. Falls back to LF
+    for an empty or terminator-less file. Existing lines keep their own
+    terminator; nothing here rewrites them.
+    """
+    for line in reversed(lines):
+        if line.endswith("\r\n"):
+            return "\r\n"
+        if line.endswith("\n"):
+            return "\n"
+        if line.endswith("\r"):
+            return "\r"
+    return "\n"
+
+
+def _split_terminator(line: str) -> tuple[str, str]:
+    """Split a line into its content and its terminator."""
+    for terminator in ("\r\n", "\n", "\r"):
+        if line.endswith(terminator):
+            return line[: -len(terminator)], terminator
+    return line, ""
+
+
+def _atomic_write_lines(lines: list[str]) -> None:
+    """Replace `.env` with `lines`, or leave it exactly as it was.
+
+    A half-written `.env` is a lost Jira token and a lost API key, so the new
+    content goes to a sibling temp file first and `os.replace` swaps it in as
+    one step. Sibling, not the system temp directory: `os.replace` is only
+    atomic within a filesystem.
+
+    The temp file is named predictably (`.env.tmp`) so a crash leaves something
+    a human can recognise rather than a random `tmp*` blob — and `.gitignore`
+    and `.dockerignore` can both cover it by name.
+
+    Permission bits are carried over explicitly. Without that the file silently
+    changes mode on POSIX: a fresh `open()` lands on the umask default (0644)
+    and `NamedTemporaryFile` on 0600, so a `.env` the user locked down to 0640
+    would drift either way. Windows does not model these bits — measured: every
+    file there reports 0o666 — so the call is a no-op there, not a hazard.
+
+    `newline=""` on both the read and this write is what keeps CRLF a CRLF file
+    and LF an LF file. Python's default would translate every terminator in the
+    file to os.linesep, rewriting lines nobody touched.
+    """
+    tmp_file = ENV_FILE.with_name(f"{ENV_FILE.name}.tmp")
+    try:
+        with open(tmp_file, "w", encoding=_ENV_ENCODING, newline="") as f:
+            f.writelines(lines)
+
+        if ENV_FILE.exists():
+            os.chmod(tmp_file, stat.S_IMODE(os.stat(ENV_FILE).st_mode))
+
+        os.replace(tmp_file, ENV_FILE)
+    finally:
+        # Only reachable when the write or the replace failed: a successful
+        # replace consumes the temp file. A partial .env.tmp must not survive.
+        if tmp_file.exists():
+            tmp_file.unlink()
+
+
 def set_env_value(key: str, value: str) -> None:
     """
-    Write a single key to `.env`, replacing an existing entry or appending.
+    Write a single key to `.env`, collapsing duplicates onto the live line.
+
+    THE BUG THIS CLOSES. The writer used to update the FIRST matching line and
+    stop, while `python-dotenv` builds its dict in file order and lets the LAST
+    occurrence win. On a file with the key twice the two halves aimed at
+    different lines: the Settings page reported a successful save, `os.environ`
+    agreed, and the next `reload()` quietly restored the old value. The live
+    `.env` in this repo has exactly that shape — two filled, different
+    `API_KEY=` lines — so "API Key Yenile" was a no-op across a restart.
+
+    So the write targets the LAST assignment, the one dotenv already reads.
+    That ordering is also the safe failure mode: if anything goes wrong after
+    the value lands, the line the application reads is still the line just
+    written.
+
+    Earlier occurrences are commented out, not deleted. Deleting a credential
+    line is not something a user can undo, and the point of this function is to
+    stop losing values, not to start losing them differently.
 
     Also updates `os.environ` so the new value is visible immediately, before
     any `reload()`.
     """
     lines: list[str] = []
     if ENV_FILE.exists():
-        with open(ENV_FILE, encoding="utf-8") as f:
+        with open(ENV_FILE, encoding=_ENV_ENCODING, newline="") as f:
             lines = f.readlines()
 
-    replaced = False
-    for i, line in enumerate(lines):
-        stripped = line.strip()
-        if stripped.startswith(f"{key}=") or stripped.startswith(f"# {key}="):
-            lines[i] = f"{key}={value}\n"
-            replaced = True
-            break
+    matches = [i for i, line in enumerate(lines) if _is_assignment_line(line, key)]
 
-    if not replaced:
-        lines.append(f"{key}={value}\n")
+    if matches:
+        target = matches[-1]
+        _, terminator = _split_terminator(lines[target])
+        lines[target] = f"{key}={value}{terminator}"
 
-    with open(ENV_FILE, "w", encoding="utf-8") as f:
-        f.writelines(lines)
+        for index in matches[:-1]:
+            content, terminator = _split_terminator(lines[index])
+            lines[index] = f"# {content}  {_DUPLICATE_MARKER}{terminator}"
+    else:
+        terminator = _line_terminator(lines)
+        # A file whose last line has no terminator would otherwise get the new
+        # assignment glued onto it, producing one corrupt line out of two.
+        if lines and not lines[-1].endswith(("\n", "\r")):
+            lines[-1] += terminator
+        lines.append(f"{key}={value}{terminator}")
+
+    _atomic_write_lines(lines)
 
     os.environ[key] = str(value)
 
