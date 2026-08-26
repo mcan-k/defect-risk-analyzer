@@ -1,5 +1,12 @@
 # Environment & secrets
 .env
+# .env.tmp is the sibling temp file config.set_env_value writes before
+# os.replace swaps it in. A crash between the two leaves it on disk holding a
+# full copy of the credentials. .dockerignore already excluded `.env.*`; git
+# did not, so the leftover was visible to `git add -A`. .env.example is
+# committed and has to survive the wildcard.
+.env.*
+!.env.example
 
 # Python
 .venv/
