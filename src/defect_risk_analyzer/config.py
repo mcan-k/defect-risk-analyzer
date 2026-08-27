@@ -110,6 +110,72 @@ def _get_env(key: str, default: str = "") -> str:
     return os.getenv(key, default).strip()
 
 
+# The credentials that may live in the OS credential store instead of `.env`.
+# Everything else in `.env` is a setting, not a secret, and stays in the file.
+STORED_SECRET_KEYS = ("JIRA_API_TOKEN", "GROQ_API_KEY", "OPENAI_API_KEY", "API_KEY")
+
+# Resolved once per process. THE HANDLE IS CACHED, THE VALUES ARE NOT — see
+# _get_secret. Resolving means importing keyring, which is why it is deferred
+# until something actually needs it.
+_secret_store = None
+_secret_store_description: str = ""
+_secret_store_resolved: bool = False
+
+
+def secret_store() -> tuple[object | None, str]:
+    """The credential store for this process, and a description of the layer.
+
+    `None` is a supported outcome, not a failure: no `desktop` extra installed,
+    or a keyring that resolved a backend which cannot store anything. The
+    description is what the Settings page shows the user, because which layer is
+    in use is not something this project may assume at install time.
+
+    The import lives in `adapters.secrets` and this module is the only caller
+    that matters, which fixes the direction of the dependency: `config` imports
+    the adapter, never the reverse. `adapters.results_repository` and
+    `adapters.vector_store` both import `config`, so an import back from the
+    secrets adapter would close a cycle — that is why the migration logic below
+    lives here rather than in the adapter, and why
+    `test_the_adapter_never_imports_config` checks it instead of a comment
+    claiming it.
+    """
+    global _secret_store, _secret_store_description, _secret_store_resolved
+
+    if not _secret_store_resolved:
+        from defect_risk_analyzer.adapters import secrets
+
+        _secret_store, _secret_store_description = secrets.resolve_store()
+        _secret_store_resolved = True
+
+    return _secret_store, _secret_store_description
+
+
+def _get_secret(key: str) -> str:
+    """A credential from `.env`, falling back to the credential store.
+
+    `.env` WINS when it holds a value, and the store is not consulted at all.
+    It is the explicit, visible, hand-editable layer; the store fills its gaps.
+    Two consequences, both intended: a half-finished migration keeps working,
+    because both places hold the same value; and a key someone pastes into the
+    file takes effect. The cost — a stale hand-written value silently shadowing
+    a newer one in the store — is recorded in docs/KNOWN-DEBT.md.
+
+    Nothing here is cached. 6A closed a bug where a save reported success and
+    the next reload() handed back the old value; memoising what the store
+    returned would rebuild it one layer over, where the file on disk would look
+    correct the whole time.
+    """
+    value = _get_env(key)
+    if value:
+        return value
+
+    store, _ = secret_store()
+    if store is None:
+        return ""
+
+    return store.get(key) or ""
+
+
 def _get_env_bool(key: str, default: bool = False) -> bool:
     """Read an environment variable as boolean."""
     value = _get_env(key, str(default)).lower()
@@ -445,16 +511,16 @@ def reload() -> None:
 
     JIRA_URL = _get_env("JIRA_URL")
     JIRA_EMAIL = _get_env("JIRA_EMAIL")
-    JIRA_API_TOKEN = _get_env("JIRA_API_TOKEN")
+    JIRA_API_TOKEN = _get_secret("JIRA_API_TOKEN")
     JIRA_PROJECT_KEY = _get_env("JIRA_PROJECT_KEY")
 
     LLM_PROVIDER = _get_env("LLM_PROVIDER", "groq").lower()
-    GROQ_API_KEY = _get_env("GROQ_API_KEY")
-    OPENAI_API_KEY = _get_env("OPENAI_API_KEY")
+    GROQ_API_KEY = _get_secret("GROQ_API_KEY")
+    OPENAI_API_KEY = _get_secret("OPENAI_API_KEY")
     LLM_MODEL = _get_env("LLM_MODEL")
 
     # Read only — generating a key writes to .env, which reload() must not do.
-    API_KEY = _get_env("API_KEY")
+    API_KEY = _get_secret("API_KEY")
 
     MAX_DAILY_REQUESTS = _get_env_int("MAX_DAILY_REQUESTS", 50)
     GROQ_SLEEP = float(_get_env("GROQ_SLEEP", "2"))

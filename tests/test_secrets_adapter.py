@@ -29,8 +29,10 @@ impossible: no test ever reaches the OS.
 NO REAL SECRETS. Every value here is synthetic.
 """
 
+import ast
 import logging
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -354,3 +356,40 @@ def test_every_migrated_key_gets_its_own_target(name):
     services = {service for service, _ in fake.stored}
     assert len(services) == 1
     assert name in next(iter(services))
+
+
+# ---------------------------------------------------------------------------
+# The import direction, checked rather than asserted in a comment
+# ---------------------------------------------------------------------------
+
+def test_the_adapter_never_imports_config():
+    """`config` imports this module; this module must never import `config`.
+
+    THE DIRECTION IS LOAD-BEARING. `config.reload()` asks this adapter for a
+    credential when `.env` has none, which makes `config -> adapters.secrets` a
+    real edge. `adapters.results_repository` and `adapters.vector_store` both
+    import `config`, so the reverse edge from HERE would close a cycle — and the
+    migration logic lives in `config.py` for exactly this reason rather than
+    being pushed down into the adapter where it would otherwise belong.
+
+    A comment saying so is what this replaces. Read with `ast` rather than
+    imported, so it reports the offending line instead of an ImportError.
+    """
+    source = Path(secrets_adapter.__file__).read_text(encoding="utf-8")
+
+    offenders = []
+    for node in ast.walk(ast.parse(source)):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name.split(".")[-1] == "config":
+                    offenders.append(f"line {node.lineno}: import {alias.name}")
+        elif isinstance(node, ast.ImportFrom):
+            module = node.module or ""
+            if module.split(".")[-1] == "config":
+                offenders.append(f"line {node.lineno}: from {module} import ...")
+            if any(alias.name == "config" for alias in node.names):
+                offenders.append(f"line {node.lineno}: from {module} import config")
+
+    assert not offenders, (
+        f"adapters/secrets.py imports config, which closes a cycle: {offenders}"
+    )
