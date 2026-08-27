@@ -5,6 +5,16 @@ Runs the deterministic scoring path only — no LLM call, no ChromaDB access,
 no HTTP — and writes a sorted JSON snapshot so a refactor can be proven
 behaviour-preserving.
 
+IT DOES WRITE ONE THING, and not through the scoring path. This tool calls
+`config.init()`, which since Faz 6B deletes a leftover `data/anon_map.json`
+(a pre-6B file holding the anonymisation mapping in plain text). Run by hand
+outside pytest there is no `DRA_BASE_DIR`, so `BASE_DIR` resolves to the repo
+and the deletion targets the real file. That is the correct behaviour for a
+real run — every entry point performs it — but it is not what anyone expects
+from "capture a scoring snapshot", so it is written down here rather than
+discovered. Under pytest the conftest sandbox redirects the path, and
+`_assert_sandboxed` fails the session if it ever does not.
+
 Kept alongside the fixtures it generated. It is NOT a way to rebuild those two
 files: it snapshots whatever scoring module is importable right now, so today it
 always emits mode B. Its purpose is to generate a *new* before/after pair around

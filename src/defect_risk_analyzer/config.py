@@ -19,12 +19,15 @@ changes take effect without a restart. API key generation is explicit via
 `ensure_api_key()` — it writes to `.env`, so it never happens implicitly.
 """
 
+import logging
 import os
 import secrets
 import stat
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 # The codec for .env, on both the read and the write side. Named once because
 # the two sides disagreeing is silent: python-dotenv reads UTF-8 (load_dotenv's
@@ -150,6 +153,27 @@ def _is_assignment_line(line: str, key: str) -> bool:
     return line.strip().startswith(f"{key}=")
 
 
+def _is_retired_assignment_line(line: str, key: str) -> bool:
+    """True if `line` is an assignment for `key` that this writer retired.
+
+    Both halves are required: the `# ` comment form AND the marker this module
+    wrote. Neither alone is enough — a hand-written `# API_KEY=notes` is the
+    user's own comment, and the marker on some other key's line is not ours to
+    touch.
+
+    SEPARATE FROM `_is_assignment_line` ON PURPOSE, and it must stay separate.
+    That predicate refuses to match comments, which is what stops the writer
+    from overwriting documentation and from re-retiring its own retired lines
+    forever (test_t5, test_t6). Loosening it to reach these lines would reopen
+    both. This one is consulted only by the emptying path below, which writes no
+    markers and therefore cannot loop.
+    """
+    stripped = line.strip()
+    if _DUPLICATE_MARKER not in stripped or not stripped.startswith("#"):
+        return False
+    return stripped.lstrip("#").strip().startswith(f"{key}=")
+
+
 def _line_terminator(lines: list[str]) -> str:
     """The terminator the file already uses, for a line being appended.
 
@@ -244,6 +268,23 @@ def set_env_value(key: str, value: str) -> None:
 
     matches = [i for i, line in enumerate(lines) if _is_assignment_line(line, key)]
 
+    # EMPTYING IS NOT AN ORDINARY WRITE. Retiring a duplicate by commenting it
+    # out moves the value out of dotenv's reach but leaves it on the disk, and
+    # `_is_assignment_line` never matches a comment, so nothing here could ever
+    # reach it again — the value would be stranded permanently, not briefly.
+    # That is acceptable when a real value is being written (the retired line
+    # documents what was replaced) and wrong when the whole point of the write
+    # is that the value must stop existing, which is what the keyring migration
+    # does. So an empty write blanks instead of preserving, on both the
+    # duplicates it retires now and the ones an earlier write already retired.
+    emptying = value == ""
+
+    if emptying:
+        for index, line in enumerate(lines):
+            if _is_retired_assignment_line(line, key):
+                _, terminator = _split_terminator(line)
+                lines[index] = f"# {key}=  {_DUPLICATE_MARKER}{terminator}"
+
     if matches:
         target = matches[-1]
         _, terminator = _split_terminator(lines[target])
@@ -251,7 +292,10 @@ def set_env_value(key: str, value: str) -> None:
 
         for index in matches[:-1]:
             content, terminator = _split_terminator(lines[index])
-            lines[index] = f"# {content}  {_DUPLICATE_MARKER}{terminator}"
+            if emptying:
+                lines[index] = f"# {key}=  {_DUPLICATE_MARKER}{terminator}"
+            else:
+                lines[index] = f"# {content}  {_DUPLICATE_MARKER}{terminator}"
     else:
         terminator = _line_terminator(lines)
         # A file whose last line has no terminator would otherwise get the new
@@ -495,6 +539,56 @@ def is_first_run() -> bool:
 
 _initialized: bool = False
 
+# True when THIS process deleted a leftover data/anon_map.json at startup. Read
+# by the dashboard so the removal is reported somewhere a person actually looks
+# — a log line alone would not be, and this is a silent deletion of user data.
+LEGACY_ANON_MAP_REMOVED: bool = False
+
+
+def _purge_legacy_anon_map() -> None:
+    """Delete a `data/anon_map.json` left behind by a pre-Faz-6B version.
+
+    That file was the anonymizer's token→original mapping, rewritten after every
+    analysis and never pruned. It held whatever the patterns matched, in plain
+    text — on the machine this was measured on, a Bearer token and an API key.
+    Nothing writes it any more, so anything found here is a leftover.
+
+    NEVER OPENED, only unlinked. Reporting how many entries it held, or which
+    categories, would mean reading a file whose contents are the reason it is
+    being deleted; a count is one refactor away from a value.
+
+    RUNS ON EVERY START, with no marker file. The check is one `unlink` that
+    normally raises FileNotFoundError and returns. A marker would be new surface
+    that can go stale, and it would miss the case that matters: a user who
+    downgrades, has the file recreated by the old code, and upgrades again.
+
+    NEVER RAISES. A locked or read-only leftover must not take the application
+    down — the anonymizer works without it, and refusing to start would trade a
+    plain-text mapping for an unusable install.
+    """
+    global LEGACY_ANON_MAP_REMOVED
+
+    LEGACY_ANON_MAP_REMOVED = False
+    try:
+        ANON_MAP_FILE.unlink()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        logger.warning(
+            "Could not remove the obsolete %s: %s. It holds anonymisation data "
+            "in plain text; delete it by hand.",
+            ANON_MAP_FILE.name,
+            exc,
+        )
+        return
+
+    LEGACY_ANON_MAP_REMOVED = True
+    logger.warning(
+        "Removed the obsolete %s. Versions before this one stored the "
+        "anonymisation mapping there in plain text; it is no longer written.",
+        ANON_MAP_FILE.name,
+    )
+
 
 def init(*, generate_api_key: bool = False) -> None:
     """
@@ -514,6 +608,12 @@ def init(*, generate_api_key: bool = False) -> None:
     if not _initialized:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         reload()
+        # Bound to `_initialized` deliberately: once per process is what is
+        # wanted, and this is the one hook every shipped entry point reaches
+        # (tests/test_entry_points.py holds that in CI). Note the coupling —
+        # 5C showed this flag is easy to get wrong, and anything that changes
+        # when the guard opens changes when the purge runs.
+        _purge_legacy_anon_map()
         _initialized = True
 
     if generate_api_key:

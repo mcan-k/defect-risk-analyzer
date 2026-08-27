@@ -537,3 +537,130 @@ def test_te2_every_open_in_config_declares_an_encoding():
             offenders.append(f"line {node.lineno}")
 
     assert offenders == [], f"open() without an explicit encoding in config.py: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# Faz 6B — emptying a key, and the retired lines the 6A writer leaves behind
+# ---------------------------------------------------------------------------
+# WRITTEN BEFORE THE FIX. The migration to keyring has to leave `.env` with no
+# secret in it, and "no secret" has to include the comments — 6A retires a
+# duplicate by commenting it out, which moves the value but does not remove it.
+#
+# Measured on today's writer: set_env_value does not branch on the value, so
+# writing "" still comments earlier duplicates and the old value survives on a
+# `# API_KEY=...  # [marker]` line. And _is_assignment_line deliberately never
+# matches a comment (T5), so nothing in the codebase can ever touch that line
+# again. It is not a transient state; it is permanent.
+
+def test_t14_emptying_a_key_empties_its_duplicates_too(env_file):
+    """T14 — EXPECTED RED.
+
+    The live line is emptied and the earlier occurrence is emptied with it,
+    rather than being commented out with its value intact. Commenting is right
+    when a real value is being written — the retired line documents what was
+    replaced. It is wrong when the point of the write is that the value must
+    stop existing.
+    """
+    write_env(env_file, "JIRA_URL=a\nAPI_KEY=first-secret\nOTHER_KEY=b\nAPI_KEY=second-secret")
+
+    config.set_env_value("API_KEY", "")
+
+    text = "\n".join(content_lines(env_file))
+    assert "first-secret" not in text, "the duplicate kept its value"
+    assert "second-secret" not in text
+    assert live_lines(env_file, "API_KEY") == ["API_KEY="]
+
+
+def test_t15_a_retired_line_keeps_its_marker_and_loses_its_value(env_file):
+    """T15 — EXPECTED RED.
+
+    Emptying blanks the value; it does not delete the line and does not drop the
+    marker. One rule for both halves of the file — "empty it, never delete it" —
+    rather than one rule for live lines and another for retired ones.
+
+    The marker earns its place here: it is the record that a duplicate existed
+    at all. A user whose key changed under them can see that this file once had
+    two, which is the question they will actually be asking.
+    """
+    write_env(env_file, "API_KEY=first-secret\nAPI_KEY=second-secret")
+
+    config.set_env_value("API_KEY", "")
+
+    lines = content_lines(env_file)
+    text = "\n".join(lines)
+    assert "first-secret" not in text
+    assert MARKER in text, "the retired line lost its marker"
+    assert lines[0].lstrip().startswith("#")
+    assert "API_KEY=" in lines[0]
+    assert len(lines) == 2, "emptying must not delete or add lines"
+
+
+def test_t16_writing_a_real_value_still_comments_the_duplicate(env_file):
+    """EXPECTED GREEN — the 6A behaviour, pinned against the T14 change.
+
+    T14 adds a branch. This is the guard that the branch is a branch and not a
+    replacement: a normal save must keep retiring duplicates by commenting,
+    which is what T2 and T6 are built on.
+    """
+    write_env(env_file, "API_KEY=first\nAPI_KEY=second")
+
+    config.set_env_value("API_KEY", "third")
+
+    lines = content_lines(env_file)
+    assert lines[0].lstrip().startswith("#")
+    assert MARKER in lines[0]
+    assert live_lines(env_file, "API_KEY") == ["API_KEY=third"]
+
+
+def test_t17_emptying_clears_a_previously_retired_secret(env_file):
+    """T17 — EXPECTED RED. The D6 rule, and the reason the others are not enough.
+
+    This is the file a user ends up with if they save from the Settings page
+    once between 6A shipping and 6B shipping: the live line moved, and the old
+    key sits in a comment. The migration must leave nothing of it.
+
+    THE SCAN INCLUDES COMMENTS. A check that only looked at the lines dotenv
+    reads would pass on this file while the secret is still sitting in it, which
+    is exactly the failure being closed.
+
+    THE RETIRED LINE IS PRODUCED BY THE WRITER, not hand-written. The first
+    version of this test spelled the format out and got it wrong — the `MARKER`
+    constant here omits the leading `#` that `config._DUPLICATE_MARKER` carries,
+    so the fixture was a line the writer would never emit and the test measured
+    nothing. Driving `set_env_value` twice reproduces the real sequence: a user
+    saves once after 6A shipped, then the 6B migration runs.
+    """
+    write_env(env_file, "JIRA_URL=a\nAPI_KEY=retired-secret\nAPI_KEY=live-secret")
+
+    config.set_env_value("API_KEY", "rotated-secret")  # 6A retires line 2
+
+    retired = [ln for ln in content_lines(env_file) if MARKER in ln]
+    assert retired and "retired-secret" in retired[0], "fixture did not retire a line"
+
+    config.set_env_value("API_KEY", "")  # the migration
+
+    text = "\n".join(content_lines(env_file))
+    assert "retired-secret" not in text, "a commented-out secret survived the migration"
+    assert "rotated-secret" not in text
+    assert "live-secret" not in text
+    assert "JIRA_URL=a" in text, "unrelated lines must be left alone"
+
+
+def test_t18_emptying_leaves_another_keys_retired_line_alone(env_file):
+    """EXPECTED GREEN once T17 lands. Scope: only the key being emptied.
+
+    A retired line for some other key is not this migration's business. The
+    marker narrows the target, but a user can paste anything into their own
+    file, so the blast radius is held to exactly the key being moved.
+
+    The retired line is produced by the writer, for the reason given in T17.
+    """
+    write_env(env_file, "GROQ_API_KEY=other-secret\nGROQ_API_KEY=other-live\nAPI_KEY=mine")
+
+    config.set_env_value("GROQ_API_KEY", "other-rotated")  # retires other-secret
+
+    config.set_env_value("API_KEY", "")
+
+    text = "\n".join(content_lines(env_file))
+    assert "other-secret" in text, "another key's retired line was touched"
+    assert "other-rotated" in text

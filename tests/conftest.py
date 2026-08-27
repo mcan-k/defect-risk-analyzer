@@ -75,7 +75,21 @@ def _assert_sandboxed():
     # a test that forgets to pass an explicit map raises ModuleMapMissing
     # instead of silently reading — and depending on — the developer's own
     # committed module-map.json.
-    for name in ("BASE_DIR", "DATA_DIR", "CHROMA_DB_DIR", "ENV_FILE", "MODULE_MAP_FILE"):
+    # ANON_MAP_FILE is listed because config.init() now DELETES it (Faz 6B:
+    # a pre-6B leftover holds the anonymisation mapping in plain text). Every
+    # entry point reaches init(), and 18 calls to it live in this suite, so an
+    # escaped path would not merely write into the working tree — it would
+    # remove the developer's own file. It resolves under DATA_DIR today and is
+    # therefore covered transitively, but "covered transitively" is an argument,
+    # not a check, and this guard exists to replace arguments with checks.
+    for name in (
+        "BASE_DIR",
+        "DATA_DIR",
+        "CHROMA_DB_DIR",
+        "ENV_FILE",
+        "MODULE_MAP_FILE",
+        "ANON_MAP_FILE",
+    ):
         resolved = Path(getattr(config, name)).resolve()
         assert resolved != REPO_ROOT and REPO_ROOT not in resolved.parents, (
             f"config.{name} resolved to {resolved}, which is inside the repo. "

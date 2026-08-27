@@ -15,6 +15,8 @@ init(). Rather than depend on that, each test reconstructs the pre-init() state
 explicitly in its fixture — so the file passes alone and in a full run alike.
 """
 
+from pathlib import Path
+
 import pytest
 
 from defect_risk_analyzer import config
@@ -237,3 +239,100 @@ def test_persist_language_normalizes_the_code(uninitialized_config):
 
     assert cfg.LANGUAGE == "en"
     assert "DRA_LANGUAGE=en" in cfg.ENV_FILE.read_text(encoding="utf-8")
+
+
+# ===========================================================================
+# Faz 6B — the legacy anon_map.json purge
+# ===========================================================================
+# WRITTEN BEFORE THE FIX. Every test in this block is EXPECTED RED today:
+# config has no purge at all. Their subject is one rule — a file this project
+# no longer writes, and which held credentials in plain text, must not be left
+# on disk by an upgrade.
+#
+# The hook is config.init() and not DataAnonymizer.__init__, because the
+# anonymizer is never constructed on the ci_analyzer path (measured), so an
+# analyzer-only install would keep the file forever. init() is the one place
+# every shipped entry point reaches, and tests/test_entry_points.py keeps that
+# true in CI.
+
+def test_init_deletes_a_legacy_anon_map(uninitialized_config, monkeypatch):
+    """EXPECTED RED. The file is removed, and the flag records that it was."""
+    cfg = uninitialized_config
+    cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    legacy = cfg.DATA_DIR / "anon_map.json"
+    legacy.write_text('{"forward": {}, "reverse": {}}', encoding="utf-8")
+    monkeypatch.setattr(cfg, "ANON_MAP_FILE", legacy)
+
+    cfg.init()
+
+    assert not legacy.exists(), "the legacy mapping file survived init()"
+    assert cfg.LEGACY_ANON_MAP_REMOVED is True
+
+
+def test_init_is_silent_when_there_is_no_legacy_file(uninitialized_config, monkeypatch):
+    """EXPECTED RED. Idempotent: this runs on every start, not once.
+
+    No marker file guards it. A marker would be new surface that can go stale,
+    and it would miss the case that matters — a user who downgrades and comes
+    back, recreating the file with the old code.
+    """
+    cfg = uninitialized_config
+    cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    monkeypatch.setattr(cfg, "ANON_MAP_FILE", cfg.DATA_DIR / "anon_map.json")
+
+    cfg.init()
+
+    assert cfg.LEGACY_ANON_MAP_REMOVED is False
+
+
+def test_a_failed_delete_does_not_stop_startup(uninitialized_config, monkeypatch):
+    """EXPECTED RED. A locked or read-only file must not take the app down.
+
+    The anonymizer works without the file; refusing to start because a leftover
+    could not be removed would trade a plain-text mapping for an unusable
+    install.
+    """
+    cfg = uninitialized_config
+    cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    legacy = cfg.DATA_DIR / "anon_map.json"
+    legacy.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(cfg, "ANON_MAP_FILE", legacy)
+
+    def _refuse(self, missing_ok=False):
+        raise OSError("file is locked")
+
+    monkeypatch.setattr(Path, "unlink", _refuse)
+
+    cfg.init()  # must not raise
+
+    assert cfg.LEGACY_ANON_MAP_REMOVED is False
+    assert cfg.is_initialized() is True
+
+
+def test_the_purge_never_reads_what_it_deletes(uninitialized_config, monkeypatch):
+    """EXPECTED RED. The file holds secrets; opening it is what we are avoiding.
+
+    Deleting is an unlink, not a read-then-unlink. Nothing may load the mapping
+    to count entries, log categories or report what was in it — "anon_map.json
+    removed" is the whole of what anyone needs to know, and a count is one
+    refactor away from a value.
+    """
+    cfg = uninitialized_config
+    cfg.DATA_DIR.mkdir(parents=True, exist_ok=True)
+    legacy = cfg.DATA_DIR / "anon_map.json"
+    legacy.write_text('{"reverse": {"[EMAIL_001]": "someone@example.invalid"}}',
+                      encoding="utf-8")
+    monkeypatch.setattr(cfg, "ANON_MAP_FILE", legacy)
+
+    opened: list[str] = []
+    real_open = Path.open
+
+    def _record(self, *args, **kwargs):
+        opened.append(str(self))
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", _record)
+
+    cfg.init()
+
+    assert str(legacy) not in opened, "the purge opened the file it was deleting"
