@@ -42,6 +42,11 @@ CORE_MODULES = [
     "defect_risk_analyzer.core.scoring",
     "defect_risk_analyzer.adapters.vector_store",
     "defect_risk_analyzer.adapters.results_repository",
+    # Must stay importable with `keyring` absent — it is in the `desktop` extra,
+    # not requirements.txt, and CI installs neither. The import lives inside
+    # resolve_store() for that reason; listing the module here is what proves
+    # the module scope stayed clean.
+    "defect_risk_analyzer.adapters.secrets",
     "defect_risk_analyzer.services.analysis_service",
     "defect_risk_analyzer.jira_client",
     "defect_risk_analyzer.llm_provider",
