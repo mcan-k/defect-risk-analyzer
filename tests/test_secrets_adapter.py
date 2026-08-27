@@ -287,12 +287,52 @@ def test_a_message_containing_the_secret_is_withheld(caplog):
 # The audit
 # ---------------------------------------------------------------------------
 
-def test_this_suite_never_imports_keyring():
-    """The guarantee that no test in this file can reach a real credential store.
+def test_the_sandbox_refuses_to_import_keyring():
+    """The credential-store half of the sandbox promise, asserted directly.
 
-    Stated as an assertion rather than a convention. Mutation: call
-    `resolve_store()` from any test above and this goes red on a machine where
-    keyring is installed — which is every desktop this feature is FOR.
+    `conftest._KeyringBlocker` refuses the import for the whole session, so
+    `resolve_store()` cannot reach a real backend no matter which test calls it
+    or how it was imported. On this machine and in CI the import would fail
+    anyway — keyring is absent — so what this pins is the guard, not the
+    absence: it must raise the SANDBOX error, not a plain ModuleNotFoundError.
+    """
+    with pytest.raises(ImportError) as caught:
+        import keyring  # noqa: F401
+
+    assert "SANDBOX" in str(caught.value), (
+        "keyring was refused, but by the environment rather than by the sandbox "
+        "guard — on a machine that has it installed, nothing would have stopped it"
+    )
+
+
+def test_resolve_store_finds_nothing_under_the_sandbox():
+    """The consequence: the one production entry point resolves to no store.
+
+    This is the call `bootstrap()`'s migration will make. Under the blocker it
+    falls to the ImportError path, so no test can migrate a credential into the
+    developer's own credential manager.
+    """
+    store, description = secrets_adapter.resolve_store()
+
+    assert store is None
+    assert description == secrets_adapter._NOT_INSTALLED
+
+
+def test_this_suite_never_imports_keyring():
+    """The guarantee that no test in this file reached a real credential store.
+
+    WHAT THIS MEASURES CHANGED when the sandbox gained `_KeyringBlocker`. It used
+    to rest on a convention — no test calls `resolve_store()` — and the mutation
+    that killed it was to add such a call. One now exists
+    (`test_resolve_store_finds_nothing_under_the_sandbox`), deliberately, and
+    this still passes: the blocker refuses the import, so the call falls to the
+    ImportError path and nothing is recorded in `sys.modules`.
+
+    So it no longer pins a convention, it pins the blocker's effect — and it is
+    the assertion that would catch a blocker which stopped working while every
+    other test went on passing. Remove the blocker from conftest and this goes
+    red on any machine that has keyring installed, which is every desktop this
+    feature is FOR.
     """
     assert "keyring" not in sys.modules
 
