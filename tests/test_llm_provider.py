@@ -174,3 +174,112 @@ def test_openai_rate_limit_error_uses_fixed_retry_after():
     with pytest.raises(RateLimitError) as excinfo:
         provider.analyze("system", "user")
     assert excinfo.value.retry_after_seconds == 60.0
+
+
+# ===========================================================================
+# Faz 6B — the key comes in as an argument, not out of the environment
+# ===========================================================================
+# WRITTEN BEFORE THE FIX. Measured on today's code (Ö-B): the Settings page
+# writes the typed key into os.environ and then builds a provider — but the
+# provider reads config.GROQ_API_KEY, a module global that only reload() ever
+# writes, and that branch never calls reload(). So the write does nothing for
+# the test it was meant to enable, AND it persists for the life of the process.
+# Both halves are wrong, and an optional api_key argument closes both.
+
+def test_an_explicit_key_reaches_the_provider(monkeypatch):
+    """EXPECTED RED. The typed key must be the one used.
+
+    Today there is no way to hand a provider a key: it reads the configured
+    global, so "Test Connection" validates whatever was last SAVED rather than
+    what is on screen. On a fresh install with nothing saved, typing a valid key
+    and pressing the button reports "GROQ_API_KEY is not set in .env".
+    """
+    import defect_risk_analyzer.llm_provider as provider_module
+
+    monkeypatch.setattr(provider_module.config, "GROQ_API_KEY", "saved-key")
+    seen = {}
+
+    class FakeGroq:
+        def __init__(self, api_key):
+            seen["api_key"] = api_key
+
+    monkeypatch.setitem(
+        __import__("sys").modules, "groq", SimpleNamespace(Groq=FakeGroq)
+    )
+
+    provider_module.GroqProvider(api_key="typed-key")
+
+    assert seen["api_key"] == "typed-key"
+
+
+def test_no_explicit_key_still_reads_the_configured_one(monkeypatch):
+    """EXPECTED GREEN. The argument is optional, and its absence is the old path.
+
+    Ö-C measured three callers of create_llm_provider; two pass no key and must
+    keep working exactly as before. This is the guard that the new parameter is
+    an addition rather than a replacement.
+    """
+    import defect_risk_analyzer.llm_provider as provider_module
+
+    monkeypatch.setattr(provider_module.config, "GROQ_API_KEY", "saved-key")
+    seen = {}
+
+    class FakeGroq:
+        def __init__(self, api_key):
+            seen["api_key"] = api_key
+
+    monkeypatch.setitem(
+        __import__("sys").modules, "groq", SimpleNamespace(Groq=FakeGroq)
+    )
+
+    provider_module.GroqProvider()
+
+    assert seen["api_key"] == "saved-key"
+
+
+def test_the_factory_forwards_an_explicit_key(monkeypatch):
+    """EXPECTED RED. create_llm_provider is what the Settings page calls."""
+    import defect_risk_analyzer.llm_provider as provider_module
+
+    monkeypatch.setattr(provider_module.config, "OPENAI_API_KEY", "saved-key")
+    seen = {}
+
+    class FakeOpenAI:
+        def __init__(self, api_key):
+            seen["api_key"] = api_key
+
+    monkeypatch.setitem(
+        __import__("sys").modules, "openai", SimpleNamespace(OpenAI=FakeOpenAI)
+    )
+
+    provider_module.create_llm_provider("openai", api_key="typed-key")
+
+    assert seen["api_key"] == "typed-key"
+
+
+def test_building_a_provider_does_not_touch_the_environment(monkeypatch):
+    """EXPECTED GREEN today, and it must STAY green after the fix.
+
+    The second half of Ö-B. The leak was in the Settings page rather than here,
+    but the fix moves the key through this constructor, so this is where the
+    rule belongs: receiving a credential as an argument must not cause it to be
+    written anywhere.
+    """
+    import os
+
+    import defect_risk_analyzer.llm_provider as provider_module
+
+    monkeypatch.setattr(provider_module.config, "GROQ_API_KEY", "saved-key")
+
+    class FakeGroq:
+        def __init__(self, api_key):
+            pass
+
+    monkeypatch.setitem(
+        __import__("sys").modules, "groq", SimpleNamespace(Groq=FakeGroq)
+    )
+
+    before = dict(os.environ)
+    provider_module.GroqProvider(api_key="typed-key")
+
+    assert dict(os.environ) == before, "building a provider wrote to os.environ"

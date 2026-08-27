@@ -789,3 +789,137 @@ def test_the_wizard_demo_button_writes_mock_mode(unconfigured):
     demo[0].click().run()
 
     assert "USE_MOCK_DATA=True" in config.ENV_FILE.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Faz 6B — the legacy anon_map.json removal notice
+# ---------------------------------------------------------------------------
+# config.init() deletes a pre-6B data/anon_map.json, which held the
+# anonymisation mapping in plain text. That is a silent deletion of a file the
+# user never asked us to touch, so it is reported where a person will see it.
+# The headless half is a logger.warning from config; this is the screen half.
+
+def _notice() -> str:
+    from defect_risk_analyzer.ui.i18n import t
+
+    return t("shell.legacy_anon_map_removed")
+
+
+def _boot_with_legacy_map(monkeypatch, *, present: bool):
+    """Run bootstrap() for real with, or without, a leftover mapping file.
+
+    THE FLAG CANNOT BE FAKED, and finding that out is what this helper records.
+    Setting `config.LEGACY_ANON_MAP_REMOVED` before opening the app measures
+    nothing: `bootstrap()` calls `config.init()`, which WRITES that flag, so the
+    pre-seeded value is gone before the notice ever reads it (measured — True
+    going in, False coming out). The flag is only ever authoritative as `init()`
+    left it, which means the honest test is the whole chain: a file on disk, a
+    purge that removes it, a flag, a notice.
+
+    `_initialized` has to be reset because it is process-global and an earlier
+    test in this module has already tripped it, and `init()` does the purge only
+    on the first call.
+    """
+    config.ANON_MAP_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if present:
+        config.ANON_MAP_FILE.write_text('{"forward": {}, "reverse": {}}', encoding="utf-8")
+    elif config.ANON_MAP_FILE.exists():
+        config.ANON_MAP_FILE.unlink()
+
+    monkeypatch.setattr(config, "_initialized", False)
+    return _open()
+
+
+def test_the_removal_notice_is_shown_when_a_file_was_removed(monkeypatch):
+    """The whole chain: leftover file -> purge -> flag -> notice on screen."""
+    at = _boot_with_legacy_map(monkeypatch, present=True)
+
+    assert not config.ANON_MAP_FILE.exists(), "the purge did not run"
+    assert any(_notice() in w for w in _rendered(at, "warning")), (
+        "the deletion happened and nothing on screen said so"
+    )
+
+
+def test_no_notice_when_nothing_was_removed(monkeypatch):
+    """The other half, and the one a mutation kills.
+
+    Dropping the flag check makes the notice unconditional: every user is told
+    a file was deleted, including the overwhelming majority for whom none was.
+    That reads as a bug in the product and teaches people to ignore the banner.
+    """
+    at = _boot_with_legacy_map(monkeypatch, present=False)
+
+    assert not any(_notice() in w for w in _rendered(at, "warning"))
+
+
+def test_the_notice_is_shown_once_per_session(monkeypatch):
+    """Streamlit re-runs the script on every interaction.
+
+    Without the session_state gate the banner returns on every click for the
+    life of the process. config's flag cannot carry this: it is per process, and
+    one process serves every browser session.
+    """
+    at = _boot_with_legacy_map(monkeypatch, present=True)
+    assert any(_notice() in w for w in _rendered(at, "warning"))
+
+    at.run()
+
+    assert not any(_notice() in w for w in _rendered(at, "warning")), (
+        "the notice came back on a rerun"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Faz 6B — no page may push a credential into the process environment
+# ---------------------------------------------------------------------------
+
+def _env_writes(tree: ast.AST) -> list[str]:
+    """Every statement in `tree` that writes to the process environment."""
+    found = []
+
+    def is_environ(node: ast.AST) -> bool:
+        # os.environ
+        if isinstance(node, ast.Attribute) and node.attr == "environ":
+            return isinstance(node.value, ast.Name) and node.value.id == "os"
+        # `from os import environ`
+        return isinstance(node, ast.Name) and node.id == "environ"
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign | ast.AugAssign):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Subscript) and is_environ(target.value):
+                    found.append(f"line {node.lineno}: assignment into os.environ")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr in {"update", "setdefault", "pop"} and is_environ(node.func.value):
+                found.append(f"line {node.lineno}: os.environ.{node.func.attr}()")
+            if node.func.attr in {"putenv", "unsetenv"} and isinstance(node.func.value, ast.Name):
+                if node.func.value.id == "os":
+                    found.append(f"line {node.lineno}: os.{node.func.attr}()")
+
+    return found
+
+
+def test_no_ui_module_writes_to_the_process_environment():
+    """A source-level guard, because the failure it prevents is invisible on screen.
+
+    The Settings page used to do this, and it was wrong twice over (Ö-B). It set
+    `os.environ["GROQ_API_KEY"]` to the typed key before building a provider —
+    which did nothing, because providers read `config.GROQ_API_KEY`, a module
+    global only `reload()` writes and that branch never called it — and which
+    left the credential in the process environment for as long as the process
+    lived. A test that clicked the button would have shown neither half.
+
+    `config.set_env_value` remains the single writer: it goes through the atomic
+    `.env` path and updates `os.environ` as one deliberate step. The rule here is
+    that the UI layer asks config, and never reaches around it.
+    """
+    ui_root = Path(config.__file__).resolve().parent / "ui"
+
+    offenders = {}
+    for path in sorted(ui_root.rglob("*.py")):
+        writes = _env_writes(ast.parse(path.read_text(encoding="utf-8")))
+        if writes:
+            offenders[path.relative_to(ui_root).as_posix()] = writes
+
+    assert not offenders, f"UI modules writing to os.environ: {offenders}"

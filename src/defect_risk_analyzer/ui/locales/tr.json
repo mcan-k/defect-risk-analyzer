@@ -204,6 +204,7 @@
   "severity.high": "YÜKSEK",
   "severity.low": "DÜŞÜK",
   "severity.medium": "ORTA",
+  "shell.legacy_anon_map_removed": "Eski `data/anon_map.json` dosyası kaldırıldı. Bu sürümden önce anonimleştirme eşlemesi orada düz metin olarak saklanıyordu; artık hiç yazılmıyor.",
   "sidebar.jira.connected": "✅ Jira: Bağlı",
   "sidebar.jira.unconfigured": "⚠️ Jira: Yapılandırılmamış",
   "sidebar.language": "Dil",

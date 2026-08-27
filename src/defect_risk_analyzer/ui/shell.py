@@ -38,6 +38,12 @@ def bootstrap() -> None:
     # renders in this language too.
     language.apply()
 
+    # After language.apply() so the notice is translated, and BEFORE the
+    # first-run gate so a fresh install still sees it — the gate ends the
+    # script with st.stop(), and anything below it would never render for that
+    # user. See _report_removed_legacy_files.
+    _report_removed_legacy_files()
+
     if config.is_first_run():
         render_setup_wizard()
         # Nothing below runs, so no navigation and no status is drawn behind
@@ -46,6 +52,37 @@ def bootstrap() -> None:
 
     render_nav()
     render_status()
+
+
+# st.session_state key. Named once so the read and the write cannot drift.
+_LEGACY_NOTICE_SHOWN = "_dra_legacy_anon_map_notice_shown"
+
+
+def _report_removed_legacy_files() -> None:
+    """Tell the user that `data/anon_map.json` was deleted at startup.
+
+    A LOG LINE IS NOT ENOUGH, which is why this exists at all. The deletion is
+    silent removal of a file the user never asked us to touch, and nobody reads
+    `data/dashboard.log`. `config._purge_legacy_anon_map()` already writes a
+    warning there for the headless paths — the API server and the CI analyzer,
+    which have no screen — and this is the half that reaches a person.
+
+    ONCE PER BROWSER SESSION, not once per rerun. Streamlit re-executes the
+    whole script on every interaction, so an ungated `st.warning` would reappear
+    on every click for as long as the process lived. `config` cannot carry that
+    state: its flag is per PROCESS, and one process serves every browser
+    session.
+
+    Says nothing about what the file held. Not a count, not a category — the
+    contents are the reason it was deleted.
+    """
+    if not config.LEGACY_ANON_MAP_REMOVED:
+        return
+    if st.session_state.get(_LEGACY_NOTICE_SHOWN):
+        return
+
+    st.session_state[_LEGACY_NOTICE_SHOWN] = True
+    st.warning(t("shell.legacy_anon_map_removed"))
 
 
 def render_nav() -> None:

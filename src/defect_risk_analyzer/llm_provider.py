@@ -75,13 +75,21 @@ class LLMProvider(ABC):
 class GroqProvider(LLMProvider):
     """Groq LLM provider using llama-3.3-70b-versatile."""
 
-    def __init__(self) -> None:
+    def __init__(self, api_key: str | None = None) -> None:
+        """
+        Args:
+            api_key: Use this key instead of the configured one. The Settings
+                page passes what the user typed, so "Test Connection" validates
+                what is on screen rather than what was last saved. Omitted
+                everywhere else, which keeps the configured-global path exactly
+                as it was.
+        """
         try:
             from groq import Groq
         except ImportError:
             raise LLMError("groq package is not installed. Run: pip install groq")
 
-        api_key = config.GROQ_API_KEY
+        api_key = api_key or config.GROQ_API_KEY
         if not api_key:
             raise LLMError("GROQ_API_KEY is not set in .env")
 
@@ -163,13 +171,14 @@ class GroqProvider(LLMProvider):
 class OpenAIProvider(LLMProvider):
     """OpenAI LLM provider using gpt-4o-mini."""
 
-    def __init__(self) -> None:
+    def __init__(self, api_key: str | None = None) -> None:
+        """See `GroqProvider.__init__` for what `api_key` is for."""
         try:
             from openai import OpenAI
         except ImportError:
             raise LLMError("openai package is not installed. Run: pip install openai")
 
-        api_key = config.OPENAI_API_KEY
+        api_key = api_key or config.OPENAI_API_KEY
         if not api_key:
             raise LLMError("OPENAI_API_KEY is not set in .env")
 
@@ -229,12 +238,18 @@ _PROVIDERS: dict[str, type[LLMProvider]] = {
 }
 
 
-def create_llm_provider(provider_name: str | None = None) -> LLMProvider:
+def create_llm_provider(
+    provider_name: str | None = None,
+    api_key: str | None = None,
+) -> LLMProvider:
     """
     Factory function — creates the appropriate LLM provider.
 
     Args:
         provider_name: "groq" or "openai". Defaults to LLM_PROVIDER from .env.
+        api_key: Use this key instead of the configured one. Optional, and its
+            absence is the pre-existing path — of the three callers, only the
+            Settings page's "Test Connection" passes one.
 
     Returns:
         Configured LLMProvider instance.
@@ -251,5 +266,7 @@ def create_llm_provider(provider_name: str | None = None) -> LLMProvider:
             f"Unknown LLM provider: '{name}'. Available: {available}"
         )
 
+    # The provider name is safe to log; the key is not, and is not logged here
+    # or anywhere else in this module.
     logger.info("Initializing LLM provider: %s", name)
-    return provider_class()
+    return provider_class(api_key=api_key)

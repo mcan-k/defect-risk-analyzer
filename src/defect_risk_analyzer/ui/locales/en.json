@@ -204,6 +204,7 @@
   "severity.high": "HIGH",
   "severity.low": "LOW",
   "severity.medium": "MEDIUM",
+  "shell.legacy_anon_map_removed": "The obsolete `data/anon_map.json` was removed. Before this release the anonymisation mapping was stored there in plain text; it is no longer written at all.",
   "sidebar.jira.connected": "✅ Jira: Connected",
   "sidebar.jira.unconfigured": "⚠️ Jira: Not configured",
   "sidebar.language": "Language",
