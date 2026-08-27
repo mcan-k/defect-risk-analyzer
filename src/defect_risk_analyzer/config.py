@@ -375,6 +375,115 @@ def set_env_value(key: str, value: str) -> None:
     os.environ[key] = str(value)
 
 
+def migrate_secrets_to_store() -> dict[str, object]:
+    """Move any credential still sitting in `.env` into the credential store.
+
+    THE ORDER IS THE CONTRACT: write to the store, read it back and verify, then
+    empty `.env`, then clear a retired copy the 6A writer may have left in a
+    comment. Nothing leaves `.env` until something else demonstrably holds it.
+
+    THE READ-BACK IS NOT PARANOIA ABOUT OUR OWN CODE. `store.set()` reports
+    whether the backend accepted the write, which is not the same as the value
+    being retrievable afterwards, and the cost of confusing the two is a
+    credential deleted from the only place that had it.
+
+    IDEMPOTENT, because it runs at every startup. A key whose `.env` value is
+    already empty has nothing to move and is skipped before any store call, so a
+    second run neither rewrites the file nor re-issues a credential write.
+
+    NO STORE MEANS NO MIGRATION. In Docker, in CI, and on a desktop without the
+    `desktop` extra there is nowhere better to put the value, so it stays in
+    `.env` in plain text. That is the intended behaviour and SECURITY.md scopes
+    the guarantee to say so.
+
+    Returns a report: `moved`, `not_moved` (the store refused it or lost it —
+    `.env` untouched), `in_both` (stored, but `.env` could not be emptied, so
+    the plain-text copy is still there), and `description` of the layer in use.
+    """
+    store, description = secret_store()
+    report: dict[str, object] = {
+        "moved": [],
+        "not_moved": [],
+        "in_both": [],
+        "description": description,
+    }
+    if store is None:
+        return report
+
+    for key in STORED_SECRET_KEYS:
+        value = _get_env(key)
+        if not value:
+            continue
+
+        # The return value of set() is deliberately NOT branched on. A guard
+        # stood here and the mutation audit removed it without turning a single
+        # test red: a store that refuses the write has nothing to read back
+        # either, so the check below already covers it — and it covers more,
+        # because a store that reports failure while the value IS retrievable
+        # (a previous partial run left it there) should count as a success, not
+        # a failure. Dropped rather than kept as decoration, on the same
+        # reasoning as the retired guard in _is_assignment_line.
+        store.set(key, value)
+
+        if store.get(key) != value:
+            logger.warning(
+                "%s was written to the credential store but did not read back; "
+                "leaving it in .env.",
+                key,
+            )
+            report["not_moved"].append(key)
+            continue
+
+        try:
+            # Empties the live line AND blanks any retired duplicate carrying
+            # the same secret — see the emptying branch in set_env_value.
+            set_env_value(key, "")
+        except OSError as exc:
+            logger.warning(
+                "%s is now in the credential store, but .env could not be "
+                "updated (%s). The plain-text copy is still there.",
+                key,
+                type(exc).__name__,
+            )
+            report["in_both"].append(key)
+            continue
+
+        report["moved"].append(key)
+
+    if report["moved"]:
+        # The globals still hold what .env had before it was emptied; re-reading
+        # is what routes them through the store from here on.
+        reload()
+
+    return report
+
+
+def save_secret(key: str, value: str) -> str:
+    """Store one credential in whichever layer is in use. Returns the layer.
+
+    Writes to the store when there is one, and empties the `.env` line in the
+    same step — otherwise the file would shadow what was just stored, because
+    `_get_secret` lets a non-empty `.env` win. Without that, the first save
+    after a migration would quietly put the credential back in plain text.
+
+    FALLS BACK RATHER THAN FAILING. If the store refuses the write or loses it,
+    the value goes to `.env`: a credential the user typed is not something to
+    drop because the preferred layer misbehaved.
+    """
+    store, _ = secret_store()
+
+    if store is not None and value:
+        if store.set(key, value) and store.get(key) == value:
+            set_env_value(key, "")
+            return "store"
+        logger.warning(
+            "Could not store %s in the credential store; falling back to .env.", key
+        )
+
+    set_env_value(key, value)
+    return "env"
+
+
 def persist_language(code: str) -> None:
     """
     Persist the interface language and make it live for this process.

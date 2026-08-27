@@ -17,6 +17,13 @@ def render_settings():
     st.title(t("nav.settings"))
     st.caption(t("settings.caption"))
 
+    # Which layer the credentials below actually live in. Shown rather than
+    # assumed: PYTHON_KEYRING_BACKEND and keyringrc.cfg can both redirect the
+    # choice, so the only honest answer is the one resolved at run time. This is
+    # also what ROADMAP:494 asks for — the user is told which guarantee applies
+    # to their install.
+    st.caption(t("settings.secret_layer", backend=config.secret_store()[1]))
+
     # --- Jira Connection ---
     st.subheader(t("settings.jira.title"))
 
