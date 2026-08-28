@@ -114,9 +114,16 @@ Yapıldı:
 Yapılmadı — ~~Faz 5'e taşındı~~ **Faz 5 kapandı; bu maddeler Faz 6A'da yeniden
 sahiplendirildi** (gerekçeleri `KNOWN-DEBT.md`'de):
 - [ ] `tests/test_adf_parser.py` — saf fonksiyon, en yüksek getiri → **Faz 6E**
-- [ ] `tests/test_anonymizer.py` — round-trip + **telefon regex'i düzeltmesi**
-      (sürüm numarası, sipariş kodu, tarih maskelenmemeli). Eksik test değil,
-      yaşayan hata. → **Faz 6B** (`anon_map.json` ile aynı çalışma)
+- [x] `tests/test_anonymizer.py` — **Faz 6B'de yazıldı**, 21 test; sekizi
+      yazıldığı gün kırmızıydı. Telefon regex'i düzeltildi, ama bu maddenin
+      parantezi YANLIŞTI ve ölçüm onu yalanladı: sürüm numarası, sipariş kodu
+      ve tarih zaten maskelenmiyordu. Gerçek kusur üç sınıftı — yedi ve üzeri
+      basamaklı kesintisiz rakam dizileri (build no, trace id), üçlü sayı
+      grupları (ölçüm, boyut, adet), ve on altı basamaklı bir dizide son dört
+      hanenin token'ın yanında kalması. Düzeltme ölçülen davranışa göre
+      yazıldı. Ayrıca `deanonymize_text`'in bir oturumun değerini başka bir
+      oturumun çıktısına koyduğu sızıntı kapatıldı (`anon_map.json` ile aynı
+      çalışma).
 - [ ] `pattern_detector` / `component_classifier` testleri
       (`blind_spot_detector` Faz 5A'da karşılandı) → **Faz 6E**
 - [x] `compare_service.py` emekliye ayrılırken düşen üç **karşılaştırma
@@ -469,10 +476,14 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       giriş noktasının `config.init()`'e ulaştığını CI'da doğruluyor.
       445 → **473 toplanan test** (biri Windows'ta atlanıyor: POSIX izin testi,
       CI'da koştuğu henüz doğrulanmadı). Kalan borçlar: `KNOWN-DEBT.md`.
-- [ ] **Jira token'ı `keyring`'e taşı** — düz metin `.env`'de kimlik bilgisi kalmasın
-      (`.env` sadece dil, port, mock modu gibi hassas olmayan ayarları tutar)
-- [ ] `SECURITY.md`: veri akışı (ne maskeleniyor, hangi API'ye ne gidiyor, ne saklanıyor),
-      açıklama kanalı, yanıt süresi taahhüdü
+- [x] **Kimlik bilgilerini `keyring`'e taşı** — Faz 6B. İki katmanlı: keyring
+      varsa ve backend çözülüyorsa orada, aksi hâlde `.env`, ve Ayarlar hangi
+      katmanın kullanıldığını yazıyor. `keyring` ayrı bir extra (`desktop`);
+      `requirements.txt`'e girmiyor çünkü Linux'ta çalışamayacağı yerlere
+      `SecretStorage` + `jeepney` getiriyor.
+- [x] `SECURITY.md` — Faz 6B'de ölçümlerden türetildi, önce yazılıp sonra
+      doğrulanmadı. Desteklenemeyen on bir iddia kasten dışarıda bırakıldı;
+      hangilerinin neden yazılmadığı keşif kaydında duruyor.
 - [ ] Dependabot etkinleştir
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
@@ -491,5 +502,10 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
 - [ ] Hiçbir `.bat` dosyasına bağımlılık yok
 - [ ] README'deki her komut gerçekten çalışıyor
 - [ ] Her rozetin arkasında gerçek bir CI çalışması var
-- [ ] Kimlik bilgisi hiçbir yerde düz metin diskte durmuyor
+- [ ] Yapılandırılmış kimlik bilgileri masaüstü kurulumunda keyring'de; keyring
+      backend'i çözülemediğinde `.env`'e düşülüyor ve kullanıcıya hangisinin
+      kullanıldığı söyleniyor. Docker ve CI `env_file`/ortam değişkeni yolunu
+      kullanır — bu yollarda taahhüt geçerli değil.
+- [ ] Çalışma zamanı artıklarında sır tutulmuyor: `anon_map.json` yazılmıyor,
+      loglar ve `analysis_results.json` ham kullanıcı metni saklamıyor.
 - [ ] `core/` içindeki hiçbir dosya dış dünyayı import etmiyor

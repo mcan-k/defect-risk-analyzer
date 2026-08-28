@@ -1,6 +1,5 @@
 """Ayarlar — self-service configuration."""
 
-import os
 import time
 
 import streamlit as st
@@ -17,6 +16,13 @@ def render_settings():
     """Self-service configuration panel with live reload."""
     st.title(t("nav.settings"))
     st.caption(t("settings.caption"))
+
+    # Which layer the credentials below actually live in. Shown rather than
+    # assumed: PYTHON_KEYRING_BACKEND and keyringrc.cfg can both redirect the
+    # choice, so the only honest answer is the one resolved at run time. This is
+    # also what ROADMAP:494 asks for — the user is told which guarantee applies
+    # to their install.
+    st.caption(t("settings.secret_layer", backend=config.secret_store()[1]))
 
     # --- Jira Connection ---
     st.subheader(t("settings.jira.title"))
@@ -100,15 +106,19 @@ def render_settings():
         if llm_key:
             with st.spinner(t("settings.llm.testing")):
                 try:
-                    # Temporarily set for test
-                    if provider == "groq":
-                        os.environ["GROQ_API_KEY"] = llm_key
-                    else:
-                        os.environ["OPENAI_API_KEY"] = llm_key
-                    os.environ["LLM_PROVIDER"] = provider
-
+                    # The typed key is PASSED, not written to os.environ.
+                    #
+                    # The old code set os.environ and then built a provider —
+                    # which did nothing for the test and everything for the
+                    # leak. Measured: the providers read config.GROQ_API_KEY /
+                    # config.OPENAI_API_KEY, module globals that only reload()
+                    # writes, and this branch never calls reload(). So the
+                    # button validated the last SAVED key while leaving the
+                    # typed one in the process environment for good. On a fresh
+                    # install it reported "GROQ_API_KEY is not set in .env" for
+                    # a perfectly valid key.
                     from defect_risk_analyzer.llm_provider import create_llm_provider
-                    llm = create_llm_provider(provider)
+                    llm = create_llm_provider(provider, api_key=llm_key)
                     if llm.test_connection():
                         st.success(t("common.llm.ok", provider=provider.capitalize()))
                     else:
@@ -196,7 +206,11 @@ def render_settings():
     st.subheader(t("settings.apikey.title"))
 
     if config.API_KEY:
-        st.code(config.API_KEY, language=None)
+        # Prefix only. The full key used to be printed here, which is the one
+        # place in the UI that did — analiz.py:141 and the rotate message below
+        # both already showed [:8]. A webhook key is not something the page
+        # needs to display in full to confirm that one exists.
+        st.code(f"{config.API_KEY[:8]}…", language=None)
         st.caption(t("settings.apikey.note"))
     else:
         st.info(t("settings.apikey.none"))

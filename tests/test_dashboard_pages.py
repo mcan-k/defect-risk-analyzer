@@ -789,3 +789,236 @@ def test_the_wizard_demo_button_writes_mock_mode(unconfigured):
     demo[0].click().run()
 
     assert "USE_MOCK_DATA=True" in config.ENV_FILE.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------------------
+# Faz 6B — the legacy anon_map.json removal notice
+# ---------------------------------------------------------------------------
+# config.init() deletes a pre-6B data/anon_map.json, which held the
+# anonymisation mapping in plain text. That is a silent deletion of a file the
+# user never asked us to touch, so it is reported where a person will see it.
+# The headless half is a logger.warning from config; this is the screen half.
+
+def _notice() -> str:
+    from defect_risk_analyzer.ui.i18n import t
+
+    return t("shell.legacy_anon_map_removed")
+
+
+def _boot_with_legacy_map(monkeypatch, *, present: bool):
+    """Run bootstrap() for real with, or without, a leftover mapping file.
+
+    THE FLAG CANNOT BE FAKED, and finding that out is what this helper records.
+    Setting `config.LEGACY_ANON_MAP_REMOVED` before opening the app measures
+    nothing: `bootstrap()` calls `config.init()`, which WRITES that flag, so the
+    pre-seeded value is gone before the notice ever reads it (measured — True
+    going in, False coming out). The flag is only ever authoritative as `init()`
+    left it, which means the honest test is the whole chain: a file on disk, a
+    purge that removes it, a flag, a notice.
+
+    `_initialized` has to be reset because it is process-global and an earlier
+    test in this module has already tripped it, and `init()` does the purge only
+    on the first call.
+    """
+    config.ANON_MAP_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if present:
+        config.ANON_MAP_FILE.write_text('{"forward": {}, "reverse": {}}', encoding="utf-8")
+    elif config.ANON_MAP_FILE.exists():
+        config.ANON_MAP_FILE.unlink()
+
+    monkeypatch.setattr(config, "_initialized", False)
+    return _open()
+
+
+def test_the_removal_notice_is_shown_when_a_file_was_removed(monkeypatch):
+    """The whole chain: leftover file -> purge -> flag -> notice on screen."""
+    at = _boot_with_legacy_map(monkeypatch, present=True)
+
+    assert not config.ANON_MAP_FILE.exists(), "the purge did not run"
+    assert any(_notice() in w for w in _rendered(at, "warning")), (
+        "the deletion happened and nothing on screen said so"
+    )
+
+
+def test_no_notice_when_nothing_was_removed(monkeypatch):
+    """The other half, and the one a mutation kills.
+
+    Dropping the flag check makes the notice unconditional: every user is told
+    a file was deleted, including the overwhelming majority for whom none was.
+    That reads as a bug in the product and teaches people to ignore the banner.
+    """
+    at = _boot_with_legacy_map(monkeypatch, present=False)
+
+    assert not any(_notice() in w for w in _rendered(at, "warning"))
+
+
+def test_the_notice_is_shown_once_per_session(monkeypatch):
+    """Streamlit re-runs the script on every interaction.
+
+    Without the session_state gate the banner returns on every click for the
+    life of the process. config's flag cannot carry this: it is per process, and
+    one process serves every browser session.
+    """
+    at = _boot_with_legacy_map(monkeypatch, present=True)
+    assert any(_notice() in w for w in _rendered(at, "warning"))
+
+    at.run()
+
+    assert not any(_notice() in w for w in _rendered(at, "warning")), (
+        "the notice came back on a rerun"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Faz 6B — no page may push a credential into the process environment
+# ---------------------------------------------------------------------------
+
+def _env_writes(tree: ast.AST) -> list[str]:
+    """Every statement in `tree` that writes to the process environment."""
+    found = []
+
+    def is_environ(node: ast.AST) -> bool:
+        # os.environ
+        if isinstance(node, ast.Attribute) and node.attr == "environ":
+            return isinstance(node.value, ast.Name) and node.value.id == "os"
+        # `from os import environ`
+        return isinstance(node, ast.Name) and node.id == "environ"
+
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign | ast.AugAssign):
+            targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+            for target in targets:
+                if isinstance(target, ast.Subscript) and is_environ(target.value):
+                    found.append(f"line {node.lineno}: assignment into os.environ")
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+            if node.func.attr in {"update", "setdefault", "pop"} and is_environ(node.func.value):
+                found.append(f"line {node.lineno}: os.environ.{node.func.attr}()")
+            if node.func.attr in {"putenv", "unsetenv"} and isinstance(node.func.value, ast.Name):
+                if node.func.value.id == "os":
+                    found.append(f"line {node.lineno}: os.{node.func.attr}()")
+
+    return found
+
+
+def test_no_ui_module_writes_to_the_process_environment():
+    """A source-level guard, because the failure it prevents is invisible on screen.
+
+    The Settings page used to do this, and it was wrong twice over (Ö-B). It set
+    `os.environ["GROQ_API_KEY"]` to the typed key before building a provider —
+    which did nothing, because providers read `config.GROQ_API_KEY`, a module
+    global only `reload()` writes and that branch never called it — and which
+    left the credential in the process environment for as long as the process
+    lived. A test that clicked the button would have shown neither half.
+
+    `config.set_env_value` remains the single writer: it goes through the atomic
+    `.env` path and updates `os.environ` as one deliberate step. The rule here is
+    that the UI layer asks config, and never reaches around it.
+    """
+    ui_root = Path(config.__file__).resolve().parent / "ui"
+
+    offenders = {}
+    for path in sorted(ui_root.rglob("*.py")):
+        writes = _env_writes(ast.parse(path.read_text(encoding="utf-8")))
+        if writes:
+            offenders[path.relative_to(ui_root).as_posix()] = writes
+
+    assert not offenders, f"UI modules writing to os.environ: {offenders}"
+
+
+# ---------------------------------------------------------------------------
+# Faz 6B — the credential migration, and its notice sharing a boot with D4's
+# ---------------------------------------------------------------------------
+
+class _RecordingStore:
+    """A credential store that accepts everything and remembers it."""
+
+    def __init__(self):
+        self.values = {}
+
+    def get(self, name):
+        return self.values.get(name)
+
+    def set(self, name, value):
+        self.values[name] = value
+        return True
+
+    def delete(self, name):
+        self.values.pop(name, None)
+        return True
+
+
+def _boot_with_store(monkeypatch, store, *, legacy_map: bool = False):
+    """bootstrap() with a credential store injected and `.env` restored after.
+
+    The `.env` this module's fixture wrote carries two synthetic credentials, so
+    a migration has something to move. It is restored afterwards because the
+    file is module-scoped and every other test in here reads it.
+    """
+    saved_env = config.ENV_FILE.read_text(encoding="utf-8")
+
+    config.ANON_MAP_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if legacy_map:
+        config.ANON_MAP_FILE.write_text("{}", encoding="utf-8")
+    elif config.ANON_MAP_FILE.exists():
+        config.ANON_MAP_FILE.unlink()
+
+    monkeypatch.setattr(config, "_secret_store", store)
+    monkeypatch.setattr(config, "_secret_store_description", "fake.Backend")
+    monkeypatch.setattr(config, "_secret_store_resolved", True)
+    monkeypatch.setattr(config, "_initialized", False)
+    try:
+        return _open()
+    finally:
+        config.ENV_FILE.write_text(saved_env, encoding="utf-8")
+        config._initialized = False
+        config.reload()
+
+
+def test_the_migration_moves_credentials_and_says_so(monkeypatch):
+    store = _RecordingStore()
+
+    at = _boot_with_store(monkeypatch, store)
+
+    assert store.get("JIRA_API_TOKEN") == "dummy-token-not-a-real-credential"
+    assert store.get("GROQ_API_KEY") == "dummy-key-not-a-real-credential"
+    assert any("JIRA_API_TOKEN" in m for m in _rendered(at, "success")), (
+        "credentials moved and nothing on screen said so"
+    )
+
+
+def test_no_store_means_no_migration_and_no_notice(monkeypatch):
+    """The Docker, CI and no-extra case. Silence is correct here.
+
+    Scoped to the migration notice rather than "no success element at all": the
+    sidebar status block renders its own `st.success` for a configured Jira and
+    LLM, so a blanket assertion would fail for a reason that has nothing to do
+    with migration.
+    """
+    at = _boot_with_store(monkeypatch, None)
+
+    assert not any("JIRA_API_TOKEN" in m for m in _rendered(at, "success")), (
+        "a migration notice appeared with no store to migrate into"
+    )
+    assert "dummy-token-not-a-real-credential" in config.ENV_FILE.read_text(
+        encoding="utf-8"
+    ), "the credential was removed with nowhere to put it"
+
+
+def test_both_notices_survive_the_same_boot(monkeypatch):
+    """The purge notice and the migration notice can fire on one startup.
+
+    They are separate messages from separate steps, and the failure mode worth
+    guarding is one silently replacing the other — `st.warning` and `st.success`
+    do not queue behind each other, but the ordering in bootstrap() could easily
+    put one after an `st.stop()` and nobody would notice.
+    """
+    store = _RecordingStore()
+
+    at = _boot_with_store(monkeypatch, store, legacy_map=True)
+
+    assert any(
+        _notice() in w for w in _rendered(at, "warning")
+    ), "the anon_map purge notice went missing when a migration ran too"
+    assert any(
+        "JIRA_API_TOKEN" in m for m in _rendered(at, "success")
+    ), "the migration notice went missing when a purge ran too"

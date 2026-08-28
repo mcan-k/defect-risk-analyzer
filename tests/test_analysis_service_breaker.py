@@ -18,6 +18,7 @@ No network, no ChromaDB, no Jira, no config.init(). Every collaborator is
 injected, so AnalysisService never constructs a real one.
 """
 
+import contextlib
 import time
 
 import pytest
@@ -71,7 +72,17 @@ class StubRepository:
 
 
 class StubAnonymizer:
-    """Identity transforms — anonymization is not what this test is about."""
+    """Identity transforms — anonymization is not what this test is about.
+
+    Carries `session()` because Faz 6B moved the mapping into a per-call scope:
+    the service now opens one and calls the transforms on what it yields. The
+    stub yields itself, so the identity behaviour is unchanged and this file
+    still says nothing about anonymization.
+    """
+
+    @contextlib.contextmanager
+    def session(self):
+        yield self
 
     def anonymize_query(self, query: str) -> str:
         return query

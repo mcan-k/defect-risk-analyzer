@@ -19,12 +19,15 @@ changes take effect without a restart. API key generation is explicit via
 `ensure_api_key()` — it writes to `.env`, so it never happens implicitly.
 """
 
+import logging
 import os
 import secrets
 import stat
 from pathlib import Path
 
 from dotenv import load_dotenv
+
+logger = logging.getLogger(__name__)
 
 # The codec for .env, on both the read and the write side. Named once because
 # the two sides disagreeing is silent: python-dotenv reads UTF-8 (load_dotenv's
@@ -107,6 +110,72 @@ def _get_env(key: str, default: str = "") -> str:
     return os.getenv(key, default).strip()
 
 
+# The credentials that may live in the OS credential store instead of `.env`.
+# Everything else in `.env` is a setting, not a secret, and stays in the file.
+STORED_SECRET_KEYS = ("JIRA_API_TOKEN", "GROQ_API_KEY", "OPENAI_API_KEY", "API_KEY")
+
+# Resolved once per process. THE HANDLE IS CACHED, THE VALUES ARE NOT — see
+# _get_secret. Resolving means importing keyring, which is why it is deferred
+# until something actually needs it.
+_secret_store = None
+_secret_store_description: str = ""
+_secret_store_resolved: bool = False
+
+
+def secret_store() -> tuple[object | None, str]:
+    """The credential store for this process, and a description of the layer.
+
+    `None` is a supported outcome, not a failure: no `desktop` extra installed,
+    or a keyring that resolved a backend which cannot store anything. The
+    description is what the Settings page shows the user, because which layer is
+    in use is not something this project may assume at install time.
+
+    The import lives in `adapters.secrets` and this module is the only caller
+    that matters, which fixes the direction of the dependency: `config` imports
+    the adapter, never the reverse. `adapters.results_repository` and
+    `adapters.vector_store` both import `config`, so an import back from the
+    secrets adapter would close a cycle — that is why the migration logic below
+    lives here rather than in the adapter, and why
+    `test_the_adapter_never_imports_config` checks it instead of a comment
+    claiming it.
+    """
+    global _secret_store, _secret_store_description, _secret_store_resolved
+
+    if not _secret_store_resolved:
+        from defect_risk_analyzer.adapters import secrets
+
+        _secret_store, _secret_store_description = secrets.resolve_store()
+        _secret_store_resolved = True
+
+    return _secret_store, _secret_store_description
+
+
+def _get_secret(key: str) -> str:
+    """A credential from `.env`, falling back to the credential store.
+
+    `.env` WINS when it holds a value, and the store is not consulted at all.
+    It is the explicit, visible, hand-editable layer; the store fills its gaps.
+    Two consequences, both intended: a half-finished migration keeps working,
+    because both places hold the same value; and a key someone pastes into the
+    file takes effect. The cost — a stale hand-written value silently shadowing
+    a newer one in the store — is recorded in docs/KNOWN-DEBT.md.
+
+    Nothing here is cached. 6A closed a bug where a save reported success and
+    the next reload() handed back the old value; memoising what the store
+    returned would rebuild it one layer over, where the file on disk would look
+    correct the whole time.
+    """
+    value = _get_env(key)
+    if value:
+        return value
+
+    store, _ = secret_store()
+    if store is None:
+        return ""
+
+    return store.get(key) or ""
+
+
 def _get_env_bool(key: str, default: bool = False) -> bool:
     """Read an environment variable as boolean."""
     value = _get_env(key, str(default)).lower()
@@ -148,6 +217,27 @@ def _is_assignment_line(line: str, key: str) -> bool:
     # both the overwritten-documentation bug and the retire-your-own-marker
     # loop. test_t5 and test_t6 are what hold that shut.
     return line.strip().startswith(f"{key}=")
+
+
+def _is_retired_assignment_line(line: str, key: str) -> bool:
+    """True if `line` is an assignment for `key` that this writer retired.
+
+    Both halves are required: the `# ` comment form AND the marker this module
+    wrote. Neither alone is enough — a hand-written `# API_KEY=notes` is the
+    user's own comment, and the marker on some other key's line is not ours to
+    touch.
+
+    SEPARATE FROM `_is_assignment_line` ON PURPOSE, and it must stay separate.
+    That predicate refuses to match comments, which is what stops the writer
+    from overwriting documentation and from re-retiring its own retired lines
+    forever (test_t5, test_t6). Loosening it to reach these lines would reopen
+    both. This one is consulted only by the emptying path below, which writes no
+    markers and therefore cannot loop.
+    """
+    stripped = line.strip()
+    if _DUPLICATE_MARKER not in stripped or not stripped.startswith("#"):
+        return False
+    return stripped.lstrip("#").strip().startswith(f"{key}=")
 
 
 def _line_terminator(lines: list[str]) -> str:
@@ -244,6 +334,23 @@ def set_env_value(key: str, value: str) -> None:
 
     matches = [i for i, line in enumerate(lines) if _is_assignment_line(line, key)]
 
+    # EMPTYING IS NOT AN ORDINARY WRITE. Retiring a duplicate by commenting it
+    # out moves the value out of dotenv's reach but leaves it on the disk, and
+    # `_is_assignment_line` never matches a comment, so nothing here could ever
+    # reach it again — the value would be stranded permanently, not briefly.
+    # That is acceptable when a real value is being written (the retired line
+    # documents what was replaced) and wrong when the whole point of the write
+    # is that the value must stop existing, which is what the keyring migration
+    # does. So an empty write blanks instead of preserving, on both the
+    # duplicates it retires now and the ones an earlier write already retired.
+    emptying = value == ""
+
+    if emptying:
+        for index, line in enumerate(lines):
+            if _is_retired_assignment_line(line, key):
+                _, terminator = _split_terminator(line)
+                lines[index] = f"# {key}=  {_DUPLICATE_MARKER}{terminator}"
+
     if matches:
         target = matches[-1]
         _, terminator = _split_terminator(lines[target])
@@ -251,7 +358,10 @@ def set_env_value(key: str, value: str) -> None:
 
         for index in matches[:-1]:
             content, terminator = _split_terminator(lines[index])
-            lines[index] = f"# {content}  {_DUPLICATE_MARKER}{terminator}"
+            if emptying:
+                lines[index] = f"# {key}=  {_DUPLICATE_MARKER}{terminator}"
+            else:
+                lines[index] = f"# {content}  {_DUPLICATE_MARKER}{terminator}"
     else:
         terminator = _line_terminator(lines)
         # A file whose last line has no terminator would otherwise get the new
@@ -263,6 +373,115 @@ def set_env_value(key: str, value: str) -> None:
     _atomic_write_lines(lines)
 
     os.environ[key] = str(value)
+
+
+def migrate_secrets_to_store() -> dict[str, object]:
+    """Move any credential still sitting in `.env` into the credential store.
+
+    THE ORDER IS THE CONTRACT: write to the store, read it back and verify, then
+    empty `.env`, then clear a retired copy the 6A writer may have left in a
+    comment. Nothing leaves `.env` until something else demonstrably holds it.
+
+    THE READ-BACK IS NOT PARANOIA ABOUT OUR OWN CODE. `store.set()` reports
+    whether the backend accepted the write, which is not the same as the value
+    being retrievable afterwards, and the cost of confusing the two is a
+    credential deleted from the only place that had it.
+
+    IDEMPOTENT, because it runs at every startup. A key whose `.env` value is
+    already empty has nothing to move and is skipped before any store call, so a
+    second run neither rewrites the file nor re-issues a credential write.
+
+    NO STORE MEANS NO MIGRATION. In Docker, in CI, and on a desktop without the
+    `desktop` extra there is nowhere better to put the value, so it stays in
+    `.env` in plain text. That is the intended behaviour and SECURITY.md scopes
+    the guarantee to say so.
+
+    Returns a report: `moved`, `not_moved` (the store refused it or lost it —
+    `.env` untouched), `in_both` (stored, but `.env` could not be emptied, so
+    the plain-text copy is still there), and `description` of the layer in use.
+    """
+    store, description = secret_store()
+    report: dict[str, object] = {
+        "moved": [],
+        "not_moved": [],
+        "in_both": [],
+        "description": description,
+    }
+    if store is None:
+        return report
+
+    for key in STORED_SECRET_KEYS:
+        value = _get_env(key)
+        if not value:
+            continue
+
+        # The return value of set() is deliberately NOT branched on. A guard
+        # stood here and the mutation audit removed it without turning a single
+        # test red: a store that refuses the write has nothing to read back
+        # either, so the check below already covers it — and it covers more,
+        # because a store that reports failure while the value IS retrievable
+        # (a previous partial run left it there) should count as a success, not
+        # a failure. Dropped rather than kept as decoration, on the same
+        # reasoning as the retired guard in _is_assignment_line.
+        store.set(key, value)
+
+        if store.get(key) != value:
+            logger.warning(
+                "%s was written to the credential store but did not read back; "
+                "leaving it in .env.",
+                key,
+            )
+            report["not_moved"].append(key)
+            continue
+
+        try:
+            # Empties the live line AND blanks any retired duplicate carrying
+            # the same secret — see the emptying branch in set_env_value.
+            set_env_value(key, "")
+        except OSError as exc:
+            logger.warning(
+                "%s is now in the credential store, but .env could not be "
+                "updated (%s). The plain-text copy is still there.",
+                key,
+                type(exc).__name__,
+            )
+            report["in_both"].append(key)
+            continue
+
+        report["moved"].append(key)
+
+    if report["moved"]:
+        # The globals still hold what .env had before it was emptied; re-reading
+        # is what routes them through the store from here on.
+        reload()
+
+    return report
+
+
+def save_secret(key: str, value: str) -> str:
+    """Store one credential in whichever layer is in use. Returns the layer.
+
+    Writes to the store when there is one, and empties the `.env` line in the
+    same step — otherwise the file would shadow what was just stored, because
+    `_get_secret` lets a non-empty `.env` win. Without that, the first save
+    after a migration would quietly put the credential back in plain text.
+
+    FALLS BACK RATHER THAN FAILING. If the store refuses the write or loses it,
+    the value goes to `.env`: a credential the user typed is not something to
+    drop because the preferred layer misbehaved.
+    """
+    store, _ = secret_store()
+
+    if store is not None and value:
+        if store.set(key, value) and store.get(key) == value:
+            set_env_value(key, "")
+            return "store"
+        logger.warning(
+            "Could not store %s in the credential store; falling back to .env.", key
+        )
+
+    set_env_value(key, value)
+    return "env"
 
 
 def persist_language(code: str) -> None:
@@ -401,16 +620,16 @@ def reload() -> None:
 
     JIRA_URL = _get_env("JIRA_URL")
     JIRA_EMAIL = _get_env("JIRA_EMAIL")
-    JIRA_API_TOKEN = _get_env("JIRA_API_TOKEN")
+    JIRA_API_TOKEN = _get_secret("JIRA_API_TOKEN")
     JIRA_PROJECT_KEY = _get_env("JIRA_PROJECT_KEY")
 
     LLM_PROVIDER = _get_env("LLM_PROVIDER", "groq").lower()
-    GROQ_API_KEY = _get_env("GROQ_API_KEY")
-    OPENAI_API_KEY = _get_env("OPENAI_API_KEY")
+    GROQ_API_KEY = _get_secret("GROQ_API_KEY")
+    OPENAI_API_KEY = _get_secret("OPENAI_API_KEY")
     LLM_MODEL = _get_env("LLM_MODEL")
 
     # Read only — generating a key writes to .env, which reload() must not do.
-    API_KEY = _get_env("API_KEY")
+    API_KEY = _get_secret("API_KEY")
 
     MAX_DAILY_REQUESTS = _get_env_int("MAX_DAILY_REQUESTS", 50)
     GROQ_SLEEP = float(_get_env("GROQ_SLEEP", "2"))
@@ -495,6 +714,56 @@ def is_first_run() -> bool:
 
 _initialized: bool = False
 
+# True when THIS process deleted a leftover data/anon_map.json at startup. Read
+# by the dashboard so the removal is reported somewhere a person actually looks
+# — a log line alone would not be, and this is a silent deletion of user data.
+LEGACY_ANON_MAP_REMOVED: bool = False
+
+
+def _purge_legacy_anon_map() -> None:
+    """Delete a `data/anon_map.json` left behind by a pre-Faz-6B version.
+
+    That file was the anonymizer's token→original mapping, rewritten after every
+    analysis and never pruned. It held whatever the patterns matched, in plain
+    text — on the machine this was measured on, a Bearer token and an API key.
+    Nothing writes it any more, so anything found here is a leftover.
+
+    NEVER OPENED, only unlinked. Reporting how many entries it held, or which
+    categories, would mean reading a file whose contents are the reason it is
+    being deleted; a count is one refactor away from a value.
+
+    RUNS ON EVERY START, with no marker file. The check is one `unlink` that
+    normally raises FileNotFoundError and returns. A marker would be new surface
+    that can go stale, and it would miss the case that matters: a user who
+    downgrades, has the file recreated by the old code, and upgrades again.
+
+    NEVER RAISES. A locked or read-only leftover must not take the application
+    down — the anonymizer works without it, and refusing to start would trade a
+    plain-text mapping for an unusable install.
+    """
+    global LEGACY_ANON_MAP_REMOVED
+
+    LEGACY_ANON_MAP_REMOVED = False
+    try:
+        ANON_MAP_FILE.unlink()
+    except FileNotFoundError:
+        return
+    except OSError as exc:
+        logger.warning(
+            "Could not remove the obsolete %s: %s. It holds anonymisation data "
+            "in plain text; delete it by hand.",
+            ANON_MAP_FILE.name,
+            exc,
+        )
+        return
+
+    LEGACY_ANON_MAP_REMOVED = True
+    logger.warning(
+        "Removed the obsolete %s. Versions before this one stored the "
+        "anonymisation mapping there in plain text; it is no longer written.",
+        ANON_MAP_FILE.name,
+    )
+
 
 def init(*, generate_api_key: bool = False) -> None:
     """
@@ -514,6 +783,12 @@ def init(*, generate_api_key: bool = False) -> None:
     if not _initialized:
         DATA_DIR.mkdir(parents=True, exist_ok=True)
         reload()
+        # Bound to `_initialized` deliberately: once per process is what is
+        # wanted, and this is the one hook every shipped entry point reaches
+        # (tests/test_entry_points.py holds that in CI). Note the coupling —
+        # 5C showed this flag is easy to get wrong, and anything that changes
+        # when the guard opens changes when the purge runs.
+        _purge_legacy_anon_map()
         _initialized = True
 
     if generate_api_key:

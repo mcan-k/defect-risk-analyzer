@@ -38,6 +38,13 @@ def bootstrap() -> None:
     # renders in this language too.
     language.apply()
 
+    # After language.apply() so the notice is translated, and BEFORE the
+    # first-run gate so a fresh install still sees it — the gate ends the
+    # script with st.stop(), and anything below it would never render for that
+    # user. See _report_removed_legacy_files.
+    _report_removed_legacy_files()
+    _migrate_secrets()
+
     if config.is_first_run():
         render_setup_wizard()
         # Nothing below runs, so no navigation and no status is drawn behind
@@ -46,6 +53,82 @@ def bootstrap() -> None:
 
     render_nav()
     render_status()
+
+
+# st.session_state key. Named once so the read and the write cannot drift.
+_LEGACY_NOTICE_SHOWN = "_dra_legacy_anon_map_notice_shown"
+
+
+def _report_removed_legacy_files() -> None:
+    """Tell the user that `data/anon_map.json` was deleted at startup.
+
+    A LOG LINE IS NOT ENOUGH, which is why this exists at all. The deletion is
+    silent removal of a file the user never asked us to touch, and nobody reads
+    `data/dashboard.log`. `config._purge_legacy_anon_map()` already writes a
+    warning there for the headless paths — the API server and the CI analyzer,
+    which have no screen — and this is the half that reaches a person.
+
+    ONCE PER BROWSER SESSION, not once per rerun. Streamlit re-executes the
+    whole script on every interaction, so an ungated `st.warning` would reappear
+    on every click for as long as the process lived. `config` cannot carry that
+    state: its flag is per PROCESS, and one process serves every browser
+    session.
+
+    Says nothing about what the file held. Not a count, not a category — the
+    contents are the reason it was deleted.
+    """
+    if not config.LEGACY_ANON_MAP_REMOVED:
+        return
+    if st.session_state.get(_LEGACY_NOTICE_SHOWN):
+        return
+
+    st.session_state[_LEGACY_NOTICE_SHOWN] = True
+    st.warning(t("shell.legacy_anon_map_removed"))
+
+
+_MIGRATION_NOTICE_SHOWN = "_dra_secret_migration_notice_shown"
+
+
+def _migrate_secrets() -> None:
+    """Move credentials out of `.env` into the OS credential store, and report.
+
+    HERE RATHER THAN IN config.init(). Every entry point reaches `init()`, which
+    is why the anon_map purge lives there — but this is a different kind of act.
+    The purge deletes a machine-generated leftover; this moves the user's
+    working configuration, and it can only do so where keyring resolves, which
+    is the desktop. Docker and CI take credentials as environment variables and
+    have no credential store at all, so the migration would be a no-op there
+    with nobody to read its report. `bootstrap()` is the desktop path and the
+    one place with a screen.
+
+    A SECOND DESTRUCTIVE JOB DOES NOT GO IN init(). It already deletes a file;
+    adding "and moves your credentials" to a function whose name is `init` is
+    how a startup path becomes something nobody dares change.
+
+    Runs on every start and is idempotent — a `.env` with nothing left to move
+    costs one empty-string check per key and never reaches the store.
+    """
+    report = config.migrate_secrets_to_store()
+
+    if not (report["moved"] or report["in_both"] or report["not_moved"]):
+        return
+    if st.session_state.get(_MIGRATION_NOTICE_SHOWN):
+        return
+
+    st.session_state[_MIGRATION_NOTICE_SHOWN] = True
+
+    if report["moved"]:
+        st.success(
+            t("shell.secrets_migrated",
+              keys=", ".join(report["moved"]),
+              backend=report["description"])
+        )
+    if report["in_both"]:
+        # Recoverable, but the plain-text copy is still on disk. Saying nothing
+        # would be a lie by omission.
+        st.warning(t("shell.secrets_in_both", keys=", ".join(report["in_both"])))
+    if report["not_moved"]:
+        st.warning(t("shell.secrets_not_moved", keys=", ".join(report["not_moved"])))
 
 
 def render_nav() -> None:
