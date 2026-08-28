@@ -251,9 +251,16 @@ risk_score = clamp(adjusted, 0, 100)
 
 ## 🔒 Security
 
-- **Zero PII to LLM**: All personal data (names, emails, IPs, URLs, phone numbers) is anonymized before any external API call
-- **API Key Auth**: All endpoints require `X-API-Key` header
-- **No Hardcoded Secrets**: Everything via `.env` (gitignored)
+- **PII masking before the LLM**: e-mail, IP, URL, phone, Bearer tokens and
+  known API-key prefixes are replaced with reversible tokens before any
+  external call. Person names are **not** masked — no name recogniser ships
+  today, and the Settings page says so. See [SECURITY.md](SECURITY.md).
+- **Credentials in the OS keyring**: on a desktop install with the `desktop`
+  extra; `.env` otherwise, and the Settings page states which. Docker and CI
+  always use environment variables.
+- **API Key Auth**: 13 of 14 endpoints require `X-API-Key`; the comparison is
+  constant-time. `GET /health` is the only open endpoint.
+- **No Hardcoded Secrets**: nothing in the source; `.env` is gitignored
 - **Rate Limiting**: Daily cap + per-request throttle
 - **Circuit Breaker**: Bulk operations stop on rate limit errors
 - **Cost Control**: `MAX_DAILY_REQUESTS` prevents runaway API charges

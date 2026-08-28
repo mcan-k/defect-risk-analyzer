@@ -5,6 +5,45 @@ mistaken for oversights. Each entry names the phase that will address it.
 
 ---
 
+## De-anonimleştirme yalnız `reasoning` alanına uygulanıyor
+
+**Where:** [`services/analysis_service.py`](../src/defect_risk_analyzer/services/analysis_service.py) (`:388`, `:445`)
+
+`affected_modules`, `test_scenarios` ve `recommended_actions` LLM'den anonim
+token'larla gelip öyle saklanıyor ve öyle gösteriliyor; yalnız `reasoning` geri
+çevriliyor. 6B'nin çağrı-başına eşleme kararı bunu kalıcı hâle getiriyor —
+çağrı bittikten sonra geri çevirmek artık mümkün değil. Bugün de mümkün değildi
+(eşleme diskteydi ama hiçbir kod okumuyordu), yani regresyon değil.
+
+| Borç | İşaret |
+|---|---|
+| Üç alanda ham `[EMAIL_001]` biçimli token'lar kullanıcıya görünebiliyor | Tetikleyici: **bu üç alandan biri kullanıcı metni taşımaya başladığında**; aksi hâlde **v1.1** |
+
+---
+
+## Sır yüzeyinin 6B sonrası bıraktıkları
+
+**Where:** [`config.py`](../src/defect_risk_analyzer/config.py)
+(`_get_secret`, `migrate_secrets_to_store`, `save_secret`),
+[`ui/shell.py`](../src/defect_risk_analyzer/ui/shell.py) (`bootstrap`),
+[`anonymizer.py`](../src/defect_risk_analyzer/anonymizer.py),
+[`tests/tools/make_baseline.py`](../tests/tools/make_baseline.py)
+
+Hiçbiri bugün bir kullanıcıyı vurmuyor; hepsi 6B'nin kapsamı dışında bırakılmış
+bilinçli sınırlar.
+
+| Borç | İşaret |
+|---|---|
+| **`.env` gölgelemesi.** `_get_secret` dolu bir `.env` değerini kazandırıyor, yani kullanıcı elle eski bir anahtar yazarsa keyring'deki yenisi sessizce gölgelenir. Sıra kasıtlı (yarıda kalmış bir taşıma çalışmaya devam etsin, elle yapıştırılan anahtar etkili olsun) ve Ayarlar hangi katmanın kullanıldığını yazıyor — ama hangi *değerin* kazandığını yazmıyor | Tetikleyici: **bir kullanıcı "anahtarı değiştirdim ama eskisi kullanılıyor" diye bildirdiğinde**; aksi hâlde **v1.1** |
+| **Geri dönüş yolu yok.** Keyring'e taşınan bir kimlik bilgisini `.env`'e geri almanın yolu yok. Kullanıcı `.env`'e elle yazarak fiilen geri dönebilir (yukarıdaki gölgeleme sayesinde), ama bu belgelenmiş bir yol değil ve store'daki kopya kalır | Tetikleyici: **kullanıcı keyring'den çıkmak istediğini bildirdiğinde**; aksi hâlde **v1.1** |
+| **Fallback yolunda kalan ölü sır.** Keyring kullanılamadığında taşıma hiç çalışmıyor (doğru karar), ama o kullanıcıda 6A'nın markerıyla yorumlanmış ölü bir sır satırı kalabiliyor. Etkin satırın gerekçesi var — uygulama onu okuyor; ölü satırın hiçbir işlevi yok. 6B'de düzeltilmedi çünkü o yolda `.env` zaten düz metin sır tutuyor ve kazanç marjinal. **Aşağıdaki satırdan farklı: bu, taşınan anahtarın fallback'te kalan ölü kopyası** | Tetikleyici: **keyring fallback yolu bir daha ele alındığında**; aksi hâlde **v1.1** |
+| **Marker taşıyan ama taşınmayan anahtarlar.** `set_env_value`'nun boşaltma dalı yalnız boşaltılan anahtarın yorumlanmış satırlarını temizliyor. Başka bir anahtara ait marker'lı bir satır — kullanıcı elle yazmış olabilir — dokunulmadan kalıyor. Kapsam kasten dar tutuldu: patlama yarıçapı işlemin amacına eşit | Tetikleyici: **`.env`'e sır tutan yeni bir anahtar eklendiğinde**; aksi hâlde **v1.1** |
+| **`bootstrap()` büyüyor.** Artık dil, ilk kurulum kapısı, `anon_map` bildirimi ve kimlik bilgisi taşıması + üç bildirimi yapıyor. `config.init()`'e ikinci bir yıkıcı iş yüklememe gerekçesi burada geçerli değil — `bootstrap()` zaten kurulum akışının sahibi ve bunlar aynı sınıftan iş — ama fonksiyon bölünme sınırına yaklaşıyor | Tetikleyici: **`bootstrap()`'a dördüncü bir sorumluluk eklendiğinde** |
+| **`make_baseline.py` migration tetikliyor.** Araç `config.init()` çağırıyor ve pytest dışında elle çalıştırıldığında `DRA_BASE_DIR` set değil, yani `anon_map.json` silme işlemi gerçek dosyayı hedefliyor. Gerçek bir çalıştırma için doğru davranış, ama "skor anlık görüntüsü al" diyen bir araçtan beklenmiyor. Docstring'ine yazıldı | Tetikleyici: **`tests/tools/` altına `init()` çağıran ikinci bir araç eklendiğinde** |
+| **Sipariş kodu biçimi.** Yeni telefon deseni son grubu 3-4 haneye zorlayarak sayısal referansları (`100-2003-77`) dışarıda bıraktı, ama 3-4-4 biçimli bir sipariş kodu hâlâ telefon sanılıyor. Şekil tek başına ayırt edemiyor | Tetikleyici: **sipariş kodu biçimi olan bir alan bug metnine girdiğinde**; aksi hâlde **v1.1** |
+
+---
+
 ## `_resolve_base_dir()` cwd fallback
 
 **Where:** [`src/defect_risk_analyzer/config.py`](../src/defect_risk_analyzer/config.py)
