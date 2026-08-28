@@ -120,4 +120,9 @@ select = ["E", "F", "I", "UP", "B"]
 "src/defect_risk_analyzer/api_models.py" = ["E501"]          # 4
 "src/defect_risk_analyzer/prompt_templates.py" = ["E501"]    # 3
 "src/defect_risk_analyzer/pattern_detector.py" = ["E501"]    # 2
-"src/defect_risk_analyzer/anonymizer.py" = ["E501"]          # 1
+# anonymizer.py held the fifth E501. Faz 6B rewrote the file — the mapping
+# moved into a per-call scope and the phone pattern was replaced — and the long
+# line went with it. Measured with the entry removed: `ruff check .` stays
+# clean and the isolated E501 count stays at 9, so this was a quarantine with
+# nothing behind it. Cleared rather than carried, which is what the comment
+# above asks for.
