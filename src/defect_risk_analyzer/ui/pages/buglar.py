@@ -5,6 +5,8 @@ Both tabs answer "what is in the bug set": one lists it with filters, the other
 groups it into clusters and checks a bug for duplicates.
 """
 
+import html
+
 import pandas as pd
 import streamlit as st
 
@@ -159,12 +161,14 @@ def render_patterns():
 
             # Severity badge
             st.markdown(
-                f"{t('patterns.severity_label')} "
-                f"<span style='background-color:{color}; color:white; "
-                f"padding:2px 10px; border-radius:4px;'>{label}</span> &nbsp; "
-                f"{t('patterns.module_label')} {component} &nbsp; "
-                f"{t('patterns.common_priority_label')} "
-                f"{pattern.get('common_priority', '?')}",
+                f"{html.escape(t('patterns.severity_label'))} "
+                f"<span style='background-color:{html.escape(color)}; color:white; "
+                f"padding:2px 10px; border-radius:4px;'>"
+                f"{html.escape(label)}</span> &nbsp; "
+                f"{html.escape(t('patterns.module_label'))} "
+                f"{html.escape(str(component))} &nbsp; "
+                f"{html.escape(t('patterns.common_priority_label'))} "
+                f"{html.escape(str(pattern.get('common_priority', '?')))}",
                 unsafe_allow_html=True,
             )
 
