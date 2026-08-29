@@ -1004,3 +1004,84 @@ düzeltilmiyor — tarihsel kayıt. Bugünkü bakiye ayrı bir sayıdır: **25 a
 --select E501,F841 src` → `api_models.py` 4, `prompt_templates.py` 3,
 `pattern_detector.py` 2, `anonymizer.py` 1. Hiçbiri sahipli bir faza bağlı
 değil.
+
+---
+
+## `risk_level_label` tanınmayan seviyeyi ham HTML'e geçiriyor
+
+**Where:** [`ui/theme.py`](../src/defect_risk_analyzer/ui/theme.py) (`:38-47`),
+[`ui/results.py`](../src/defect_risk_analyzer/ui/results.py) (`:19-25`)
+
+`risk_level_label()` tanımadığı bir seviyeyi olduğu gibi geri veriyor — kasıtlı,
+docstring'i söylüyor: "it is data from outside, and a stored analysis result
+carrying something unexpected should still render". O değer `results.py`'de
+`unsafe_allow_html=True` taşıyan bir `st.markdown`'a giriyor ve kaçırılmıyor.
+
+Bugün ulaşılabilir değil: `risk_level` `core/scoring.py::get_risk_level()`'den
+geliyor ve dört sabitten biri oluyor, `api_models.py:74` de yoldan geçerken
+`Field(ge=0, le=100)` ile skoru sabitliyor. Tek savunma **`data/analysis_results.json`
+dosyasının güvenilir olduğu varsayımı** — dosyaya yazan her şey bugün bu depodan.
+
+Faz 6C kapsamı dışında bırakıldı. Kapsam `buglar.py` ve `app.py`'deki üç ham
+Jira alanıydı; `results.py`'yi açmak farklı bir dosyayı ve farklı bir güven
+sınırını ele almak demekti. Sonuç görünür bir asimetri: `app.py` `color`
+ifadesini kaçırıyor, `results.py` aynı ifadeyi kaçırmıyor. Asimetri
+`tests/test_html_escaping.py`'nin beyaz listesinde gerekçesiyle duruyor —
+"tutarlı olsun" diye `results.py`'yi sarmak bir kapsam genişletmesidir, düzeltme
+değil.
+
+| Borç | İşaret |
+|---|---|
+| Tanınmayan bir risk seviyesi `results.py:19-25`'te kaçırılmadan HTML'e giriyor | Tetikleyici: **`analysis_results.json`'a dışarıdan yazan bir yol açıldığında**; aksi hâlde **v1.1** |
+
+---
+
+## Markdown-link yüzeyi — `transformLinkUri` ezilmiş, LLM çıktısı düz `st.markdown`'da
+
+**Where:** [`ui/results.py`](../src/defect_risk_analyzer/ui/results.py)
+(`:30`, `:39`, `:45`, `:52`)
+
+`reasoning`, `affected_modules`, `test_scenarios` ve `recommended_actions` LLM'den
+gelip düz `st.markdown` ile basılıyor — `unsafe_allow_html` yok, yani ham HTML
+parse edilmiyor. Ama markdown'ın kendisi render oluyor: `[metin](javascript:…)`
+ve `![](https://…)` çalışır durumda.
+
+Sebep bundle'da ölçüldü (streamlit 1.41.1, `static/static/js/index.Phesr84n.js`):
+Streamlit, react-markdown'ın `javascript:` URI'lerini temizleyen varsayılan
+dönüşümünü kimlik fonksiyonuyla eziyor — `function transformLinkUri(tt){return tt}`.
+React 18.3.1 prod build'i `javascript:` href'lerini bloklamıyor. Ayrıca hiçbir
+katmanda `Content-Security-Policy` yok.
+
+**Bir yanlış çıkarım burada düzeltiliyor:** Faz 6 keşfi "bundle'da DOMPurify 3.1.7
+var, yani script çalıştırma muhtemelen engelli" demişti. DOMPurify gerçekten
+gömülü ama yalnız `stHtml` chunk'ında (`index.CbuYSrVP.js`), yani `st.html()`
+API'sinde — bu proje onu hiç çağırmıyor. `st.markdown` yolunda sanitizer yok;
+script'in çalışmaması React 18.3.1'den geliyor (`<script>` parser-inserted olarak
+üretiliyor, `on*` nitelikleri attribute yazıcısında düşüyor). Koruma var ama
+kaynağı başka, ve link yüzeyini kapsamıyor.
+
+Faz 6C'ye çekilmedi: kapsamı iki katına çıkarır ve içerik olarak farklı bir konu
+— HTML kaçışı değil, prompt injection yüzeyi.
+
+| Borç | İşaret |
+|---|---|
+| LLM çıktısı `javascript:` bağlantısı ya da dış kaynaklı bir görsel üretirse render oluyor | Tetikleyici: **LLM çıktısının render yolu bir daha değiştiğinde**; aksi hâlde **v1.1** |
+
+---
+
+## `Content-Security-Policy` hiçbir katmanda ayarlanmıyor
+
+**Where:** dağıtım yüzeyi — [`Dockerfile`](../Dockerfile),
+[`docker-compose.yml`](../docker-compose.yml), streamlit'in kendi sunucusu
+
+Ölçüldü: `Content-Security-Policy` ne streamlit 1.41.1'in Python sunucusunda, ne
+servis edilen `static/index.html`'de, ne de `src/` altında geçiyor. CSP olmadan,
+`unsafe_allow_html` taşıyan bir gövdeye giren `<img src="https://…">` sayfa
+render olur olmaz dış istek atar — Faz 6C'nin kaçış çalışması bunu üretecek yolu
+kapattı, ama katman savunması olarak CSP yine yok.
+
+Faz 6C kapsamı dışında: uygulama kodu değil, dağıtım hijyeni.
+
+| Borç | İşaret |
+|---|---|
+| Enjekte edilen bir dış kaynak isteğini durduracak ikinci bir katman yok | Tetikleyici: **6D (proje hijyeni)** |
