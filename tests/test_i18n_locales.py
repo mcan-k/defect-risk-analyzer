@@ -342,6 +342,7 @@ DYNAMIC_PREFIXES = {
     "severity.": "ui/pages/buglar.py — pattern severity, from the detector",
     "finding.": "ui/messages.py — blind spot codes, from the detector",
     "risk.level.": "ui/theme.py — risk level, from core/scoring.py",
+    "secret_layer.": "ui/messages.py — credential layer, from adapters/secrets.py",
 }
 
 

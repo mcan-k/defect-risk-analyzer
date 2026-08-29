@@ -14,6 +14,7 @@ import streamlit as st
 from defect_risk_analyzer import config
 from defect_risk_analyzer.ui import language
 from defect_risk_analyzer.ui.i18n import t
+from defect_risk_analyzer.ui.messages import format_secret_layer
 from defect_risk_analyzer.ui.service import call, get_service, get_status
 from defect_risk_analyzer.ui.setup_wizard import render_setup_wizard
 from defect_risk_analyzer.ui.theme import inject_css
@@ -121,7 +122,7 @@ def _migrate_secrets() -> None:
         st.success(
             t("shell.secrets_migrated",
               keys=", ".join(report["moved"]),
-              backend=report["description"])
+              layer=format_secret_layer(report["code"], report["params"]))
         )
     if report["in_both"]:
         # Recoverable, but the plain-text copy is still on disk. Saying nothing

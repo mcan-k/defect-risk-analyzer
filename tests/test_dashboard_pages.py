@@ -963,7 +963,8 @@ def _boot_with_store(monkeypatch, store, *, legacy_map: bool = False):
         config.ANON_MAP_FILE.unlink()
 
     monkeypatch.setattr(config, "_secret_store", store)
-    monkeypatch.setattr(config, "_secret_store_description", "fake.Backend")
+    monkeypatch.setattr(config, "_secret_store_code", "store_active")
+    monkeypatch.setattr(config, "_secret_store_params", {"backend": "fake.Backend"})
     monkeypatch.setattr(config, "_secret_store_resolved", True)
     monkeypatch.setattr(config, "_initialized", False)
     try:
@@ -1022,3 +1023,35 @@ def test_both_notices_survive_the_same_boot(monkeypatch):
     assert any(
         "JIRA_API_TOKEN" in m for m in _rendered(at, "success")
     ), "the migration notice went missing when a purge ran too"
+
+
+# ---------------------------------------------------------------------------
+# The credential-layer caption is RENDERED, not passed through raw
+# ---------------------------------------------------------------------------
+# Faz 6B shipped an English sentence built inside adapters/secrets.py into a
+# Turkish page, and every test passed: the adapter's tests pinned the sentence,
+# and no test looked at what the page actually displayed. The mutation that
+# feeds the raw code straight to the caption survived until this existed.
+
+def test_the_credential_layer_caption_is_translated():
+    """EXPECTED RED before the fix — the caption showed adapter English.
+
+    Under the sandbox the keyring import is blocked, so the layer resolves to
+    `no_keyring` and the page must render THAT code's Turkish sentence. Three
+    assertions, because each catches a different way of getting it wrong:
+    the code leaking through raw, the adapter's English leaking through, and
+    the sentence simply not being there.
+    """
+    at = _open("pages/ayarlar.py")
+
+    captions = _rendered(at, "caption")
+    layer_line = [c for c in captions if "Kimlik bilgisi katmanı" in c]
+
+    assert layer_line, f"no credential-layer caption rendered: {captions}"
+    rendered = layer_line[0]
+
+    assert "kurulu değil" in rendered, f"not the Turkish no_keyring sentence: {rendered!r}"
+    assert "no_keyring" not in rendered, f"the raw code leaked to the page: {rendered!r}"
+    assert "is not installed" not in rendered, (
+        f"the adapter's English leaked to the page: {rendered!r}"
+    )

@@ -68,13 +68,24 @@ def migration(monkeypatch, tmp_path):
         monkeypatch.setenv(key, "")
         monkeypatch.setattr(config, key, getattr(config, key))
 
+    # ALL FOUR store globals are recorded here, not inside _install. `secret_store()`
+    # assigns every one of them, so a test that monkeypatches only some — and then
+    # lets production code run — leaves the rest set at teardown. That leak is
+    # invisible in this file and surfaced in test_dashboard_pages.py, where the
+    # Settings page reported a "fake.Backend" credential layer that no test in
+    # that file had injected.
+    for name in ("_secret_store", "_secret_store_code",
+                 "_secret_store_params", "_secret_store_resolved"):
+        monkeypatch.setattr(config, name, getattr(config, name))
+
     env_file = tmp_path / ".env"
     monkeypatch.setattr(config, "ENV_FILE", env_file)
 
     def _install(store, env_text):
         env_file.write_text(env_text, encoding="utf-8")
         monkeypatch.setattr(config, "_secret_store", store)
-        monkeypatch.setattr(config, "_secret_store_description", "fake store")
+        monkeypatch.setattr(config, "_secret_store_code", "store_active")
+        monkeypatch.setattr(config, "_secret_store_params", {"backend": "fake.Backend"})
         monkeypatch.setattr(config, "_secret_store_resolved", True)
         # RELOAD IS PART OF THE FIXTURE because it is part of the call sequence:
         # bootstrap() runs config.init(), which loads `.env` into os.environ, and

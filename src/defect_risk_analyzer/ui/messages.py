@@ -147,3 +147,39 @@ def format_pattern_summary(pattern: dict[str, Any]) -> str:
     )
 
     return i18n.t("pattern.theme", **params)
+
+
+#: Message-key prefix for the layer codes `adapters/secrets.py` emits. A second
+#: producer in this module, and the reason it is here rather than in a file of
+#: its own: this is the only module under `ui/` whose job is turning a
+#: NON-UI producer's {code, params} into a sentence. `app.py`, `buglar.py` and
+#: `theme.py` each map a value they computed themselves, next to where they
+#: computed it. Two surfaces need this one — the Settings page and the startup
+#: banner — so it needs a shared home, and a new file for a single function
+#: would scatter the pattern rather than collect it.
+#:
+#: It also has to be ONE call site. tests/test_i18n_locales.py asserts exactly
+#: one dynamic t() per declared prefix, so a second computed call under
+#: `secret_layer.` would fail that guard.
+SECRET_LAYER_PREFIX = "secret_layer."
+
+
+def format_secret_layer(code: str, params: dict[str, Any] | None = None) -> str:
+    """Render which credential layer is in use, in the active language.
+
+    THE FOURTH TIME THIS LESSON HAS BEEN APPLIED. 5A moved blind-spot wording
+    out of the detector because a sentence built in business logic cannot be
+    translated; 5C moved pattern wording after it; Faz 6B then built English
+    sentences inside `adapters/secrets.py` and shipped them into a Turkish
+    page. The adapter now emits a code and this renders it.
+
+    `params` carries `backend` (an identifier — never translated) or `error`
+    (an exception TYPE name, never a message: these params reach the screen,
+    and a backend that quoted a credential back would put it in front of the
+    user).
+
+    Raises:
+        i18n.UnknownMessageKey: a code with no template in any locale. Loud for
+            the same reason UnknownFindingCode is.
+    """
+    return i18n.t(f"{SECRET_LAYER_PREFIX}{code}", **(params or {}))
