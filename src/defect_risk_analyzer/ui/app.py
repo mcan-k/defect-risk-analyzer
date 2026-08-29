@@ -14,6 +14,8 @@ name WAS the label, so `px.bar(x="Risk Skoru", ...)` meant switching language
 would have required rebuilding the frame rather than relabelling it.
 """
 
+import html
+
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -331,10 +333,11 @@ def render_blind_spots():
             )
 
             st.markdown(
-                f"**{item.get('module', '?')}** — "
-                f"<span style='background-color:{color}; color:white; padding:2px 8px; "
-                f"border-radius:4px;'>{risk_level_label(risk_level)}</span> "
-                f"{detail}",
+                f"**{html.escape(str(item.get('module', '?')))}** — "
+                f"<span style='background-color:{html.escape(color)}; color:white; "
+                f"padding:2px 8px; border-radius:4px;'>"
+                f"{html.escape(risk_level_label(risk_level))}</span> "
+                f"{html.escape(detail)}",
                 unsafe_allow_html=True,
             )
             st.caption(f"💡 {format_finding(item)}")
