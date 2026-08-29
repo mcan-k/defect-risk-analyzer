@@ -58,10 +58,23 @@ _SERVICE_PREFIX = "defect-risk-analyzer"
 # public API. One orphan was created that way during the Faz 6B measurement run.
 _USERNAME = "defect-risk-analyzer"
 
-_NOT_INSTALLED = (
-    "keyring is not installed; credentials stay in .env. "
-    "Install the 'desktop' extra to use the OS credential store."
-)
+# Which layer is in use, as a CODE rather than a sentence. This module is an
+# adapter: it must not know about locales, message keys or wording, and a
+# sentence built here cannot be translated by anything downstream — the string
+# is already interpolated by the time `ui/` sees it.
+#
+# The same lesson, for the fourth time. 5A moved blind-spot wording out of the
+# detector for exactly this reason, 5C moved pattern wording after it, and 6B
+# reintroduced it here. `ui/messages.py` renders these codes.
+#
+# `query_failed` is deliberately NOT folded into `unusable_backend`. They say
+# different things and the reader does different things about them: an unusable
+# backend is a defined state with a defined fix (install or configure one),
+# while a failed query is unexpected and the fix starts with reading the error.
+LAYER_NO_KEYRING = "no_keyring"
+LAYER_UNUSABLE_BACKEND = "unusable_backend"
+LAYER_STORE_ACTIVE = "store_active"
+LAYER_QUERY_FAILED = "query_failed"
 
 
 class SecretStore(Protocol):
@@ -113,9 +126,9 @@ class KeyringStore:
     still not caught.
     """
 
-    def __init__(self, keyring_module: object, description: str) -> None:
+    def __init__(self, keyring_module: object, backend: str) -> None:
         self._keyring = keyring_module
-        self.description = description
+        self.backend = backend
 
     def get(self, name: str) -> str | None:
         try:
@@ -153,34 +166,36 @@ class KeyringStore:
             return False
 
 
-def _decide(keyring_module: object | None) -> tuple[SecretStore | None, str]:
+def _decide(keyring_module: object | None) -> tuple[SecretStore | None, str, dict]:
     """Choose the credential layer. Pure: the module comes in as an argument.
 
-    Returns `(store, description)`. The description is shown to the user, so it
-    is part of the contract and not a debugging aid — it says which layer is in
-    use and, when keyring resolved a backend, which one.
+    Returns `(store, code, params)`. The code names the layer and the params
+    carry what a sentence needs — today only `backend`, which is an identifier
+    and is never translated. Rendering happens in `ui/messages.py`; nothing
+    here knows a locale exists.
     """
     if keyring_module is None:
-        return None, _NOT_INSTALLED
+        return None, LAYER_NO_KEYRING, {}
 
     try:
         backend = keyring_module.get_keyring()
         name = _backend_name(backend)
 
         if not keyring_module.core.recommended(backend):
-            return None, (
-                f"keyring resolved {name}, which cannot store anything; "
-                "credentials stay in .env."
-            )
+            return None, LAYER_UNUSABLE_BACKEND, {"backend": name}
 
-        return KeyringStore(keyring_module, name), f"using keyring backend {name}"
+        return KeyringStore(keyring_module, name), LAYER_STORE_ACTIVE, {"backend": name}
     except Exception as exc:
-        return None, (
-            f"keyring could not be queried; credentials stay in .env. {_describe(exc)}"
-        )
+        # The TYPE only. The message belongs to the backend, and these params
+        # are rendered on screen — a backend that quoted a credential back
+        # would put it in front of the user. `_describe` withholds a message
+        # that quotes a known value; here no value is even in scope to compare
+        # against, so the message is dropped outright rather than filtered.
+        logger.warning("keyring could not be queried. %s", _describe(exc))
+        return None, LAYER_QUERY_FAILED, {"error": type(exc).__name__}
 
 
-def resolve_store() -> tuple[SecretStore | None, str]:
+def resolve_store() -> tuple[SecretStore | None, str, dict]:
     """The layer this process will use, decided now and described.
 
     Not called from any test — a test that resolved for real would reach the

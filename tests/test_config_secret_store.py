@@ -78,6 +78,16 @@ def env_and_store(monkeypatch, tmp_path):
         monkeypatch.setenv(key, "")
         monkeypatch.setattr(config, key, getattr(config, key))
 
+    # ALL FOUR store globals are recorded here, not inside _install. `secret_store()`
+    # assigns every one of them, so a test that monkeypatches only some — and then
+    # lets production code run — leaves the rest set at teardown. That leak is
+    # invisible in this file and surfaced in test_dashboard_pages.py, where the
+    # Settings page reported a "fake.Backend" credential layer that no test in
+    # that file had injected.
+    for name in ("_secret_store", "_secret_store_code",
+                 "_secret_store_params", "_secret_store_resolved"):
+        monkeypatch.setattr(config, name, getattr(config, name))
+
     env_file = tmp_path / ".env"
     env_file.write_text("", encoding="utf-8")
     monkeypatch.setattr(config, "ENV_FILE", env_file)
@@ -85,7 +95,8 @@ def env_and_store(monkeypatch, tmp_path):
     def _install(store, env_text=""):
         env_file.write_text(env_text, encoding="utf-8")
         monkeypatch.setattr(config, "_secret_store", store)
-        monkeypatch.setattr(config, "_secret_store_description", "fake store")
+        monkeypatch.setattr(config, "_secret_store_code", "store_active")
+        monkeypatch.setattr(config, "_secret_store_params", {"backend": "fake.Backend"})
         monkeypatch.setattr(config, "_secret_store_resolved", True)
         return env_file
 
@@ -161,7 +172,7 @@ def test_a_full_env_never_resolves_the_store(env_and_store, monkeypatch):
 
     def _counting_resolve():
         resolutions.append(1)
-        return None, "should not have been called"
+        return None, "should_not_have_been_called", {}
 
     from defect_risk_analyzer.adapters import secrets
 
@@ -188,7 +199,7 @@ def test_the_store_is_resolved_once_and_reused(env_and_store, monkeypatch):
 
     def _counting_resolve():
         resolutions.append(1)
-        return store, "fake store"
+        return store, "store_active", {"backend": "fake.Backend"}
 
     from defect_risk_analyzer.adapters import secrets
 
@@ -236,7 +247,8 @@ def test_the_cache_holds_no_secret_value(env_and_store):
     config.reload()
     assert config.GROQ_API_KEY == SYNTHETIC_STORE
 
-    assert SYNTHETIC_STORE not in repr(config._secret_store_description)
+    assert SYNTHETIC_STORE not in repr(config._secret_store_code)
+    assert SYNTHETIC_STORE not in repr(config._secret_store_params)
     cached = getattr(config, "_secret_store", None)
     assert cached is store, "the handle should be the cached thing"
     assert SYNTHETIC_STORE not in repr(config._secret_store_resolved)

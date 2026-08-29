@@ -118,17 +118,21 @@ STORED_SECRET_KEYS = ("JIRA_API_TOKEN", "GROQ_API_KEY", "OPENAI_API_KEY", "API_K
 # _get_secret. Resolving means importing keyring, which is why it is deferred
 # until something actually needs it.
 _secret_store = None
-_secret_store_description: str = ""
+_secret_store_code: str = ""
+_secret_store_params: dict = {}
 _secret_store_resolved: bool = False
 
 
-def secret_store() -> tuple[object | None, str]:
-    """The credential store for this process, and a description of the layer.
+def secret_store() -> tuple[object | None, str, dict]:
+    """The credential store for this process, plus which layer it is.
 
     `None` is a supported outcome, not a failure: no `desktop` extra installed,
-    or a keyring that resolved a backend which cannot store anything. The
-    description is what the Settings page shows the user, because which layer is
-    in use is not something this project may assume at install time.
+    or a keyring that resolved a backend which cannot store anything.
+
+    The layer arrives as a `(code, params)` pair, not a sentence. Which layer is
+    in use is shown to the user, and a sentence built in the adapter could not
+    be translated — `ui/messages.py` renders these codes. This module passes
+    them through and knows nothing about wording either.
 
     The import lives in `adapters.secrets` and this module is the only caller
     that matters, which fixes the direction of the dependency: `config` imports
@@ -139,15 +143,16 @@ def secret_store() -> tuple[object | None, str]:
     `test_the_adapter_never_imports_config` checks it instead of a comment
     claiming it.
     """
-    global _secret_store, _secret_store_description, _secret_store_resolved
+    global _secret_store, _secret_store_code, _secret_store_params
+    global _secret_store_resolved
 
     if not _secret_store_resolved:
         from defect_risk_analyzer.adapters import secrets
 
-        _secret_store, _secret_store_description = secrets.resolve_store()
+        _secret_store, _secret_store_code, _secret_store_params = secrets.resolve_store()
         _secret_store_resolved = True
 
-    return _secret_store, _secret_store_description
+    return _secret_store, _secret_store_code, _secret_store_params
 
 
 def _get_secret(key: str) -> str:
@@ -169,7 +174,7 @@ def _get_secret(key: str) -> str:
     if value:
         return value
 
-    store, _ = secret_store()
+    store, _, _ = secret_store()
     if store is None:
         return ""
 
@@ -398,14 +403,16 @@ def migrate_secrets_to_store() -> dict[str, object]:
 
     Returns a report: `moved`, `not_moved` (the store refused it or lost it —
     `.env` untouched), `in_both` (stored, but `.env` could not be emptied, so
-    the plain-text copy is still there), and `description` of the layer in use.
+    the plain-text copy is still there), plus `code` and `params` naming the
+    layer in use — rendered by `ui/messages.py`, never worded here.
     """
-    store, description = secret_store()
+    store, code, params = secret_store()
     report: dict[str, object] = {
         "moved": [],
         "not_moved": [],
         "in_both": [],
-        "description": description,
+        "code": code,
+        "params": params,
     }
     if store is None:
         return report
@@ -470,7 +477,7 @@ def save_secret(key: str, value: str) -> str:
     the value goes to `.env`: a credential the user typed is not something to
     drop because the preferred layer misbehaved.
     """
-    store, _ = secret_store()
+    store, _, _ = secret_store()
 
     if store is not None and value:
         if store.set(key, value) and store.get(key) == value:

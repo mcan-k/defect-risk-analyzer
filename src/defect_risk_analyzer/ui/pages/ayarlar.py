@@ -6,6 +6,7 @@ import streamlit as st
 
 from defect_risk_analyzer import config
 from defect_risk_analyzer.ui.i18n import t
+from defect_risk_analyzer.ui.messages import format_secret_layer
 from defect_risk_analyzer.ui.service import get_service, save_multiple_env
 from defect_risk_analyzer.ui.shell import bootstrap
 
@@ -22,7 +23,11 @@ def render_settings():
     # choice, so the only honest answer is the one resolved at run time. This is
     # also what ROADMAP:494 asks for — the user is told which guarantee applies
     # to their install.
-    st.caption(t("settings.secret_layer", backend=config.secret_store()[1]))
+    _store, _layer_code, _layer_params = config.secret_store()
+    st.caption(
+        t("settings.secret_layer",
+          layer=format_secret_layer(_layer_code, _layer_params))
+    )
 
     # --- Jira Connection ---
     st.subheader(t("settings.jira.title"))

@@ -64,14 +64,19 @@ Keyring.__module__ = "keyring.backends.fail"
 class FakeKeyring:
     """Stands in for the `keyring` module. Records what it was asked to do."""
 
-    def __init__(self, backend, *, recommended=True, raises=None):
+    def __init__(self, backend, *, recommended=True, raises=None, resolve_raises=None):
         self._backend = backend
         self._raises = raises
+        self._resolve_raises = resolve_raises
         self.stored: dict[tuple[str, str], str] = {}
         self.deleted: list[tuple[str, str]] = []
         self.core = SimpleNamespace(recommended=lambda kr: recommended)
 
     def get_keyring(self):
+        # Can raise: _decide wraps this in `except Exception`, and until Faz 6B's
+        # i18n fix that branch had no test at all.
+        if self._resolve_raises is not None:
+            raise self._resolve_raises
         return self._backend
 
     def set_password(self, service, username, password):
@@ -105,10 +110,11 @@ def test_no_keyring_installed_falls_back():
     `_decide(None)` is the ImportError path. It must not raise: an install
     without the desktop extra is a supported configuration, not an error.
     """
-    store, description = secrets_adapter._decide(None)
+    store, code, params = secrets_adapter._decide(None)
 
     assert store is None
-    assert description
+    assert code == secrets_adapter.LAYER_NO_KEYRING
+    assert params == {}
 
 
 def test_an_unusable_backend_falls_back():
@@ -122,10 +128,11 @@ def test_an_unusable_backend_falls_back():
     """
     fake = FakeKeyring(Keyring(), recommended=False)
 
-    store, description = secrets_adapter._decide(fake)
+    store, code, params = secrets_adapter._decide(fake)
 
     assert store is None
-    assert "keyring.backends.fail.Keyring" in description, (
+    assert code == secrets_adapter.LAYER_UNUSABLE_BACKEND
+    assert params["backend"] == "keyring.backends.fail.Keyring", (
         "the resolved backend must be named, not just reported as unusable"
     )
 
@@ -140,34 +147,77 @@ def test_a_working_backend_is_used_and_named():
     """
     fake = FakeKeyring(WinVaultKeyring())
 
-    store, description = secrets_adapter._decide(fake)
+    store, code, params = secrets_adapter._decide(fake)
 
     assert store is not None
-    assert "keyring.backends.Windows.WinVaultKeyring" in description
+    assert code == secrets_adapter.LAYER_STORE_ACTIVE
+    assert params["backend"] == "keyring.backends.Windows.WinVaultKeyring"
 
 
-def test_the_three_descriptions_are_distinct():
-    """The second element is a CONTRACT, not a debugging aid.
+def test_the_layer_codes_are_distinct():
+    """The code is a CONTRACT, and the four layers must be told apart by it.
 
-    D7 requires the resolved backend to be reported at run time rather than
-    assumed at install time, and this string is what carries that report to the
-    Settings page. So all three layers must be distinguishable from it — a
-    description that said the same thing in every case would satisfy every other
-    test in this file while telling the user nothing.
-
-    Mutation: return one constant from `_decide` and this goes red while the
-    three path tests above stay green, which is why it is a separate test.
+    Was `test_the_three_descriptions_are_distinct`, and it pinned the SENTENCES
+    — which is what let Faz 6B ship English prose into a Turkish page and still
+    pass. Pinning codes is strictly stronger: the same mutation dies (return one
+    constant and this goes red while the path tests stay green), and rewording a
+    message no longer breaks a test that was never about wording.
     """
-    absent = secrets_adapter._decide(None)[1]
-    unusable = secrets_adapter._decide(FakeKeyring(Keyring(), recommended=False))[1]
-    working = secrets_adapter._decide(FakeKeyring(WinVaultKeyring()))[1]
+    codes = {
+        secrets_adapter._decide(None)[1],
+        secrets_adapter._decide(FakeKeyring(Keyring(), recommended=False))[1],
+        secrets_adapter._decide(FakeKeyring(WinVaultKeyring()))[1],
+        secrets_adapter._decide(
+            FakeKeyring(WinVaultKeyring(), resolve_raises=RuntimeError("boom"))
+        )[1],
+    }
 
-    assert len({absent, unusable, working}) == 3, "the layers are indistinguishable"
+    assert len(codes) == 4, f"the layers are indistinguishable: {codes}"
+    assert codes == {
+        secrets_adapter.LAYER_NO_KEYRING,
+        secrets_adapter.LAYER_UNUSABLE_BACKEND,
+        secrets_adapter.LAYER_STORE_ACTIVE,
+        secrets_adapter.LAYER_QUERY_FAILED,
+    }
 
-    # Each says which layer is in use, and the two keyring cases name the backend.
-    assert ".env" in absent and "desktop" in absent
-    assert ".env" in unusable and "keyring.backends.fail.Keyring" in unusable
-    assert "keyring.backends.Windows.WinVaultKeyring" in working
+
+def test_the_query_failed_branch_reports_its_own_code():
+    """`_decide`'s `except Exception` branch had NO test before this change.
+
+    Kept separate from `unusable_backend` deliberately. They say different
+    things and the reader does different things about them: an unusable backend
+    is a defined state with a defined fix (install or configure one), while a
+    failed query is unexpected and the fix starts with reading the error. Folding
+    them would hand both readers the wrong instruction.
+    """
+    fake = FakeKeyring(WinVaultKeyring(), resolve_raises=RuntimeError("dbus is gone"))
+
+    store, code, params = secrets_adapter._decide(fake)
+
+    assert store is None
+    assert code == secrets_adapter.LAYER_QUERY_FAILED
+    assert params["error"] == "RuntimeError"
+
+
+def test_a_failed_query_does_not_leak_the_message(caplog):
+    """The params reach the SCREEN, so only the exception type may travel.
+
+    A backend that quoted a credential back would otherwise put it in front of
+    the user. The log keeps the message — `_describe` withholds it if it quotes
+    a known value — but the rendered params never carry it.
+    """
+    secret = "synthetic-not-a-secret-9999"
+    fake = FakeKeyring(
+        WinVaultKeyring(),
+        resolve_raises=RuntimeError(f"cannot open vault for {secret}"),
+    )
+
+    with caplog.at_level(logging.WARNING):
+        _store, code, params = secrets_adapter._decide(fake)
+
+    assert code == secrets_adapter.LAYER_QUERY_FAILED
+    assert params == {"error": "RuntimeError"}
+    assert secret not in str(params), "the exception message reached the rendered params"
 
 
 def test_the_description_is_not_rebuilt_from_operation_errors():
@@ -182,14 +232,14 @@ def test_the_description_is_not_rebuilt_from_operation_errors():
         WinVaultKeyring(),
         raises=RuntimeError(f"rejected value {SYNTHETIC} for target"),
     )
-    store, description = secrets_adapter._decide(fake)
+    store, _code, params = secrets_adapter._decide(fake)
 
     store.set("JIRA_API_TOKEN", SYNTHETIC)
     store.get("JIRA_API_TOKEN")
 
-    assert SYNTHETIC not in description
-    assert SYNTHETIC not in store.description
-    assert store.description == "keyring.backends.Windows.WinVaultKeyring"
+    assert SYNTHETIC not in str(params)
+    assert SYNTHETIC not in store.backend
+    assert store.backend == "keyring.backends.Windows.WinVaultKeyring"
 
 
 # ---------------------------------------------------------------------------
@@ -198,7 +248,7 @@ def test_the_description_is_not_rebuilt_from_operation_errors():
 
 def test_a_value_round_trips():
     fake = FakeKeyring(WinVaultKeyring())
-    store, _ = secrets_adapter._decide(fake)
+    store, _, _ = secrets_adapter._decide(fake)
 
     assert store.set("JIRA_API_TOKEN", SYNTHETIC) is True
     assert store.get("JIRA_API_TOKEN") == SYNTHETIC
@@ -212,7 +262,7 @@ def test_the_username_is_never_empty():
     through a private method.
     """
     fake = FakeKeyring(WinVaultKeyring())
-    store, _ = secrets_adapter._decide(fake)
+    store, _, _ = secrets_adapter._decide(fake)
 
     store.set("JIRA_API_TOKEN", SYNTHETIC)
 
@@ -227,7 +277,7 @@ def test_deleting_something_absent_is_not_an_error():
     is nothing to delete. The migration runs this on files it has never seen,
     so the adapter absorbs it."""
     fake = FakeKeyring(WinVaultKeyring())
-    store, _ = secrets_adapter._decide(fake)
+    store, _, _ = secrets_adapter._decide(fake)
 
     assert store.delete("NEVER_STORED") is True
 
@@ -239,7 +289,7 @@ def test_a_backend_failure_is_reported_not_raised():
     `win32ctypes`, which does not exist on Linux. So the adapter catches broadly
     and reports — its contract is "return the secret or say you could not"."""
     fake = FakeKeyring(WinVaultKeyring(), raises=RuntimeError("credential store is locked"))
-    store, _ = secrets_adapter._decide(fake)
+    store, _, _ = secrets_adapter._decide(fake)
 
     assert store.get("JIRA_API_TOKEN") is None
     assert store.set("JIRA_API_TOKEN", SYNTHETIC) is False
@@ -251,7 +301,7 @@ def test_a_backend_failure_is_reported_not_raised():
 
 def test_a_failure_logs_the_type_and_the_message(caplog):
     fake = FakeKeyring(WinVaultKeyring(), raises=RuntimeError("credential store is locked"))
-    store, _ = secrets_adapter._decide(fake)
+    store, _, _ = secrets_adapter._decide(fake)
 
     with caplog.at_level(logging.WARNING):
         store.set("JIRA_API_TOKEN", SYNTHETIC)
@@ -275,7 +325,7 @@ def test_a_message_containing_the_secret_is_withheld(caplog):
         WinVaultKeyring(),
         raises=RuntimeError(f"rejected value {SYNTHETIC} for target"),
     )
-    store, _ = secrets_adapter._decide(fake)
+    store, _, _ = secrets_adapter._decide(fake)
 
     with caplog.at_level(logging.WARNING):
         store.set("JIRA_API_TOKEN", SYNTHETIC)
@@ -314,10 +364,10 @@ def test_resolve_store_finds_nothing_under_the_sandbox():
     falls to the ImportError path, so no test can migrate a credential into the
     developer's own credential manager.
     """
-    store, description = secrets_adapter.resolve_store()
+    store, code, _params = secrets_adapter.resolve_store()
 
     assert store is None
-    assert description == secrets_adapter._NOT_INSTALLED
+    assert code == secrets_adapter.LAYER_NO_KEYRING
 
 
 def test_this_suite_never_imports_keyring():
@@ -349,7 +399,7 @@ def test_every_migrated_key_gets_its_own_target(name):
     reader of the OS credential manager would expect to find.
     """
     fake = FakeKeyring(WinVaultKeyring())
-    store, _ = secrets_adapter._decide(fake)
+    store, _, _ = secrets_adapter._decide(fake)
 
     store.set(name, SYNTHETIC)
 
