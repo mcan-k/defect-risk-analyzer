@@ -10,6 +10,22 @@ No test in this suite may touch the network, ChromaDB, Jira, an LLM API or the
 operating system's credential store. The sandbox enforces the filesystem half
 of that and blocks the credential store outright; the individual tests inject
 stubs for the rest.
+
+MONKEYPATCHING A MODULE GLOBAL: check how many the production path writes.
+`monkeypatch` restores what it recorded, and nothing else. Twice now a test has
+patched part of a group of globals, let production code run, and left the rest
+set — and both times the failure appeared in a DIFFERENT file, where nobody was
+looking for it:
+
+  * `monkeypatch.delenv(key, raising=False)` on an already-absent key records
+    nothing to undo, so the values `load_dotenv` then wrote into `os.environ`
+    survived teardown and flipped the Settings page from "create" to "rotate".
+  * `config.secret_store()` assigns four globals; a test patched two of them,
+    and the other two leaked a fake backend name into a page caption.
+
+So: before patching one name, look at what the code under test assigns, and
+record all of it. A leak here is not caught by the sandbox — the paths stay
+inside it — and it does not fail where it was caused.
 """
 
 import os
