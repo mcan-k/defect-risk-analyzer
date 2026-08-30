@@ -1,0 +1,34 @@
+# =============================================================================
+# Predictive Defect Analysis Engine — Optional OS Credential Store
+# =============================================================================
+# Install: pip install -r requirements.txt -r requirements-desktop.txt
+#      or: pip install -e ".[desktop]"
+#
+# Only needed to keep credentials in the operating system's credential manager
+# instead of `.env`. Without it the application still runs: adapters/secrets.py
+# reports the `no_keyring` layer, the Settings page says which layer is in use,
+# and the migration that empties `.env` does not run. See SECURITY.md, which
+# scopes the guarantee to the layer actually in use.
+#
+# NOT in requirements.txt on purpose. On Linux keyring reaches the credential
+# store through SecretStorage and jeepney, and neither can work in
+# `python:3.11-slim` or on a headless CI runner — where credentials arrive as
+# environment variables anyway (`docker-compose.yml` passes `.env` with
+# `env_file`). A module-level import would make adapters/secrets.py unimportable
+# on the runner, which is why that import sits inside the function.
+# =============================================================================
+
+# Exact pin, unlike requirements-webhook.txt's lower bounds — and for the
+# opposite reason, so it is worth writing down.
+#
+# The webhook four are `>=` because chromadb requires all four with no upper
+# bound, so the resolver decides regardless and a `==` there only fights it.
+# NOTHING in this project's tree requires keyring: not chromadb, not groq, not
+# openai. There is no resolver to defer to, so requirements.txt's `==` contract
+# applies and this file states the version the project was measured against.
+#
+# Measured on Windows: `pip install keyring` brings keyring 25.7.0 and eight
+# transitive packages, with pywin32-ctypes 0.2.3 carrying the backend. Only the
+# direct dependency is pinned here, the same as requirements.txt.
+
+keyring==25.7.0
