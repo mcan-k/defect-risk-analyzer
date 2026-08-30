@@ -35,9 +35,15 @@ Repository = "https://github.com/mcan-k/defect-risk-analyzer"
 version = { attr = "defect_risk_analyzer.__version__" }
 dependencies = { file = ["requirements.txt"] }
 
-# `pip install -e ".[webhook]"` adds the optional FastAPI server.
 [tool.setuptools.dynamic.optional-dependencies]
+# `pip install -e ".[webhook]"` adds the optional FastAPI server.
 webhook = { file = ["requirements-webhook.txt"] }
+# `pip install -e ".[desktop]"` adds the OS credential store. Faz 6B named this
+# extra in eight source files, both locale catalogs and SECURITY.md's install
+# command, but never declared it here — and pip does not fail on an extra a
+# project does not provide, it warns once and reports success. Held by
+# tests/test_packaging_extras.py.
+desktop = { file = ["requirements-desktop.txt"] }
 
 [tool.setuptools.packages.find]
 where = ["src"]
