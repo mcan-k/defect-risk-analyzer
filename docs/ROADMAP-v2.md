@@ -492,6 +492,48 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
 - [ ] `README.tr.md`
 - [ ] `CHANGELOG.md` + `v1.0.0` git tag + GitHub Release
 - [ ] Streamlit Cloud demo — sadece mock data, kimlik bilgisi girişi kapalı
+- [ ] **`desktop` extra'sını bu makineye kur ve 6B'nin taşımasını canlıda
+      doğrula.** PR #17 extra'nın beyan edildiğini ve geçici bir venv'de
+      kurulduğunu kanıtladı — `keyring` geliyor, backend çözülüyor. Taşımanın
+      kendisi bugüne kadar hiç koşmadı: `keyring` kurulamadığı sürece
+      `resolve_store()` her zaman `no_keyring` döndü ve `bootstrap()` taşımayı
+      hiç denemedi. Ayrı bir iş değil — aşağıdaki kalite kontrol listesinin
+      "temiz makinede `pipx install` → `dra` → 5 dakikada çalışan dashboard"
+      denemesinin içinde yapılır, ve aynı listenin kimlik bilgileri maddesinin
+      prosedürüdür; o maddeyi tekrarlamaz.
+
+      `pip install -e ".[desktop]"` → dashboard → sırayla:
+
+      1. Üç sır kimlik deposuna taşınıyor mu — `JIRA_API_TOKEN`,
+         `GROQ_API_KEY`, `API_KEY`.
+      2. `.env`'de o üç satırın değeri boşalıyor mu, anahtar kalıyor mu.
+      3. Marker taşıyan yorumlanmış `API_KEY` satırının değeri boşalıyor mu —
+         satır kalır, değer gitmelidir.
+      4. Ayarlar `store_active` katmanını ve çözülen backend adını gösteriyor
+         mu.
+
+      **Kurulum yolu Faz 7'de kararlaştırılacak.** Yukarıdaki komut geliştirici
+      kurulumu (`pip install -e`); kalite kontrol listesi ise `pipx install` →
+      `dra` yolunu tarif ediyor. İkisi farklı kurulum yolları, ve `pipx`
+      üzerinden bir extra'nın nasıl kurulacağı bugün ölçülmedi. Hangisinin —
+      ya da ikisinin de — deneneceği o zaman kararlaşır; aşağıdaki taşıma
+      gözlemleri seçilen yola bağlı değil.
+
+      **Sıra sözleşmedir**: store'a yaz → geri oku ve doğrula → `.env`'i
+      boşalt. Bu yüzden ikinci gözlem birincisi olmadan hiçbir şey söylemez —
+      boşalmış bir `.env` satırı, değerin başka bir yerde tutulduğunun kanıtı
+      değildir; yalnız burada olmadığının kanıtıdır.
+
+      Üçüncü gözlemin beklentisi tahmin değil, koddan okundu:
+      `set_env_value`'nun boşaltma dalı (`config.py:353-357`) daha önce
+      yorumlanmış satırları da boşaltıyor, ve oradaki yorum bu dalın tam
+      olarak keyring taşıması için yazıldığını söylüyor.
+
+      Başlangıç durumu (bu makinenin `.env`'i, gitignore'da): üç anahtarın
+      üçü de dolu, `OPENAI_API_KEY` boş olduğu için kapsam dışı, ve marker
+      taşıyan yorumlanmış bir `API_KEY` satırı değerini hâlâ tutuyor.
+      Ertelemenin ikinci gerekçesi de bu: bu makinenin `.env` katmanında
+      kalması 6D-3'ün bağımlılık pinleme ölçümlerine zemin sağlıyor.
 
 ---
 
