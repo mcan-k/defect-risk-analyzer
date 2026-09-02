@@ -42,6 +42,23 @@ jobs:
           pip install -r requirements-dev.txt
           pip install -e . --no-deps
 
+      # requirements.txt and requirements-dev.txt pin 12 direct dependencies with
+      # `==`, but a fresh resolve installs 118 packages — the other 106 arrive
+      # transitively with no upper bound and drift between runs. They already
+      # scroll past in the install output; this records them in one greppable
+      # place so a version change is visible in a log diff.
+      #
+      # Placed before Ruff and Pytest on purpose: when lint or the suite breaks,
+      # knowing what was actually resolved is worth the most, so the record has
+      # to be written before anything can fail.
+      #
+      # Only here, not in pr-risk-analysis.yml: that workflow installs
+      # requirements.txt, a subset of this one (same runtime deps, minus
+      # pytest/pytest-cov/ruff), so a second freeze would record the same
+      # resolution twice.
+      - name: pip freeze (resolved dependency versions)
+        run: pip freeze
+
       # Lint first: a formatting failure is cheaper to report than a test run.
       - name: Ruff
         run: ruff check .
