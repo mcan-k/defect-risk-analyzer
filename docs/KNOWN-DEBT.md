@@ -999,11 +999,29 @@ Girdinin üstündeki yorum da yanlış teşhisi tekrar ediyordu ("Faz 4 aligns t
 module's component names with component_classifier"); bkz. `ROADMAP-v2.md` Faz 4.
 
 Yukarıdaki 70 / 54 / 5 sayıları Faz 3 anındaki ölçümdür ve geriye dönük
-düzeltilmiyor — tarihsel kayıt. Bugünkü bakiye ayrı bir sayıdır: **25 açık**
-(10 E501 + 15 B904). Faz 5B ölçümü: `ruff check --isolated --line-length 100
---select E501,F841 src` → `api_models.py` 4, `prompt_templates.py` 3,
-`pattern_detector.py` 2, `anonymizer.py` 1. Hiçbiri sahipli bir faza bağlı
-değil.
+düzeltilmiyor — tarihsel kayıt. Bugünkü bakiye ayrı bir sayıdır: **24 açık**
+(9 E501 + 15 B904).
+
+Ölçüm karantinasız alınır — bakiye, karantinada *duran* ihlallerin sayısıdır,
+CI'ın gördüğü değil (`ruff check .` bugün temiz):
+
+```
+ruff check . --config "lint.per-file-ignores={}" --statistics
+```
+
+Döküm: `api.py` 9 + `llm_provider.py` 6 → 15 `B904`; `api_models.py` 4,
+`prompt_templates.py` 3, `pattern_detector.py` 2 → 9 `E501`. B904'ün iki
+dosyası Faz 6'yı işaret ediyor; E501'in üçü sahipsiz.
+
+`anonymizer.py` bu dökümden düştü: dosya Faz 6B'de yeniden yazıldığında uzun
+satır ortadan kalktı ve arkasında hiçbir şey kalmayan karantina girdisi aynı
+PR'da silindi (`53bb845`, PR #14). Faz 5B'nin `--isolated --line-length 100
+--select E501,F841 src` komutu artık bu sayıyı vermiyor, o yüzden yukarıdaki
+komutla değiştirildi.
+
+Bu cümlenin doğruluğunu artık `tests/test_known_debt_tally.py` tutuyor: sayı
+ölçümden ayrıldığında paket kırmızıya döner. Bekçi yalnız bu bakiye cümlesini
+denetler — yukarıdaki tarihsel sayılara ve dosya bazındaki döküme dokunmaz.
 
 ---
 
@@ -1082,6 +1100,98 @@ kapattı, ama katman savunması olarak CSP yine yok.
 
 Faz 6C kapsamı dışında: uygulama kodu değil, dağıtım hijyeni.
 
+**6D'de de yapılmadı, ve nedeni ölçüldü.** Streamlit 1.41.1'de CSP başlığı
+eklemenin desteklenen bir yolu yok: 55 yapılandırma seçeneğinin hiçbiri
+başlıklara dokunmuyor (`server.headless` yalnız ad benzerliği), `_create_app`
+sabit bir Tornado route listesi kuruyor ve middleware kancası sunmuyor, ve
+servis edilen `static/index.html`'in tek `<meta>`'sı `charset`. Başlığı
+uygulayabilecek tek yer bir ters proxy — bugünkü `docker-compose.yml` ise iki
+servisi doğrudan yayınlıyor, araya hiçbir şey girmiyor. Proxy eklemek yeni bir
+servis, imaj ve sağlık kontrolü demek, ve masaüstü yolunda (`BASLAT.bat`,
+`streamlit run`) hiç uygulanmayacağı için korumanın yalnız Docker'da var olduğu
+bir güvenlik iddiası üretirdi. Yani bu bir hijyen kalemi değil, altyapı kararı;
+6D'nin kapsamından bu yüzden çıkarıldı.
+
 | Borç | İşaret |
 |---|---|
-| Enjekte edilen bir dış kaynak isteğini durduracak ikinci bir katman yok | Tetikleyici: **6D (proje hijyeni)** |
+| Enjekte edilen bir dış kaynak isteğini durduracak ikinci bir katman yok | **v1.1**, tetikleyici: **dağıtım yoluna bir ters proxy girdiğinde** |
+---
+
+## `config.py` ve `__init__.py` kasten `module-map.json`'da yok
+
+**Where:** [`module-map.json`](../module-map.json),
+[`ci_analyzer.py`](../src/defect_risk_analyzer/ci_analyzer.py)
+
+Ölçüm — 2026-08-30, `python tests/tools/module_map_report.py`:
+
+| | |
+|---|---|
+| izlenen dosya | 109 |
+| `exclude` ile elenen | 59 |
+| kapsamda kalan | 50 |
+| bir modüle eşleşen | 36 |
+| kapsamda ama eşleşmeyen | 14 |
+| `src/**/*.py` kapsamı | 34/36 = **%94,4** |
+
+Araç aynı ölçümü `36 of 50 analyzable (34 of 77 tracked .py)` diye de yazıyor;
+77, `tests/` altındakiler dahil bütün `.py` dosyaları. Yukarıdaki %94,4 yalnız
+`src/` paketinin kapsamı.
+
+Bu sayılar anlık fotoğraf ve dosya eklendikçe bayatlıyor: **bu kaydı ekleyen PR**
+izlenen sayısını 106'dan 109'a, elenen sayısını 56'dan 59'a taşıdı — üç yeni
+dosyanın üçü de `exclude`'a düştüğü için `analyzable` 50'de kaldı. Onun için sayı
+değil komut yazılı: araç salt okunur, dökümü de basar, ve okuyan kişi güncel
+hâlini kendisi üretebilir. Bir bekçiyle tutulmuyor: lint
+bakiyesi tek bir cümleydi, bu tablo altı satır ve kapsamı belgenin çoğunu
+ilgilendiriyor; her dosya eklemesinde kırmızıya dönen bir bekçi belgeyi
+güncellemeyi değil belgeden kaçınmayı öğretir.
+
+Haritasız kalan iki `src` dosyası: `__init__.py` (paket işaretçisi) ve
+`config.py`.
+
+**Karar.** `config.py` her modülü besliyor ve tek bir Jira bileşenine ait
+değil. Onu bir modüle bağlamak, Faz 4(b)'nin kaldırdığı dosya-adı tahmininin
+elle yapılmış hâli olurdu: harita "şu yol şu bileşene aittir" diye bir cümle
+kurar, `config.py` için ise böyle bir cümle yok. `module-map.json`'un kendi
+`_comment`'i "eşleme yok" cevabının dürüst bir cevap olduğunu zaten söylüyor;
+burası o kuralın uygulandığı yer. Bu bir borç değil, kalıcı bir karar.
+
+**Karşı okuma, kayda geçiyor.** %94,4 kapsam ve boşluğun tam olarak bu iki
+dosyaya düşmesi, bir kararın sonucu değil desen dokumasından kalan bir delik
+gibi de okunur — hele `config.py` deponun en çok dokunulan dosyalarından
+biriyken. Bu kaydın yazılması o okumanın dayanağını kaldırmıyor; yalnız
+"karar hiçbir yerde yazılı değil" argümanını kaldırıyor.
+
+**Kapsamın iki katmanı var ve boşluk ikisinde de.** Katman 1 `exclude`,
+katman 2 `modules`. Dört PR ölçüldü:
+
+```
+PR #17  fix/desktop-extra   3 dosya -> kapsamda 0                 Katman 1
+PR #18  docs/roadmap        1 dosya -> kapsamda 0                 Katman 1
+PR #13  Faz 6A              8 dosya -> kapsamda 3 -> eşleşme 0    Katman 2
+6D-1    bu PR               5 dosya -> kapsamda 1 -> eşleşme 0    Katman 2
+```
+
+Dördü de `NOT ASSESSED`. Katman 1'dekiler uzantıyla eleniyor (`**/*.toml`,
+`**/*.txt`, `docs/**`, `tests/**`). Katman 2'dekiler ise kapsama **giriyor** ve
+hiçbir desene uymuyor: 6A'da `.gitignore`, `BASLAT.bat` ve `config.py`; bu PR'da
+`module-map.json`'un kendisi. `exclude` listesi uzantıya göre yazıldığı için
+uzantısız ve tekil dosyalar birinci ağdan geçiyor, `modules` deseni de onları
+tutmuyor — 14 UNMATCHED tam olarak bu artık.
+
+Her iki eleme de tek tek doğru davranış. Bedeli şu: PR #17 gerçek bir paketleme
+hatasını düzeltti ve risk raporunda hiç görünmedi, **ve bu kaydı ekleyen PR da
+görünmüyor.**
+
+**Neden yeniden ölçülemez bir sayı burada duruyor.** Faz 4(b), token
+yaklaşımının en pahalı yanlış pozitifini `api_auth.py` üzerinden ölçmüştü: tek
+satırlık bir değişiklik `auth` token'ı üzerinden Authentication'ı ateşleyip
+`79/100 HIGH RISK` veriyordu (ölçüm: `ROADMAP-v2.md:237-239`, PR #3). Bugün
+yeniden ölçülemez — onu üreten kod (`MODULE_KEYWORDS`, `_path_tokens`,
+`_matched_token`) 4(b) Bölüm B'de silindi ve `module-map.json` kasten
+`sample_bugs.json` ile örtüşmüyor. Kaynağıyla birlikte duruyor; kaynaksız
+yazılsaydı doğrulanamaz bir iddia olurdu.
+
+| Borç | İşaret |
+|---|---|
+| `config.py` ve `__init__.py`'nin haritasız kalması kalıcı karar — ama kapsam ağının ikinci katmanında 14 dosyalık bir artık var ve bunların hangisinin karar, hangisinin gözden kaçma olduğu dosya bazında yazılı değil | Tetikleyici: **`module-map.json` bir daha genişletildiğinde** |
