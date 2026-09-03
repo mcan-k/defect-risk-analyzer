@@ -1,0 +1,41 @@
+# =============================================================================
+# Predictive Defect Analysis Engine — Dependabot
+# =============================================================================
+# Only the github-actions ecosystem is configured here.
+#
+# The pip ecosystem is deliberately absent. requirements-webhook.txt states its
+# bounds as `>=` on purpose (chromadb owns those versions and pinning `==` there
+# turned into a resolver conflict), and Dependabot cannot do anything meaningful
+# with a lower bound. Deciding what to pin is the prerequisite, not the result,
+# of turning Dependabot on for pip — that decision belongs to phase 6D-3.
+# =============================================================================
+
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"  # workflows are discovered from the repository root
+
+    schedule:
+      # Weekly, not daily: three actions do not produce enough churn to justify
+      # a daily check, and a daily cadence just turns into PR noise on a
+      # single-maintainer repository. Monthly would leave a security bump
+      # unnoticed for up to four weeks. A fixed day keeps it predictable.
+      interval: weekly
+      day: monday
+
+    # One PR for all three actions rather than three. The bumps are mechanical
+    # and a single CI run verifies all of them together, so splitting them costs
+    # three full CI runs to review the same evidence.
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+
+    # With grouping this is effectively 1 PR; an explicit low ceiling is better
+    # than inheriting the default of 5 without having thought about it.
+    open-pull-requests-limit: 3
+
+    # No target-branch on purpose: it defaults to the repository's default
+    # branch, so naming it here would only be configuration that rots if the
+    # default branch is ever renamed.
