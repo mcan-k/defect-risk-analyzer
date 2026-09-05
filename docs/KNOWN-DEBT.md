@@ -1195,3 +1195,79 @@ yazılsaydı doğrulanamaz bir iddia olurdu.
 | Borç | İşaret |
 |---|---|
 | `config.py` ve `__init__.py`'nin haritasız kalması kalıcı karar — ama kapsam ağının ikinci katmanında 14 dosyalık bir artık var ve bunların hangisinin karar, hangisinin gözden kaçma olduğu dosya bazında yazılı değil | Tetikleyici: **`module-map.json` bir daha genişletildiğinde** |
+
+---
+
+## `anyio==4.14.2` — bir uyarıyı kaldırmak için konmuş transitif pin
+
+**Where:** [`requirements-dev.txt`](../requirements-dev.txt),
+bekçi: [`tests/test_dependency_pins.py`](../tests/test_dependency_pins.py)
+
+Faz 6D-3a. `anyio` bu projede hiçbir yerde doğrudan istenmiyor; `chromadb →
+fastapi → starlette` zincirinden ve ayrıca `groq`, `openai`, `httpx`,
+`watchfiles`'tan geliyor — altısı da üst sınır koymuyor (en dar tavan `<5`).
+2026-09-05'te CI'ın çözdüğü sürüm `anyio==4.15.1` idi.
+
+4.15.0 `anyio` ve `anyio.abc` modüllerini tembel importa çevirdi ve geriye-uyum
+re-export'larını uyaran alias'lara dönüştürdü. `starlette 1.6.0`
+`testclient.py:53`'te modül düzeyinde `anyio.abc.BlockingPortal`'a dokunuyor, ve
+CI'ın `pytest` çıktısında `The anyio.abc.BlockingPortal alias is deprecated`
+beliriyordu. 4.14.2'de aynı ad düz bir re-export, uyarı orada imkânsız.
+
+**Ölçümler (2026-09-05).** Geçici bir venv'de, `starlette` 1.6.0'da sabit,
+yalnız `anyio` değiştirilerek:
+
+| | yakalanan uyarı | bekçi testi |
+|---|---|---|
+| `anyio==4.15.1` | 2 (httpx→httpx2 **ve** anyio alias) | **kırmızı** |
+| `anyio==4.14.2` | 1 (yalnız httpx→httpx2) | yeşil |
+
+`pip install --dry-run -r requirements-dev.txt anyio==4.14.2` → exit 0,
+**118 paket** (pinsiz de 118), 13 doğrudan; `starlette`, `fastapi`, `uvicorn`,
+`httpx`, `chromadb` kıpırdamadı. Pin paket eklemiyor, hiçbir paketi geri
+çekmiyor.
+
+**Uyarı yalnız test yolunda — ölçüldü, varsayılmadı.** `anyio.abc`'nin uyaran
+alias'larını (`BlockingPortal`, `CapacityLimiter`, `Condition`, `Event`, `Lock`,
+`Semaphore`, `CancelScope`) izleyen bir probe modülü altında import edildiğinde
+yalnız `starlette.testclient` `BlockingPortal`'a dokunuyor; paketin **35
+modülünün tamamı**, `uvicorn.main`, `defect_risk_analyzer.api`, `cli`,
+`ci_analyzer`, `fastapi` ve `chromadb` dokunmuyor. Bu yüzden pin
+`requirements.txt`'te değil `requirements-dev.txt`'te: uvicorn ile çalışan
+webhook, dashboard ve CLI bu uyarıyı üretmiyor, ve son kullanıcının çözüm
+uzayını daraltmak için sebep yok.
+
+**Kabul edilen sonuç:** `pr-risk-analysis.yml` yalnız `requirements.txt` kuruyor
+ve `anyio 4.15.x` çözmeye devam edecek — orada uyarı yok, çünkü o yol
+`ci_analyzer`'ı çalıştırıyor. `Dockerfile` da bu dosyayı hiç `pip install`
+etmiyor. İki iş akışının farklı çözünürlük test etmesi zaten **6D-3b**'nin
+maddesi; bu, o listeye bir paket daha ekliyor.
+
+**İkinci uyarı bu fazın değil.** `StarletteDeprecationWarning: Using 'httpx'
+with 'starlette.testclient' is deprecated; install 'httpx2' instead.`
+(`testclient.py:40-51`) 6D-3a'dan sonra da duruyor ve durması bekleniyor.
+Sahibi **6D-4**. Yukarıdaki tablo bunu gösteriyor: 4.14.2'de bile bir uyarı
+kalıyor, yani bekçi testi "hiç uyarı yok" diye boş yere geçmiyor.
+
+**İki bekçi, iki ayrı iş — ve biri ötekinin yerini tutmuyor.**
+
+- `test_requirements_dev_still_carries_the_expected_anyio_pin` = **mutasyon
+  bekçisi**. İki mutasyon denendi, ikisi de kırmızı: satırın silinmesi (M1) ve
+  satırın `anyio==4.15.1` yapılması (M2). M2 ayrıca testin "satır var mı"
+  testine indirgenmediğini gösteriyor.
+- `test_starlette_testclient_emits_no_anyio_alias_deprecation` = **gerekçe
+  bekçisi**. Uyarının yokluğunu tutar; elemesi mesaj bazında dar tutuldu, geniş
+  bir "DeprecationWarning'leri yok say" filtresi 6D-4 httpx2'yi çözdüğünde ya
+  da üçüncü bir uyarı çıktığında testi sessizce izin verici yapardı.
+- **Gerekçe bekçisi geliştirici makinesinde mutasyon-geçirmez.** "Pini sil"
+  mutasyonu yalnız bir metin dosyasını değiştirir; kurulu `anyio` yerinde kalır
+  ve 4.15 öncesiyse kırmızı fiziksel olarak imkânsızdır. Kırmızısı bu yüzden
+  yukarıdaki geçici venv'de gözlendi. Birleşik takım mutasyon protokolünü
+  **yalnız birinci test sayesinde** geçiyor; gizlenirse "iki testimiz var,
+  korunuyoruz" yanılgısı üretir.
+
+| Borç | İşaret |
+|---|---|
+| Bir üst-akış uyarısını susturmak için tutulan transitif pin; `anyio` bu pin durdukça 4.14.2'de donuyor | Tetikleyici: **kurulu `starlette/testclient.py` dosyası VAR ve içinde `anyio.abc.BlockingPortal` eşleşmesi YOK olduğunda**. İki koşul birlikte: tek başına "grep boş döndü", starlette hiç kurulu değilse de doğrudur ve tetikleyiciyi yanlışlıkla ateşlenmiş gösterir. **Dosya yoksa bu bir tetikleyici değil, aşağıdaki 6D-4 sorusudur** |
+| `chromadb` 1.5.9 `fastapi`yi runtime'dan `dev` extra'sına taşıdı; 6D-4'ün chromadb bump'ı sonrası `starlette` `requirements-dev.txt`'in kapanışından düşerse gerekçe bekçisi sessizce `skip`'e geçer, mutasyon bekçisi yeşil kalır ve pin gerekçesiz bir kısıt olarak dosyada kalır | Tetikleyici: **6D-4**, chromadb bump'ıyla birlikte kontrol edilecek |
+| `tests/test_dependency_pins.py` adı genel; dosya bir yığınak değil | Tetikleyici: **dosyaya ikinci bir pin eklendiğinde** — her yeni pin kendi mutasyonunu gerektirir |
