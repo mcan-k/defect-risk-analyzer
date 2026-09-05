@@ -1271,3 +1271,43 @@ kalıyor, yani bekçi testi "hiç uyarı yok" diye boş yere geçmiyor.
 | Bir üst-akış uyarısını susturmak için tutulan transitif pin; `anyio` bu pin durdukça 4.14.2'de donuyor | Tetikleyici: **kurulu `starlette/testclient.py` dosyası VAR ve içinde `anyio.abc.BlockingPortal` eşleşmesi YOK olduğunda**. İki koşul birlikte: tek başına "grep boş döndü", starlette hiç kurulu değilse de doğrudur ve tetikleyiciyi yanlışlıkla ateşlenmiş gösterir. **Dosya yoksa bu bir tetikleyici değil, aşağıdaki 6D-4 sorusudur** |
 | `chromadb` 1.5.9 `fastapi`yi runtime'dan `dev` extra'sına taşıdı; 6D-4'ün chromadb bump'ı sonrası `starlette` `requirements-dev.txt`'in kapanışından düşerse gerekçe bekçisi sessizce `skip`'e geçer, mutasyon bekçisi yeşil kalır ve pin gerekçesiz bir kısıt olarak dosyada kalır | Tetikleyici: **6D-4**, chromadb bump'ıyla birlikte kontrol edilecek |
 | `tests/test_dependency_pins.py` adı genel; dosya bir yığınak değil | Tetikleyici: **dosyaya ikinci bir pin eklendiğinde** — her yeni pin kendi mutasyonunu gerektirir |
+
+---
+
+## Satır sonu normalizasyonu depoda değil, her klonun kendi ayarında
+
+**Where:** deponun kökü — `.gitattributes` **yok**
+
+Faz 6D-3a sırasında yol üstünde görüldü, kapsam kuralı gereği kaydedildi ve
+düzeltilmedi.
+
+**Ölçüm — 2026-09-05, `git cat-file -p HEAD:<dosya>` ile blob, ayrıca disk:**
+
+| dosya | HEAD blob | çalışma kopyası (bu makine) |
+|---|---|---|
+| `requirements.txt` | LF=30 | CRLF=30 |
+| `requirements-dev.txt` | LF=17 | **LF=53** |
+| `requirements-webhook.txt` | LF=29 | CRLF=29 |
+| `docs/KNOWN-DEBT.md` | LF=1197 | **CRLF=1197 + LF=76** |
+| `pyproject.toml`, `CONTRIBUTING.md`, `tests.yml` | LF | CRLF |
+
+**Deponun içeriği bugün temiz: her blob LF.** Sorun kaydedilmiş içerikte değil,
+onu üreten mekanizmanın nerede durduğunda. Karışıklık yalnız çalışma
+kopyasında, ve `core.autocrlf=true` onu diff'te tamamen maskeledi — 6D-3a'nın
+`requirements-dev.txt` değişikliği **36 ekleme, 0 silme** olarak göründü, oysa
+dosya diskte tamamen LF'e dönmüştü.
+
+**Borç maskenin kendisi.** `core.autocrlf` **makine ayarıdır, depo ayarı
+değil**; depoda `.gitattributes` olmadığı için normalizasyonun yapılıp
+yapılmayacağına her klon kendi başına karar veriyor. `autocrlf=false` ile
+klonlayan biri (git'in Linux/macOS varsayılanı) CRLF yazan bir editörle tek
+satır değiştirdiğinde **tam dosya farkı** üretir; inceleme o PR'da imkânsız
+hale gelir ve `git blame` tarihi kopar. Bu makinede görünmüyor olması, olmadığı
+anlamına gelmiyor — tam tersi, görünmemesi tanımın kendisi.
+
+Aynı PR'da düzeltilmedi: `.gitattributes` eklemek deponun tamamına dokunan bir
+normalizasyon commit'i demek, ve 6D-3a tek satırlık bir pin fazı.
+
+| Borç | İşaret |
+|---|---|
+| `.gitattributes` yok; satır sonu normalizasyonu her klonun `core.autocrlf` ayarına bırakılmış, yani depo kendi biçim sözleşmesini taşımıyor | **Faz 7**, tetikleyici: **depoda `.gitattributes` yok VE bir PR'da tek satırlık bir değişiklik tam-dosya farkı üretiyor** — hangisi önce gelirse. Faz 7'nin temiz makine denemesi ("indir, 5 dakikada çalıştır") bunu yüzeye çıkaracak doğal yer |
