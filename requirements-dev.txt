@@ -15,3 +15,39 @@ pytest-cov==6.0.0
 
 # --- Linting ---
 ruff==0.8.4
+
+# --- Transitive pin: CI'ın pytest uyarılarından biri için ---
+#
+# `anyio` bu dosyada doğrudan istenmiyor; chromadb → fastapi → starlette ve
+# ayrıca groq, openai, httpx zincirlerinden geliyor ve hiçbiri üst sınır
+# koymuyor (`<5` en dar tavan). 2026-09-05'te çözüm `anyio==4.15.1` veriyordu.
+#
+# 4.15.0 `anyio` ve `anyio.abc` modüllerini tembel importa çevirdi ve
+# geriye-uyum re-export'larını uyaran alias'lara dönüştürdü. `starlette 1.6.0`
+# `testclient.py:53`'te modül düzeyinde `anyio.abc.BlockingPortal`'a dokunuyor,
+# ve CI'ın pytest çıktısında şu beliriyor:
+#
+#     The anyio.abc.BlockingPortal alias is deprecated,
+#     use anyio.from_thread.BlockingPortal instead.
+#
+# 4.14.2'de aynı ad düz bir re-export
+# (`from ..from_thread import BlockingPortal as BlockingPortal`), yani uyarı
+# orada fiziksel olarak imkânsız. A/B ile ölçüldü.
+#
+# NEDEN requirements.txt'TE DEĞİL. Uyarı yalnız test yolunda çıkıyor, ve bu
+# ölçüldü: `anyio.abc`'nin uyaran alias'larını izleyen bir probe altında
+# `starlette.testclient` `BlockingPortal`'a dokunuyor; paketin 35 modülünün
+# tamamı, `uvicorn`, `fastapi` ve `chromadb` dokunmuyor. Uvicorn ile çalışan
+# webhook, dashboard ve CLI bu uyarıyı üretmiyor, dolayısıyla son kullanıcının
+# çözüm uzayını daraltmak için sebep yok. `pr-risk-analysis.yml` bu dosyayı
+# kurmuyor ve `anyio 4.15.x` çözmeye devam edecek — orada uyarı yok, `Dockerfile`
+# da bu dosyayı hiç `pip install` etmiyor.
+#
+# NEDEN `==` VE `<4.15` DEĞİL. `==` bu deponun diğer 13 doğrudan pininin deyimi
+# ve Dependabot'un görüp bump PR'ı açabileceği bir satır; bir aralık görünmeden
+# bayatlar ve ölçülmemiş bir 4.14.3'ü sessizce kabul ederdi. Bump PR'ı gelirse
+# `tests/test_dependency_pins.py` onu kırmızıya çevirir — istenen sinyal.
+#
+# Kaldırma tetikleyicisi docs/KNOWN-DEBT.md'de. Bekçi:
+# tests/test_dependency_pins.py.
+anyio==4.14.2
