@@ -1272,6 +1272,16 @@ kalıyor, yani bekçi testi "hiç uyarı yok" diye boş yere geçmiyor.
 | `chromadb` 1.5.9 `fastapi`yi runtime'dan `dev` extra'sına taşıdı; 6D-4'ün chromadb bump'ı sonrası `starlette` `requirements-dev.txt`'in kapanışından düşerse gerekçe bekçisi sessizce `skip`'e geçer, mutasyon bekçisi yeşil kalır ve pin gerekçesiz bir kısıt olarak dosyada kalır | Tetikleyici: **6D-4**, chromadb bump'ıyla birlikte kontrol edilecek |
 | `tests/test_dependency_pins.py` adı genel; dosya bir yığınak değil | Tetikleyici: **dosyaya ikinci bir pin eklendiğinde** — her yeni pin kendi mutasyonunu gerektirir |
 
+**Faz 6D-3c eki — anyio'nun bump PR'ı tasarım gereği kırmızıdır.** pip
+ekosistemi açıldığına göre Dependabot bu pini 4.15.x'e yükseltmek için PR
+açacak, ve yukarıdaki iki bekçi o PR'ı kırmızıya çevirecek: mutasyon bekçisi
+literal değiştiği için, gerekçe bekçisi uyarı geri geldiği için. **Bu istenen
+sinyaldir, yanlış yapılandırma değil** — ilk gelişinde öyle sanılmasın diye
+buraya yazıldı. `dependabot.yml`'de `exclude-patterns: ["anyio"]` ile gruptan
+çıkarıldı, çünkü grup içinde bu kırmızı, birleştirilemeyecek bir PR'a bağlı
+olarak bütün patch/minor bump'ları rehin alırdı. PR kapatılırsa Dependabot onu
+aynı sürüm için yeniden açmaz; bir sonraki `anyio` sürümünde yeni bir PR gelir.
+
 ---
 
 ## Satır sonu normalizasyonu depoda değil, her klonun kendi ayarında
@@ -1352,3 +1362,45 @@ Dependabot PR'ında job'ın atlandığı Actions'ta görülecek.
 |---|---|
 | Bot PR'larında bu iş akışı hiç koşmuyor; bugün kaybı sıfır ama bu, raporun bugün boş olmasına bağlı | Tetikleyici: **`module-map.json`'un `exclude` listesinden `**/*.txt` çıkarıldığında** — o an bot PR'ının analiz edilecek içeriği olur ve `if` gerekçesinin yarısını kaybeder |
 | `if` koşulu belgeden okunan bir davranışa dayanıyor, gözlenen bir 403'e değil | Tetikleyici: **ilk Dependabot PR'ı** — job'ın atlandığı görüldüğünde bu satır ölçüme dönüşür. Ayrıca depo ayarı bot workflow'larına yükseltilmiş izin verirse koşul kalkabilir |
+
+---
+
+## `chromadb` ve `streamlit` Dependabot'ta ertelendi — güvenlik güncellemeleri de susuyor
+
+**Where:** [`.github/dependabot.yml`](../.github/dependabot.yml),
+bekçi: [`tests/test_dependabot_config.py`](../tests/test_dependabot_config.py)
+
+Faz 6D-3c pip ekosistemini açtı ama iki paketi `ignore` ile 6D-4'e erteledi.
+Gerekçe ölçüldü: `chromadb` 0.5.23 → 1.5.9 `fastapi`yi runtime'dan `dev`
+extra'sına taşıyor ve `tests.yml` `requirements-webhook.txt`'i kurmuyor, yani
+mekanik bir bump CI'da hiçbir botun çözemeyeceği bir nedenle kırmızı olur.
+`streamlit` 1.41.1 → 1.63.0 aynı fazın öteki yarısı.
+
+**Ad bazlı, semver seviyesi bazlı değil.** `streamlit`'in sıçraması semver'e
+göre **minor**; `update-types: [version-update:semver-major]` filtresi onu
+yakalamazdı. Gelecekte "neden ad bazlı ignore" sorusunun cevabı budur.
+
+**KABUL EDİLEN BEDEL, ÖLÇÜLDÜ.** `ignore` yalnız sürüm güncellemelerini değil
+güvenlik güncellemelerini de kesiyor — GitHub Docs, *Controlling which
+dependencies are updated by Dependabot*: *"You can configure Dependabot to
+ignore those dependencies when it opens pull requests for version updates and
+security updates."* Yani bu iki girdi durdukça `chromadb` ya da `streamlit`'te
+çıkacak bir CVE için PR açılmaz. `applies-to: security-updates` grubu bunu
+telafi etmez: grup yalnız PR'ların nasıl paketlendiğini belirler, `ignore`
+güncellemenin kendisini engeller.
+
+`pillow`'un 18 CVE'si bu maddeden **etkilenmiyor** — `pillow` hiçbir
+manifest'te beyan edilmiyor ve depoda lock dosyası yok, dolayısıyla zaten
+güvenlik PR'ı üretilemezdi. Risk `streamlit`'in ya da `chromadb`'nin kendi
+olası bir CVE'si.
+
+**Tetikleyici bir yorum değil, bir test.** `.yml` yorumu kendini
+hatırlatmıyor; `tests/test_dependabot_config.py` 6D-4 pini oynattığı an
+kırmızıya dönüyor ve hata mesajı ne yapılacağını yazıyor. Testin beyan edilmiş
+kör noktası da orada: tutulan şey tutarlılık, varlık değil — bir ad `ignore`
+listesinden silinirse bekçi görmez (M3 mutasyonu, hayatta kalması beklenen).
+
+| Borç | İşaret |
+|---|---|
+| `chromadb` ve `streamlit` Dependabot'ta donmuş durumda ve güvenlik güncellemeleri de susmuş | Tetikleyici: **6D-4** — ve mekanik olarak `tests/test_dependabot_config.py`, iki pinden biri oynadığı an kırmızı |
+| `open-pull-requests-limit: 5`, gruplanmış bir PR'ın limite karşı nasıl sayıldığı **belgede yazmıyor** (options reference ve gruplama sayfası arandı); iki okuma iki farklı sonuç veriyor | Tetikleyici: **6D-3c'nin kapanış ölçümü** — ilk taramadan sonra açılan PR kümesi grup + major'ları içeriyorsa okuma doğrudur; grup tek başına limiti doldurup major'ların hiçbiri açılmıyorsa limit yükseltilir |
