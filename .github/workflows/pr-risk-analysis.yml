@@ -18,6 +18,30 @@ permissions:
 jobs:
   risk-analysis:
     name: Analyze PR Risk
+
+    # Dependabot's own pull requests are skipped entirely. Two independent
+    # reasons, and they fail in opposite directions — one makes the job break,
+    # the other makes it pointless.
+    #
+    # It would break: a workflow triggered by Dependabot receives a read-only
+    # GITHUB_TOKEN whatever the `permissions:` block above says, so the "Post
+    # report as PR comment" step below would fail with 403.
+    #
+    # It would say nothing: Dependabot only edits manifest files, and
+    # module-map.json excludes `**/*.txt` and `**/*.toml`, so
+    # select_analyzable_files() returns an empty list and the report reads
+    # "NOT ASSESSED - changed files did not map to any known module".
+    #
+    # The job, not just the comment step: this workflow has no `cache: pip`
+    # (tests.yml has one), so leaving the analysis running would pay a full
+    # 112-package resolve on every bot pull request to produce that empty
+    # report. Nothing measurable is lost by skipping.
+    #
+    # NOT OBSERVED: no Dependabot pull request has ever existed in this
+    # repository, so the 403 is read from the documentation, not seen here.
+    # Removal trigger in docs/KNOWN-DEBT.md.
+    if: github.actor != 'dependabot[bot]'
+
     runs-on: ubuntu-latest
 
     steps:

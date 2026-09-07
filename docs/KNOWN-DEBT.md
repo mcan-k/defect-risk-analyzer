@@ -1311,3 +1311,44 @@ normalizasyon commit'i demek, ve 6D-3a tek satırlık bir pin fazı.
 | Borç | İşaret |
 |---|---|
 | `.gitattributes` yok; satır sonu normalizasyonu her klonun `core.autocrlf` ayarına bırakılmış, yani depo kendi biçim sözleşmesini taşımıyor | **Faz 7**, tetikleyici: **depoda `.gitattributes` yok VE bir PR'da tek satırlık bir değişiklik tam-dosya farkı üretiyor** — hangisi önce gelirse. Faz 7'nin temiz makine denemesi ("indir, 5 dakikada çalıştır") bunu yüzeye çıkaracak doğal yer |
+
+---
+
+## Bot PR'larında risk analizi bilerek koşmuyor
+
+**Where:** [`.github/workflows/pr-risk-analysis.yml`](../.github/workflows/pr-risk-analysis.yml)
+
+Faz 6D-3c'nin keşfinde yol üstünde bulundu ve **ayrı, tek satırlık bir PR
+olarak** düzeltildi — 6D-3c'nin kendisinden önce, çünkü kusur 6D-3c olmadan da
+var: `dependabot.yml`'nin `github-actions` ekosistemi 2026-09-03'ten beri açık
+ve ilk aksiyon bump'ında aynı şey olurdu.
+
+**İki gerekçe, biri belgeden biri ölçümden.**
+
+- **İş kırılırdı.** GitHub Docs, *Troubleshooting Dependabot on GitHub Actions*:
+  bot tetiklediğinde workflow'lar *"receive a read-only `GITHUB_TOKEN` and do
+  not have access to any secrets"*. Dosyadaki `permissions: pull-requests:
+  write` bunu değiştirmiyor, yani "Post report as PR comment" adımı 403 alırdı.
+- **İş zaten hiçbir şey söylemezdi.** Dependabot yalnız manifest dosyalarına
+  dokunuyor; `module-map.json`'un `exclude` listesi `**/*.txt` ve `**/*.toml`
+  taşıyor, dolayısıyla `select_analyzable_files()`
+  (`ci_analyzer.py:335-357`) boş liste döndürür ve rapor `NOT ASSESSED —
+  changed files did not map to any known module` olur.
+
+**Adım değil job atlanıyor.** Yalnız yorum adımını atlamak analizi koşturmaya
+devam ederdi; bu workflow'da `cache: pip` **yok** (`tests.yml`'de var), yani her
+bot PR'ında 112 paketlik tam bir çözümleme okunmayacak bir rapor için ödenirdi.
+Ölçülen kayıp sıfır.
+
+**GÖZLENMEDİ — çıkarımla düzeltildi.** 403'ün alındığı görülmedi, çünkü bu
+depoda hiç Dependabot PR'ı olmadı. Actions API'sinde `dependabot[bot]` aktörlü
+tek çalışma 2026-09-03'teki `github_actions in /.` taraması
+(`event: dynamic`, success); `pull_request` olayıyla tetiklenmiş bir bot
+çalışması yok ve son 50 çalışmanın hiçbiri başarısız değil. `pulls?state=all`
+de tek bir bot PR'ı göstermiyor. Negatif kontrol bu yüzden beklemede: ilk
+Dependabot PR'ında job'ın atlandığı Actions'ta görülecek.
+
+| Borç | İşaret |
+|---|---|
+| Bot PR'larında bu iş akışı hiç koşmuyor; bugün kaybı sıfır ama bu, raporun bugün boş olmasına bağlı | Tetikleyici: **`module-map.json`'un `exclude` listesinden `**/*.txt` çıkarıldığında** — o an bot PR'ının analiz edilecek içeriği olur ve `if` gerekçesinin yarısını kaybeder |
+| `if` koşulu belgeden okunan bir davranışa dayanıyor, gözlenen bir 403'e değil | Tetikleyici: **ilk Dependabot PR'ı** — job'ın atlandığı görüldüğünde bu satır ölçüme dönüşür. Ayrıca depo ayarı bot workflow'larına yükseltilmiş izin verirse koşul kalkabilir |
