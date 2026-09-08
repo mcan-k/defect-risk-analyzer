@@ -1,13 +1,16 @@
 # =============================================================================
 # Predictive Defect Analysis Engine — Dependabot
 # =============================================================================
-# Only the github-actions ecosystem is configured here.
+# Two ecosystems: github-actions (phase 6D-2) and pip (phase 6D-3c).
 #
-# The pip ecosystem is deliberately absent. requirements-webhook.txt states its
-# bounds as `>=` on purpose (chromadb owns those versions and pinning `==` there
-# turned into a resolver conflict), and Dependabot cannot do anything meaningful
-# with a lower bound. Deciding what to pin is the prerequisite, not the result,
-# of turning Dependabot on for pip — that decision belongs to phase 6D-3.
+# An earlier version of this comment said Dependabot "cannot do anything
+# meaningful with a lower bound", and that turned out to be false. Measured in
+# dependabot-core: with no versioning-strategy set, a project that does not
+# match a PyPI package resolves to BumpVersions, and BumpVersions rewrites
+# `>=0.115.6` to `>=<latest>` unconditionally. requirements-webhook.txt's four
+# `>=` lines would have been rewritten — the exact opposite of that file's
+# stated intent. The `versioning-strategy` line below is what actually protects
+# them; the belief that they were safe by nature did not.
 # =============================================================================
 
 version: 2
@@ -39,3 +42,78 @@ updates:
     # No target-branch on purpose: it defaults to the repository's default
     # branch, so naming it here would only be configuration that rots if the
     # default branch is ever renamed.
+
+  # ---------------------------------------------------------------------------
+  # pip — phase 6D-3c
+  # ---------------------------------------------------------------------------
+  # What Dependabot will look at, read from dependabot-core rather than guessed:
+  # the fetcher selects every file whose name ends in `.txt` or `.in`, and
+  # `requirements_file?` accepts any name containing "requirements" outright. So
+  # all four requirements files are in scope, not just requirements.txt. `-r`
+  # and `-c` lines are followed as well. pyproject.toml is fetched too, but its
+  # dependencies are dynamic, so there is no version literal there to update.
+  - package-ecosystem: pip
+    directory: "/"
+
+    schedule:
+      # Same day as the actions ecosystem, for one weekly review pass rather
+      # than two.
+      interval: weekly
+      day: monday
+
+    # THIS LINE PROTECTS requirements-webhook.txt. The default strategy
+    # (BumpVersions) rewrites `>=0.115.6` to `>=<latest>` unconditionally;
+    # increase-if-necessary starts with `return req if new_version_satisfies?`,
+    # so a lower bound that already admits the new version is left untouched.
+    # An `==` pin never admits a new version, so the 14 exact pins are still
+    # bumped. Net effect: Dependabot acts on the pins and leaves the four
+    # deliberate `>=` bounds — whose whole design is "let the resolver decide" —
+    # exactly as they are.
+    versioning-strategy: increase-if-necessary
+
+    # Risk-tiered, not one bucket. Attribution is cheap for patch/minor bumps
+    # and expensive for majors, so majors are NOT grouped: each arrives in its
+    # own pull request with its own CI run, and a red run names one package.
+    # Everything boring is batched into one weekly pull request instead.
+    groups:
+      python-patch-minor:
+        patterns: ["*"]
+        # anyio is excluded because its bump pull request is RED BY DESIGN, not
+        # broken. requirements-dev.txt pins anyio==4.14.2 to keep starlette's
+        # deprecated anyio.abc alias out of the CI log (phase 6D-3a), and
+        # tests/test_dependency_pins.py holds both the literal and the reason —
+        # so a 4.15.x bump turns two tests red on purpose. That is the signal we
+        # want. Inside the group it would hold every unrelated patch/minor bump
+        # hostage to a pull request that can never be merged.
+        exclude-patterns: ["anyio"]
+        update-types: ["patch", "minor"]
+
+    # Deferred to phase 6D-4, which is where these two are handled deliberately:
+    # chromadb 0.5.23 -> 1.5.9 moves fastapi out of runtime into a dev extra,
+    # and tests.yml does not install requirements-webhook.txt, so a mechanical
+    # bump is red for a reason no bot can resolve. streamlit 1.41.1 -> 1.63.0
+    # is the other half of the same phase.
+    #
+    # BY NAME, NOT BY SEMVER LEVEL: streamlit's bump is a *minor* version, so an
+    # `update-types: [version-update:semver-major]` filter would not catch it.
+    #
+    # ACCEPTED COST, MEASURED: ignore silences security updates as well as
+    # version updates — GitHub Docs, Controlling which dependencies are updated
+    # by Dependabot: "...when it opens pull requests for version updates and
+    # security updates." So while these two entries stand, a CVE in chromadb or
+    # streamlit raises no pull request either. Recorded in docs/KNOWN-DEBT.md.
+    # tests/test_dependabot_config.py makes the removal trigger mechanical: it
+    # turns red the moment 6D-4 moves either pin.
+    ignore:
+      - dependency-name: "chromadb"
+      - dependency-name: "streamlit"
+
+    # Chosen, not inherited — but resting on something the documentation does
+    # not state: whether a grouped pull request counts as one against this
+    # limit. Neither the options reference nor the grouping page says. Day one
+    # is expected to be ~10 open pull requests (8 majors + 1 patch/minor group +
+    # anyio), and 5 is meant as a work queue that drains as they are merged or
+    # closed. If the first scan instead shows the group alone filling the limit
+    # and no majors at all, the reading is the other one and this number goes
+    # up. That check is part of 6D-3c's closing measurement.
+    open-pull-requests-limit: 5
