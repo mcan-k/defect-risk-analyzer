@@ -50,4 +50,4 @@ ruff==0.8.4
 #
 # Kaldırma tetikleyicisi docs/KNOWN-DEBT.md'de. Bekçi:
 # tests/test_dependency_pins.py.
-anyio==4.14.2
+anyio==4.15.1
