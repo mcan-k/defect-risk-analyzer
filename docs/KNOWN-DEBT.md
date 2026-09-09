@@ -1404,3 +1404,74 @@ listesinden silinirse bekçi görmez (M3 mutasyonu, hayatta kalması beklenen).
 |---|---|
 | `chromadb` ve `streamlit` Dependabot'ta donmuş durumda ve güvenlik güncellemeleri de susmuş | Tetikleyici: **6D-4** — ve mekanik olarak `tests/test_dependabot_config.py`, iki pinden biri oynadığı an kırmızı |
 | `open-pull-requests-limit: 5`, gruplanmış bir PR'ın limite karşı nasıl sayıldığı **belgede yazmıyor** (options reference ve gruplama sayfası arandı); iki okuma iki farklı sonuç veriyor | Tetikleyici: **6D-3c'nin kapanış ölçümü** — ilk taramadan sonra açılan PR kümesi grup + major'ları içeriyorsa okuma doğrudur; grup tek başına limiti doldurup major'ların hiçbiri açılmıyorsa limit yükseltilir |
+
+---
+
+## Lint bakiyesi bekçisi yalnız iki kuralı sayıyor — üçüncüsü sessizce girebilir
+
+**Where:** [`tests/test_known_debt_tally.py`](../tests/test_known_debt_tally.py),
+tuttuğu cümle bu belgede (yukarıda, "Bugünkü bakiye ayrı bir sayıdır")
+
+Kör nokta testin kendi docstring'inde beyan edilmişti ("yalnız toplamlar").
+**Ruff 0.8.4 → 0.16.6 bump'ı onu ilk kez gerçek bir sayı değişimiyle
+karşılaştırdı, ve ölçüm beyanı doğruladı.**
+
+`ruff check . --config "lint.per-file-ignores={}" --statistics` ile üç durum:
+
+| durum | B904 | E501 | I001 | gerçek izole toplam | bekçi |
+|---|---|---|---|---|---|
+| ruff 0.8.4 (bump öncesi) | 15 | 9 | — | 24 | yeşil |
+| ruff 0.16.6, I001 düzeltilmemiş | 15 | 9 | **1** | **25** | **yeşil** |
+| ruff 0.16.6, I001 düzeltilmiş (bu PR) | 15 | 9 | 0 | 24 | yeşil |
+
+**Ortadaki satır borcun kendisi.** Bump düzeltmesiz merge edilseydi belgedeki
+cümle "24 açık" derken gerçek izole bakiye 25 olurdu ve **bekçi yine yeşil
+kalırdı** — çünkü yalnız `measured.get("E501")` ve `measured.get("B904")`
+karşılaştırılıyor, üçüncü bir kural görülmüyor.
+
+Bu PR'da cümle **değiştirilmedi ve değiştirilmemeliydi**: düzeltme bakiyeyi tam
+olarak yazılı olduğu yere geri getiriyor. Cümle doğru — ama bunu bekçi değil,
+düzeltme sağladı.
+
+| Borç | İşaret |
+|---|---|
+| Bakiye bekçisi yeni bir kural sınıfını görmüyor; belge eksik kalabilir ve kırmızı vermez | Tetikleyici: **`ruff check . --config "lint.per-file-ignores={}" --statistics` çıktısında E501 ve B904 dışında bir satır belirdiğinde** — o an ya cümle o kuralı da saymalı ya da bekçi ölçülen tüm kuralları karşılaştırmalı |
+
+---
+
+## `pip install -r requirements-dev.txt` UTF-8 olmayan yerelde düşüyor
+
+**Where:** [`requirements-dev.txt`](../requirements-dev.txt) — Faz 6D-3a'nın
+Türkçe gerekçe yorumu
+
+Faz 6D-3c'nin grup bump'ı araştırılırken yol üstünde bulundu, bu PR'da
+**düzeltilmedi**.
+
+**Ölçüm.** Bu makinede (Windows, `locale.getpreferredencoding()` = `cp1254`,
+Python 3.11'in getirdiği `pip 24.0`):
+
+    ERROR: Exception:
+    UnicodeDecodeError: 'charmap' codec can't decode byte 0x9e in position 1557
+
+Dosya **geçerli UTF-8**; pip onu yerel kod sayfasıyla okuyor. `PYTHONUTF8=1`
+ile aynı komut sorunsuz çalışıyor.
+
+**Tam olarak atfedildi.** `git cat-file -p <rev>:requirements-dev.txt` ile
+blob'lar cp1254 ile çözülmeye çalışıldı: `6044157^` (6D-3a öncesi) **okunuyor**,
+`6044157` ve sonrası **1521. bayttan düşüyor**. Yani kırılmayı 6D-3a'nın kendi
+gerekçe yorumu getirdi — doğru şey, kurulumu bozdu. Diğer üç `requirements*.txt`
+bugün hâlâ cp1254 ile okunabiliyor (yalnız `—` gibi cp1254'te tanımlı baytlar
+taşıyorlar).
+
+**Kim etkileniyor.** `pip 26.2.1` düşmüyor, `pip 24.0` düşüyor. CI etkilenmiyor:
+Linux + UTF-8, üstelik `tests.yml` önce `python -m pip install --upgrade pip`
+koşuyor. Etkilenen kitle **UTF-8 olmayan yerelli Windows katkıcısı** — ve
+`README.md`'nin Development adımları pip yükseltmesi içermiyor, yani yeni bir
+venv'de doğrudan bu hataya çarpar.
+
+**Neden Faz 7.** O fazın hedefi "GitHub'dan indir, 5 dakikada çalıştır" ve bu
+hata tam o yolun ilk adımında.
+
+| Borç | İşaret |
+|---|---|
+| `requirements-dev.txt` UTF-8 olmayan yerelde eski pip ile okunamıyor; README'nin kurulum adımı o makinelerde çalışmıyor | **Faz 7**, mekanik tetikleyici: `python -c "import glob,sys; sys.exit(any(any(c>127 for c in open(f,'rb').read()) for f in glob.glob('requirements*.txt')))"` **sıfırdan farklı dönerse** borç duruyor demektir. Çözüm seçenekleri: yorumları ASCII'ye çevirmek, ya da README'ye `python -m pip install --upgrade pip` adımını eklemek |
