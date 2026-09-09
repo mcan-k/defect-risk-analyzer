@@ -112,8 +112,14 @@ def _find_scoring_module() -> str | None:
 
 def _run_mode_a(bugs: list[dict]) -> dict[str, dict]:
     """Drive RiskAnalyzer without touching ChromaDB."""
-    from defect_risk_analyzer import config
+    # The split and the ordering below are ruff 0.16.6's isort rule, and they are
+    # NOT cosmetic: ruff 0.8.4 wanted the exact opposite (both names in one block,
+    # `config` first) and flags this arrangement as I001. Measured — no ordering
+    # satisfies both versions. That is why this edit could not ship on its own and
+    # travels in the same commit as the ruff bump in requirements-dev.txt.
     from defect_risk_analyzer.risk_analyzer import RiskAnalyzer
+
+    from defect_risk_analyzer import config
 
     with patch("defect_risk_analyzer.risk_analyzer.datetime", _FrozenDatetime):
         analyzer = RiskAnalyzer()
