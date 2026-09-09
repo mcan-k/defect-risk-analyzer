@@ -20,10 +20,10 @@ openai==1.58.1
 chromadb==0.5.23
 
 # --- Jira Integration ---
-requests==2.32.3
+requests==2.34.2
 
 # --- Environment & Config ---
-python-dotenv==1.0.1
+python-dotenv==1.2.3
 
 # --- Data Processing ---
 numpy==2.4.6
