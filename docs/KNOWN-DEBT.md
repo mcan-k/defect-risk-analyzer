@@ -1365,44 +1365,67 @@ Dependabot PR'ında job'ın atlandığı Actions'ta görülecek.
 
 ---
 
-## `chromadb` ve `streamlit` Dependabot'ta ertelendi — güvenlik güncellemeleri de susuyor
+## `chromadb` Dependabot'ta ertelendi — güvenlik güncellemeleri de susuyor
 
 **Where:** [`.github/dependabot.yml`](../.github/dependabot.yml),
 bekçi: [`tests/test_dependabot_config.py`](../tests/test_dependabot_config.py)
 
 Faz 6D-3c pip ekosistemini açtı ama iki paketi `ignore` ile 6D-4'e erteledi.
-Gerekçe ölçüldü: `chromadb` 0.5.23 → 1.5.9 `fastapi`yi runtime'dan `dev`
-extra'sına taşıyor ve `tests.yml` `requirements-webhook.txt`'i kurmuyor, yani
-mekanik bir bump CI'da hiçbir botun çözemeyeceği bir nedenle kırmızı olur.
-`streamlit` 1.41.1 → 1.63.0 aynı fazın öteki yarısı.
+**Faz 6D-4a `streamlit` yarısını kapattı; `chromadb` duruyor.** Gerekçe
+ölçüldü: `chromadb` 0.5.23 → 1.5.9 `fastapi`yi runtime'dan `dev` extra'sına
+taşıyor ve `tests.yml` `requirements-webhook.txt`'i kurmuyor, yani mekanik bir
+bump CI'da hiçbir botun çözemeyeceği bir nedenle kırmızı olur — ölçüldü, ve
+görünüşü "8 test kırmızı" değil: `tests/test_api_auth.py` import edilemediği
+için `pytest` **bütün koşuyu** bir collection error'la durduruyor.
 
 **Ad bazlı, semver seviyesi bazlı değil.** `streamlit`'in sıçraması semver'e
 göre **minor**; `update-types: [version-update:semver-major]` filtresi onu
-yakalamazdı. Gelecekte "neden ad bazlı ignore" sorusunun cevabı budur.
+yakalamazdı. `chromadb`'nin sıradaki adımı da minor, yani gerekçe duruyor.
 
 **KABUL EDİLEN BEDEL, ÖLÇÜLDÜ.** `ignore` yalnız sürüm güncellemelerini değil
 güvenlik güncellemelerini de kesiyor — GitHub Docs, *Controlling which
 dependencies are updated by Dependabot*: *"You can configure Dependabot to
 ignore those dependencies when it opens pull requests for version updates and
-security updates."* Yani bu iki girdi durdukça `chromadb` ya da `streamlit`'te
-çıkacak bir CVE için PR açılmaz. `applies-to: security-updates` grubu bunu
-telafi etmez: grup yalnız PR'ların nasıl paketlendiğini belirler, `ignore`
-güncellemenin kendisini engeller.
+security updates."* `applies-to: security-updates` grubu bunu telafi etmez:
+grup yalnız PR'ların nasıl paketlendiğini belirler, `ignore` güncellemenin
+kendisini engeller.
 
-`pillow`'un 18 CVE'si bu maddeden **etkilenmiyor** — `pillow` hiçbir
-manifest'te beyan edilmiyor ve depoda lock dosyası yok, dolayısıyla zaten
-güvenlik PR'ı üretilemezdi. Risk `streamlit`'in ya da `chromadb`'nin kendi
-olası bir CVE'si.
+**BEDEL TEORİK DEĞİLDİ — 6D-4a'da ölçüldü.** `ignore: streamlit` durduğu sürece
+`streamlit 1.41.1`'in **iki gerçek advisory'sini** susturuyordu:
+CVE-2026-33682 (Windows'ta kimliksiz SSRF / NTLM sızıntısı, MODERATE, düzeltme
+1.54.0) ve CVE-2026-10804 (`st.cache_data` hash çakışması, LOW, düzeltme
+1.53.1). Yani bu madde "olabilir" değil "oluyordu" diyordu.
 
-**Tetikleyici bir yorum değil, bir test.** `.yml` yorumu kendini
-hatırlatmıyor; `tests/test_dependabot_config.py` 6D-4 pini oynattığı an
-kırmızıya dönüyor ve hata mesajı ne yapılacağını yazıyor. Testin beyan edilmiş
+**VE ÖNCEKİ RİSK DEĞERLENDİRMESİ YANLIŞTI, DÜZELTİLİYOR.** Bu madde daha önce
+şöyle diyordu: *"`pillow`'un 18 CVE'si bu maddeden etkilenmiyor … Risk
+`streamlit`'in ya da `chromadb`'nin kendi olası bir CVE'si."* Mekanizma kısmı
+doğruydu — `pillow` hiçbir manifest'te beyan edilmiyor, lock dosyası yok, yani
+`pillow` için zaten güvenlik PR'ı üretilemezdi. **Ama risk okuması yanlıştı.**
+`streamlit 1.41.1`'in `pillow<12` tavanı, `pillow`'u 11.3.0'da tutan **tek**
+kısıttı; `ignore: streamlit` o tavanı dondurduğu için 18 CVE'yi de dolaylı
+olarak donduruyordu. 1.63.0 tavanı `pillow<13` yapıyor ve çözüm `pillow 12.3.0`
+veriyor: **18 CVE'nin hepsi kapandı.** "Dependabot PR açamaz" ile "risk
+etkilenmiyor" iki ayrı iddiaydı; ikincisi ölçülmemişti ve yanlıştı.
+
+Ölçümün tamamı (OSV, 2026-09-09, çözülmüş kümenin tamamı taranarak): bugünkü
+kümede 118 paketten 4'ü açıklı, **45 advisory kaydı**. `streamlit` bump'ı
+bunların **40'ını** kapatıyor — 36 kayıt `pillow` (= 18 ayrı CVE, GHSA ve PYSEC
+ad uzaylarında aynı zafiyetler) ve 4 kayıt `streamlit`. Kalan 5: `chromadb` ×3,
+`pytest` ×2.
+
+**Tetikleyici bir yorum değil, bir test — ve ateşlendi.** `.yml` yorumu kendini
+hatırlatmıyor; `tests/test_dependabot_config.py` pin oynadığı an kırmızıya
+dönüyor ve hata mesajı ne yapılacağını yazıyor. 6D-4a'da tam olarak bu oldu:
+`streamlit==1.63.0` yazıldığı an `:121` kırmızı verdi, mesaj `streamlit` adını
+ve *"dependabot.yml'deki girdisini de SILIN"* talimatını içeriyordu. Kırmızı
+**önce gözlendi**, girdi ve tablo satırı **sonra** silindi. Testin beyan edilmiş
 kör noktası da orada: tutulan şey tutarlılık, varlık değil — bir ad `ignore`
 listesinden silinirse bekçi görmez (M3 mutasyonu, hayatta kalması beklenen).
 
 | Borç | İşaret |
 |---|---|
-| `chromadb` ve `streamlit` Dependabot'ta donmuş durumda ve güvenlik güncellemeleri de susmuş | Tetikleyici: **6D-4** — ve mekanik olarak `tests/test_dependabot_config.py`, iki pinden biri oynadığı an kırmızı |
+| ~~`streamlit` donmuş durumda~~ — **6D-4a'da kapandı**: pin 1.63.0, `ignore` girdisi ve bekçi tablosu satırı silindi, 40 advisory kaydı kapandı | — |
+| `chromadb` Dependabot'ta donmuş durumda ve güvenlik güncellemeleri de susmuş | Tetikleyici: **6D-4b** — ve mekanik olarak `tests/test_dependabot_config.py`, pin oynadığı an kırmızı (6D-4a'da bir kez ateşlendi, çalıştığı gözlendi) |
 | `open-pull-requests-limit: 5`, gruplanmış bir PR'ın limite karşı nasıl sayıldığı **belgede yazmıyor** (options reference ve gruplama sayfası arandı); iki okuma iki farklı sonuç veriyor | Tetikleyici: **6D-3c'nin kapanış ölçümü** — ilk taramadan sonra açılan PR kümesi grup + major'ları içeriyorsa okuma doğrudur; grup tek başına limiti doldurup major'ların hiçbiri açılmıyorsa limit yükseltilir |
 
 ---
@@ -1475,3 +1498,45 @@ hata tam o yolun ilk adımında.
 | Borç | İşaret |
 |---|---|
 | `requirements-dev.txt` UTF-8 olmayan yerelde eski pip ile okunamıyor; README'nin kurulum adımı o makinelerde çalışmıyor | **Faz 7**, mekanik tetikleyici: `python -c "import glob,sys; sys.exit(any(any(c>127 for c in open(f,'rb').read()) for f in glob.glob('requirements*.txt')))"` **sıfırdan farklı dönerse** borç duruyor demektir. Çözüm seçenekleri: yorumları ASCII'ye çevirmek, ya da README'ye `python -m pip install --upgrade pip` adımını eklemek |
+
+---
+
+## Mevcut bir venv'e yükseltme CVE düzeltmesini getirmiyor — README'nin adımı yetersiz
+
+**Where:** [`README.md`](../README.md) Development bölümü (`pip install -r
+requirements-dev.txt`), bekçisi **yok**
+
+Faz 6D-4a `streamlit`'i 1.63.0'a taşıdı ve bunun asıl kazancı `pillow`'un 18
+CVE'sinin kapanmasıydı: `streamlit 1.41.1`'in `pillow<12` tavanı, `pillow`'u
+11.3.0'da tutan tek kısıttı. **Ama o kazanç yalnız taze çözünürlükte geliyor.**
+
+**Ölçüldü.** İki `pip install --dry-run --report` koşusu, aynı pinler:
+
+| kurulum yolu | `pillow` | 18 CVE |
+|---|---|---|
+| taze venv, tek `pip install -r requirements-dev.txt` (CI'ın yaptığı) | **12.3.0** | kapandı |
+| mevcut venv'e `pip install -r requirements-dev.txt` | **11.3.0** | **açık kaldı** |
+
+Yerinde yükseltme planı yalnız dört pakete dokunuyor — `streamlit`,
+`itsdangerous`, `python-multipart`, `websockets` — ve `pillow` planda **hiç
+yok**: 11.3.0 zaten `pillow<13`'ü sağlıyor, pip onu yükseltmek için bir sebep
+görmüyor. Aynı sınıf ikinci bir örnek de ölçüldü: mevcut bir venv'de `chromadb`
+1.x'e yükseltilirse `fastapi` **kaldırılmıyor**, çünkü pip artık gereksiz olan
+transitif bağımlılıkları temizlemiyor — o yüzden CI'ın taze çözünürlükte
+gördüğü kırmızı geliştirici makinesinde hiç görünmüyor.
+
+**Neden sessiz.** Yerinde yükseltmeden sonra takım yeşil, `ruff` temiz, hiçbir
+şey uyarmıyor. Katkıcı düzeltmeyi almadığını gösteren tek işaret yok.
+
+**Neden Faz 7.** O fazın hedefi "GitHub'dan indir, 5 dakikada çalıştır".
+Yukarıdaki UTF-8 maddesiyle aynı bölge ve aynı satırlar: `README.md`'nin
+Development adımları ne `--upgrade` ne taze venv adımı içeriyor.
+
+**Neden pytest bekçisi yok.** Ölçüm ortamın kendisine bağlı: aynı depo, aynı
+pinler, iki farklı venv, iki farklı sonuç. Bir takım testi yalnız kendi
+çalıştığı ortamı görebilir, dolayısıyla bu iddiayı tutamaz. Yeri doğrulama
+protokolü.
+
+| Borç | İşaret |
+|---|---|
+| `README.md`'nin Development adımı mevcut bir venv'de transitif bir CVE düzeltmesini getirmiyor; 6D-4a'da `pillow` üzerinde ölçüldü | **Faz 7**, mekanik tetikleyici: `pip install --dry-run --report` **`--ignore-installed` ile** ve **onsuz** koşulur, çözülen sürümler karşılaştırılır; tek pakette bile ayrışıyorsa README'nin adımı yetersizdir. Çözüm seçenekleri: taze venv adımı eklemek, ya da `pip install --upgrade -r requirements-dev.txt` yazmak |

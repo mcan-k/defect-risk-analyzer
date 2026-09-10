@@ -20,10 +20,32 @@
 # Streamlit theme resolved to light got white on white. Pinning the base is
 # what makes those rules correct by design rather than by luck.
 #
-# Nothing else from that stylesheet can move here: streamlit 1.41.1 offers
-# exactly six [theme] options (base, primaryColor, backgroundColor,
-# secondaryBackgroundColor, textColor, font) and none of the 21 rules is
-# expressible as one of them.
+# THE COUNT THIS COMMENT USED TO REST ON IS GONE. It said streamlit offers
+# "exactly six [theme] options (base, primaryColor, backgroundColor,
+# secondaryBackgroundColor, textColor, font)", which was true of 1.41.1 and was
+# the whole argument for why none of the 21 rules could move here. Measured
+# again on the installed package after the 6D-4a bump — `config._config_options`
+# filtered to the `theme.` prefix:
+#
+#     streamlit 1.41.1 ->   6 options
+#     streamlit 1.63.0 -> 277 options (52 top-level, plus 225 under
+#                         light./dark./sidebar. and their combinations)
+#
+# So the premise no longer holds, and 1.63.0 ships names that look directly
+# relevant to those rules — borderColor, dataframeBorderColor, showWidgetBorder,
+# baseRadius, linkColor, codeBackgroundColor, the chart color palettes.
+#
+# NOT MEASURED, AND DELIBERATELY NOT CLAIMED EITHER WAY: whether any of the 21
+# rules in ui/theme.py is now expressible as a [theme] option. 6D-4a bumped the
+# pin; auditing 21 CSS rules against 277 config options is a different piece of
+# work and was left out rather than guessed at. What is fixed here is the false
+# number, not the design.
+#
+# Trigger: go through ui/theme.py's 21 rules against the 1.63.0 option list. Any
+# rule that maps to an option should move here, where it survives a Streamlit
+# internal rename; a hand-rolled selector does not. ui/theme.py:71's
+# `iframe[title="streamlit_status_widget"]` is the standing example of that risk
+# and nothing tests it.
 base = "dark"
 
 [client]

@@ -8,6 +8,17 @@ erteliyor: `chromadb` (0.5.23 → 1.5.9, MAJOR) ve `streamlit` (1.41.1 → 1.63.
 CI'da kırmızı olacağı ölçüldü — `tests.yml` `requirements-webhook.txt`'i
 kurmuyor, chromadb 1.x ise `fastapi`yi runtime'dan `dev` extra'sına taşıyor.
 
+TETİKLEYİCİ ATEŞLENDİ — FAZ 6D-4a. `streamlit` pini 1.63.0'a taşındığı an
+`test_every_ignored_dependency_still_carries_its_recorded_pin` kırmızıya döndü
+ve hata mesajı ne yapılacağını yazdı: *"`streamlit` .github/dependabot.yml'de
+ignore ediliyor, ama requirements.txt artik `streamlit==1.41.1` tasimiyor.
+BUMP YAPILDIYSA ... girdisini de SILIN."* Kırmızı **önce gözlendi**, `ignore`
+girdisi ve aşağıdaki tablo satırı **sonra** silindi. Sıra kanıtın kendisi: ters
+sırada çalışılsa kırmızı hiç görülmez ve bekçinin çalıştığı gösterilmemiş olur.
+`chromadb` yarısı 6D-4b'de, ve orada girdi silinmiyor **daraltılıyor** —
+chromadb 1.x, 0.5.x'te bulunmayan ve düzeltmesi yayınlanmamış bir
+kimlik-doğrulama-öncesi kod enjeksiyonu (CVE-2026-45829) taşıyor.
+
 ERTELEME KENDİ KENDİNİ HATIRLATMAZ. Bir `.yml` yorumunda "6D-4'te kaldır"
 yazmak yeterli değil; 6D-4 biter, `ignore` girdileri unutulur ve iki paket
 **kalıcı olarak donar** — üstelik sessizce, çünkü `ignore` GitHub belgelerine
@@ -27,8 +38,10 @@ BEYAN EDİLMİŞ KÖR NOKTA — TUTULAN ŞEY TUTARLILIK, VARLIK DEĞİL.
 Döngü `dependabot.yml`'de **bulunan** adlar üzerinde dönüyor, aşağıdaki
 `EXPECTED_IGNORED_PINS` tablosu üzerinde değil. Sonucu: bir ad `ignore`
 listesinden **silinirse** test onu artık aramaz ve yeşil kalır.
-`ignore: streamlit` sessizce silinse bu bekçi görmez (M3 mutasyonu bunu
-gösteriyor; hayatta kalması **beklenen** sonuçtur, bir bulgu değil).
+`ignore: chromadb` sessizce silinse bu bekçi görmez (M3 mutasyonu bunu
+`streamlit` üzerinde gösteriyordu; hayatta kalması **beklenen** sonuçtur, bir
+bulgu değil). 6D-4a `streamlit`'i listeden çıkardı, yani örnek artık geriye
+kalan tek girdi üzerinden okunuyor.
 
 Bu bilerek böyle. Varlığı da tutmak, listeyi ikinci bir yerde elle sabitlemek
 demekti; o zaman 6D-4'te iki yer birden güncellenmek zorunda kalır ve testin
@@ -53,7 +66,6 @@ DEPENDABOT = REPO_ROOT / ".github" / "dependabot.yml"
 # erteleme gerekçesini kaybeder.
 EXPECTED_IGNORED_PINS = {
     "chromadb": ("requirements.txt", "chromadb==0.5.23"),
-    "streamlit": ("requirements.txt", "streamlit==1.41.1"),
 }
 
 # `  - package-ecosystem: pip` ile başlayan blok, bir sonraki

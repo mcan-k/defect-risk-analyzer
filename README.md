@@ -4,7 +4,7 @@
 
 [![Python 3.11](https://img.shields.io/badge/Python-3.11-blue.svg)](https://python.org)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.115-green.svg)](https://fastapi.tiangolo.com)
-[![Streamlit](https://img.shields.io/badge/Streamlit-1.41-red.svg)](https://streamlit.io)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.63-red.svg)](https://streamlit.io)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
 Defect Risk Analyzer connects to your Jira instance, analyzes historical bug data using **Retrieval-Augmented Generation (RAG)**, and predicts which modules are most likely to produce defects. It gives QA teams actionable recommendations like _"focus your testing on Authentication — it has 6 open bugs with increasing trend."_
