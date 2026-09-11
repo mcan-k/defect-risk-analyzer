@@ -173,7 +173,19 @@ Reddedildi (ertelenmedi):
 
       chromadb 0.5.23'ün dayanılan dört sözleşmesi kaynak okunarak doğrulandı
       ve `vector_store.py` başına `file:line` atıflarıyla yazıldı; sürüm
-      yükseldiğinde kontrol noktası olacak. Beşincisi (olmayan bir id'yi
+      yükseldiğinde kontrol noktası olacak.
+
+      > **6D-4b güncellemesi (2026-09-11).** O kontrol noktası kullanıldı ve
+      > **kaynak okumanın yetmediği ortaya çıktı**: dört sözleşmeden biri yanlış
+      > istisna tipini kaydediyordu (`DuplicateIDError`, `ValueError` değil) ve
+      > iki tur kaynak okumasından sağ çıkmıştı. Artık
+      > `tests/tools/chroma_contract_probe.py` dördünü gerçek bir istemciye
+      > karşı ölçüyor — ağsız, elle koşulan bir araç. Aşağıdaki "kaynaktan
+      > çözülemedi" cümlesi de artık geçerli değil: o soru ölçüldü, cevabı
+      > `vector_store.py`'nin sözleşme bloğunda. Paragrafın kalanı Faz 4
+      > anındaki kayıt olarak duruyor.
+
+      Beşincisi (olmayan bir id'yi
       silmek no-op mu) kaynaktan çözülemedi, tasarımla erişilemez kılındı:
       silinecek id'ler her zaman az önce yapılan `get()`'ten gelir ve bu
       değişmez testle sabit.
