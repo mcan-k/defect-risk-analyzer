@@ -1282,6 +1282,31 @@ buraya yazıldı. `dependabot.yml`'de `exclude-patterns: ["anyio"]` ile gruptan
 olarak bütün patch/minor bump'ları rehin alırdı. PR kapatılırsa Dependabot onu
 aynı sürüm için yeniden açmaz; bir sonraki `anyio` sürümünde yeni bir PR gelir.
 
+**DAMGASIZ — ve 6D-4c'de kısmen bile kapanmadı.** Yukarıdaki son cümle
+ölçülmedi. 6D-4c'de üç PR'ın kapanışı API'den tek tek çekildi
+(`merged`, `closed_by`, kapanış yorumu) ve **iki kip ölçüldü**:
+
+| kip | gözlem | yorum |
+|---|---|---|
+| (i) main'in pini hedefe ulaştı | #24, 2026-09-09 17:18:09Z, `closed_by=dependabot[bot]`, `merged=false` | *"Looks like these dependencies are no longer updatable, so this is no longer needed."* |
+| (ii) supersede — PR açıkken daha yeni sürüm çıktı | #26, 2026-09-12 14:47:59Z, aynı alanlar | *"Superseded by #35."* — ve #35 aynı sürüm için değil, **daha yenisi** için açıldı (3.8.0 → 3.10.0) |
+| (iii) **insanın düz `Close`'u** | **hiç gözlenmedi** | — |
+
+Yukarıdaki cümlenin **her iki yarısının da öncülü "PR kapatılırsa"**. Ölçülen
+iki kipte de PR'ı kapatan insan değil botun kendisiydi, ve #26 kapalı değil
+**açıkken** ezildi. Yani gözlem (ii) cümlenin ikinci yarısını *makul* kılıyor
+ama ölçmüyor; birinci yarısına hiç dokunmuyor.
+
+**Damga (iii) için duruyor.** Deney #25 üzerinde yapılmadı, çünkü #25 kasıtlı
+kırmızı sinyalin taşıyıcısı ve harcanmak istenmedi. Tetikleyici: **bir sonraki
+gereksiz Dependabot PR'ı** — düz `Close`, sonra bir sonraki taramada aynı
+sürümün geri gelip gelmediği gözlenir.
+
+**Yan ölçüm — supersede limite tabi değil.** #35 14:47:58Z'de açıldı, #26
+14:48:01Z'de kapandı. O üç saniye boyunca açık pip PR sayısı **6**, yani
+`open-pull-requests-limit: 5`'in üstünde. Sıra: önce yeni PR, sonra yorum,
+sonra kapatma — yuva boşaltılıp doldurulmuyor.
+
 ---
 
 ## Satır sonu normalizasyonu depoda değil, her klonun kendi ayarında
@@ -1623,3 +1648,121 @@ protokolü.
 | Borç | İşaret |
 |---|---|
 | `README.md`'nin Development adımı mevcut bir venv'de transitif bir CVE düzeltmesini getirmiyor; 6D-4a'da `pillow` üzerinde ölçüldü | **Faz 7**, mekanik tetikleyici: `pip install --dry-run --report` **`--ignore-installed` ile** ve **onsuz** koşulur, çözülen sürümler karşılaştırılır; tek pakette bile ayrışıyorsa README'nin adımı yetersizdir. Çözüm seçenekleri: taze venv adımı eklemek, ya da `pip install --upgrade -r requirements-dev.txt` yazmak |
+
+---
+
+## httpx2 TLS'i işletim sistemi güven deposundan doğruluyor — groq hâlâ `certifi`'den
+
+**Where:** `openai 3.13.0` → `httpx2 2.12.0` → `truststore 0.10.4`; karşısında
+`groq 1.7.0` → `httpx 0.28.1` → `certifi`
+
+Faz 6D-4c'de openai 1.58.1 → 3.13.0 taşınırken yol üstünde görüldü, kapsam
+kuralı gereği kaydedildi ve düzeltilmedi.
+
+**Ölçüm — 2026-09-12, iki kütüphanenin kaynağı okundu. Aynı satır numarası,
+farklı varsayılan:**
+
+| | `httpx 0.28.1` `_config.py:40` | `httpx2 2.12.0` `_config.py:40` |
+|---|---|---|
+| `verify=True` (varsayılan) | `ssl.create_default_context(cafile=certifi.where())` | `truststore.SSLContext(ssl.PROTOCOL_TLS_CLIENT)` |
+
+Üç ek ölçüm, çünkü "truststore yalnız kurulu duruyor olabilir" makul alternatifti:
+
+- **`httpx2` `certifi`ye hiç referans vermiyor.** `grep -rn certifi httpx2/`
+  yalnız docstring ve CLI sertifika yazdırma satırlarına düşüyor; `import
+  certifi` yok.
+- **Ne `openai` ne `groq` `verify=` geçiyor.** İkisinin de `_base_client.py`'sinde
+  `verify=` / `SSLContext` eşleşmesi yok — ikisi de kütüphane varsayılanını alıyor.
+- **Kaçış yolu var ve mekanik.** `httpx2/_config.py:33-38`: `trust_env` açıkken
+  `SSL_CERT_FILE` ya da `SSL_CERT_DIR` ortam değişkeni varsa dosya tabanlı
+  bağlama dönülüyor.
+
+**Sonuç: bu uygulamada artık iki ayrı TLS güven mekanizması yan yana çalışıyor.**
+`openai` işletim sistemi güven deposuna, `groq` `certifi` paketine bakıyor.
+`certifi` kümeden düşmedi (chromadb ve groq istiyor), yani kaybolan bir şey yok;
+ayrışan şey hangi yolun hangi kök sertifika kümesine baktığı.
+
+**Neden önemli.** `openai` bu aracın üretimdeki **tek gerçek dış HTTP yolu** —
+chromadb `PersistentClient` kullanıyor ve dışarı çıkmıyor. Kurumsal proxy veya
+özel CA olan bir ortamda `certifi`ye eklenmiş bir kök OS deposunda olmayabilir,
+ya da tersi. Davranış sessizce değişir ve iki sağlayıcı farklı davranır.
+
+**Neden düzeltilmedi.** Düzeltmek `verify=` ile bir tarafı zorlamak demek, ve
+hangi tarafın doğru olduğu ölçülmedi. Bu depo yalnız geliştirici makinesinde ve
+CI runner'ında koştu; ikisinde de iki mekanizma aynı sonucu veriyor, yani
+ayrışmanın bedeli burada gözlenemez.
+
+**Neden pytest bekçisi yok.** İddia ortamın kök sertifika kümesi hakkında; bir
+takım testi yalnız kendi koştuğu makineyi görebilir.
+
+| Borç | İşaret |
+|---|---|
+| `openai` OS güven deposundan, `groq` `certifi`den doğruluyor; kurumsal CA olan ortamda ikisi ayrışabilir | **Faz 7**, "temiz makinede çalıştır" denemesi. Orada ölçülecek soru: `SSL_CERT_FILE` set edilmemiş bir ortamda `openai` çağrısı gerçekten OS deposundan mı doğruluyor. Çözüm seçenekleri: her iki istemciye açık bir `verify=` vermek, ya da ayrışmayı belgelemek |
+| Mekanik tetikleyici | `httpx2/_config.py`'nin `verify is True` dalında `truststore` adı **geçmez olduğunda** **ve** `certifi` kümeden düştüğünde. İki koşul birlikte: tek başına "truststore gitti", httpx2'nin kümeden düşmesiyle de doğrudur ve tetikleyiciyi yanlışlıkla ateşlenmiş gösterir |
+
+---
+
+## Faz 6D-4c eki — Dependabot yuva kuyruğu, ve ölçümden önce yazılmış üç tahmin
+
+**Where:** `.github/dependabot.yml:171` (`open-pull-requests-limit: 5`)
+
+6D-4c'de `openai` ve `groq` **elle** taşındı, Dependabot PR'ı beklenmedi. Karar
+ölçüme dayanıyor.
+
+**Ölçüm — 2026-09-12, GitHub API.** Açık pip PR'ı tam **5**: #25 (anyio), #31
+(pytest), #32 (pandas), #33 (plotly), #35 (openai). Limit doygun, `groq` için
+PR yok ve olamaz. Ve **#25 tasarım gereği kırmızı** (yukarıdaki `anyio` maddesi),
+yani asla merge edilmeyecek bir PR beş yuvanın birini kalıcı işgal ediyor —
+**etkin limit 4**.
+
+**Yuva dağıtımı iki kez gözlendi:**
+
+| tur | yuva | açılan PR'lar, sırasıyla |
+|---|---|---|
+| 1 (09-08 22:21) | 5 | grup (#24) → anyio (#25) → openai (#26) → pytest-cov (#27) → numpy (#28) |
+| 2 (09-10 21:49) | 3 | pytest (#31) → pandas (#32) → plotly (#33) |
+
+Sekiz yuva dağıtıldı, **`groq` hiçbirini almadı**. Tur 2'de dört aday bekliyordu
+(pytest, pandas, plotly, groq) ve `groq` dördüncü sıraya düştü. Sıralama
+`dependabot.yml`'den, dosya sırasından ve alfabeden **türetilemiyor** — üçü de
+gözlenen sırayla uyuşmuyor.
+
+**Tetikleyici de öngörülemez.** Şema `weekly / monday`, ama üç PR turu Salı,
+Perşembe ve Cumartesi'de geldi; **hiçbiri Pazartesi değil**. Üçü de main'e bir
+merge'ün 1-3 dakika ardından geldi. Karşı örnek 09-09: #29 17:15Z'de merge
+edildi, üç yuva açıldı ve 25 saat boyunca hiçbir PR gelmedi. **Ve o gün iş
+koştu** — #24'ü 17:18:09Z'de o iş kapattı. Yani istisna "tetiklenmedi" değil:
+**iş koştu, bir PR kapattı ve üç boş yuvaya rağmen sıfır PR açtı.**
+
+### Üç tahmin — sonuç görülmeden, 2026-09-12'de yazıldı
+
+- **D1 (yuvayı kim alır).** Bu dal merge edilip #35 kapandığında açılan yuvayı
+  **`groq` değil, `python-patch-minor` grup PR'ı** alır. Gerekçe: Tur 1'de grup
+  PR'ı sırayı açtı; bugün grupta iki bump bekliyor (numpy 2.4.6 → 2.5.3, ruff
+  0.16.6 → 0.16.7); ve `groq` sekiz dağıtımın hiçbirini alamadı.
+  **Sayılacak üç sonuç:** grup açılır (doğrulanır) / `groq` açılır (yanlışlanır)
+  / **hiçbiri açılmaz** — bu da bir sonuçtur ve 09-09 karşı örneğiyle tutarlı
+  olur, o zaman pencere Pazartesi'ye kayar.
+- **D2b (#35 nasıl kapanır).** Merge'den sonra Dependabot #35'i kendisi
+  kapatacak, `merged=false`, `closed_by=dependabot[bot]`, yorumu **#24 ile aynı
+  kalıpta** (*"no longer updatable ... no longer needed"*), merge'den ~1-3 dakika
+  sonra. #35 **elle kapatılmıyor** — bilerek, çünkü bu kip (i)'nin ikinci
+  ölçümü olacak.
+- **D3 (haftalık şema).** 2026-09-14, `dependabot.yml` yerleştiğinden beri ilk
+  Pazartesi. Zamanlanmış taramanın PR açıp açmadığı ilk kez gözlenecek.
+
+**Ölçüm pencereleri.** D2b: merge'den sonra ~5 dk (`GET /pulls/35` +
+`/issues/35/comments`). D1: merge'den sonra, ilk taramaya kadar
+(`git ls-remote --heads origin`). D3: 09-14 gün boyu. D1 ile D3'ü ayırmak için
+**09-13 Pazar akşamı bir ara ölçüm** alınır: o an ne varsa D1'in merge-tetikli
+cevabıdır, Pazartesi'de değişen her şey D3'ündür.
+
+**Kabul edilen bedel.** numpy 2.4.6 → 2.5.3 ve ruff 0.16.6 → 0.16.7 bu dala
+**bilerek alınmadı** ve bu deney için birkaç gün bekletiliyor. Grup PR'ının
+konusunu tüketmek D1'i ölçülemez kılardı. Ölçülen sürüklenme ≈1 paket/gün; bu
+bilinçli bir gecikmedir, unutulmuş bir kuyruk değil.
+
+| Borç | İşaret |
+|---|---|
+| Dependabot'un yuva sıralaması ve dolum tetikleyicisi dışarıdan öngörülemiyor; `groq` sekiz dağıtımın hiçbirini alamadı | Tetikleyici: **D1/D3'ün ölçümü** (yukarıdaki pencereler). Sonuç sıralamayı açıklamazsa, majorları gruptan ayrı tutan tasarımın bedeli yeniden tartılır — limit 5 etkin olarak 4 |
+| numpy ve ruff bump'ları deney için bekletiliyor | Tetikleyici: **D1 ölçüldüğünde**. Ölçüm biter bitmez grup PR'ı merge edilir ya da elle yazılır |

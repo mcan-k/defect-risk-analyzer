@@ -132,17 +132,24 @@ def test_starlette_testclient_emits_no_anyio_alias_deprecation():
     Bu, pinin **gerekçesini** tutan test: satırın varlığını değil, satırın var
     olma nedenini ölçer.
 
-    FİLTRE KASTEN DAR — 6D-4 İŞARETİ. Assert "hiç uyarı yok" değildir. Bugün
-    beklenen ve **kalması gereken** ikinci bir uyarı var:
+    FİLTRE KASTEN DAR — VE DARLIĞI 6D-4c'DE KARŞILIĞINI VERDİ. Assert "hiç
+    uyarı yok" değildir. 6D-3a'dan 6D-4c'ye kadar beklenen ve kalması gereken
+    ikinci bir uyarı vardı:
 
         StarletteDeprecationWarning: Using `httpx` with `starlette.testclient`
         is deprecated; install `httpx2` instead.
 
-    O uyarı ayrı bir kaynaktan (`testclient.py:40-51`) geliyor, 6D-3a onu
-    kaldırmıyor ve sahibi **6D-4**. Bu yüzden eleme mesaj bazında yapılıyor:
-    yalnızca `anyio.abc` alias'ını adlandıran uyarılar aranıyor. Geniş bir
-    "DeprecationWarning'leri yok say" filtresi, 6D-4 httpx2'yi çözdüğünde ya da
-    üçüncü bir uyarı çıktığında bu testi sessizce izin verici hale getirirdi.
+    **O uyarı 6D-4c'de kapandı ve filtre değişmedi** — istenen tam olarak
+    buydu. `openai 3.13.0` `httpx2<3,>=2.7.0` istiyor, `starlette/testclient.py`
+    ise önce `import httpx2` deniyor ve başarılı olunca uyarıyı hiç üretmiyor
+    (`testclient.py:33-51`). Ölçüldü: `starlette.testclient.httpx` artık
+    `httpx2 2.12.0` modülünün kendisi, ve CI'ın uyarı özeti boş.
+
+    Geniş bir "DeprecationWarning'leri yok say" filtresi olsaydı bu kapanış
+    görünmez olurdu ve test sessizce izin verici hâle gelirdi. Mesaj bazlı
+    eleme — yalnızca `anyio.abc` alias'ını adlandıran uyarılar — o yüzden
+    seçilmişti ve o yüzden **değiştirilmiyor**: bir gün üçüncü bir uyarı
+    çıkarsa yine görünür olacak.
     """
     proc = subprocess.run(
         [sys.executable, "-c", _PROBE],
@@ -159,12 +166,13 @@ def test_starlette_testclient_emits_no_anyio_alias_deprecation():
         pytest.skip(f"alt surec cikti veremedi: {proc.stdout.strip()[:200]}")
 
     if "import_error" in result:  # pragma: no cover
-        # 6D-4 İŞARETİ. `starlette` buraya chromadb -> fastapi -> starlette
-        # zincirinden geliyor. chromadb 1.5.9 `fastapi`yi runtime'dan `dev`
-        # extra'sina tasidi; 6D-4'un chromadb bump'i sonrasi `starlette`
-        # requirements-dev.txt'in kapanisindan dusebilir. O an bu test sessizce
-        # atlanir, birinci test yesil kalir ve pin gerekcesiz bir kisit olarak
-        # dosyada kalir.
+        # 6D-5 İŞARETİ (6D-4b'de kontrol edildi, tetiklenmedi). `starlette`
+        # buraya chromadb -> fastapi -> starlette zincirinden geliyor. chromadb
+        # 1.5.9 `fastapi`yi runtime'dan `dev` extra'sina tasidi, ama 6D-4b
+        # 0.6.3'te durdu ve 0.6.3 `fastapi`yi runtime'da tutuyor — olculdu,
+        # `starlette` kapanista duruyor. Risk 1.x'e gecisle birlikte geri gelir:
+        # o an bu test sessizce atlanir, birinci test yesil kalir ve pin
+        # gerekcesiz bir kisit olarak dosyada kalir.
         pytest.skip(
             f"starlette import edilemedi ({result['import_error']}). "
             "starlette kapanistan dustuyse requirements-dev.txt'teki anyio pini "
