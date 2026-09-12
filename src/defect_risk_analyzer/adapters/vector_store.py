@@ -33,32 +33,64 @@ COLLECTION_METADATA = {"hnsw:space": "cosine"}
 # ---------------------------------------------------------------------------
 # ChromaDB contracts this module relies on
 # ---------------------------------------------------------------------------
-# Read out of chromadb==0.5.23's own source, not probed at runtime: no test in
-# this suite may run a real client. If the pin in requirements.txt moves, these
-# four are the things to re-read before trusting them.
+# Read out of chromadb==0.6.3's own source AND probed against a real client with
+# tests/tools/chroma_contract_probe.py. No test in this suite runs a client, so
+# the probe is a tool you run by hand; the block records what it last observed.
 #
-# 1. collection.get(include=[...]) always returns ids — they cannot be excluded
-#    — and returns everything when limit is None.
-#       api/models/Collection.py:108-119
+# LAST PROBED: chromadb==0.6.3, 2026-09-11 — all four contracts and both of the
+# questions below reported HOLDS, and the same run against 0.5.23 produced
+# byte-identical findings.
+#
+# SOURCE READING WAS NOT ENOUGH, AND THAT IS WHY THE PROBE EXISTS. Contract 3
+# below used to say "raises ValueError on duplicate ids". It does not, and never
+# did: the exception is DuplicateIDError, whose MRO is
+# `DuplicateIDError <- ChromaError <- Exception` — not a ValueError at all. That
+# sentence was wrong from the day it was written and survived two rounds of
+# reading this source; the first behavioural probe caught it on its first run.
+# So when the pin moves, re-read these four AND re-run the probe.
+#
+# 1. collection.get(include=[...]) always returns ids — they cannot be excluded,
+#    and naming "ids" in include is itself rejected — and returns everything
+#    when limit is None.
+#       api/models/Collection.py:109-120
 # 2. collection.delete(ids=[]) raises ValueError. It does NOT empty the
 #    collection, which is the reassuring half; the dangerous half is that the
 #    ordinary "nothing to delete" case would crash, so the call is guarded.
-#       api/types.py:503-504, api/segment.py:662-677
-# 3. collection.upsert() raises ValueError on duplicate ids, and on empty lists.
-#    The comment this file used to carry assumed upsert silently merged
-#    duplicates; it does not, so plan_sync deduplicates before the call.
+#       api/types.py:503-504, api/segment.py:678-693
+# 3. collection.upsert() rejects duplicate ids and empty lists — but with two
+#    DIFFERENT exception types: DuplicateIDError (a ChromaError) for duplicates,
+#    ValueError for an empty list. Either way plan_sync deduplicates before the
+#    call, and every wrapper here catches Exception, so the distinction costs
+#    nothing today. It is recorded because the earlier wording did not survive
+#    contact with a running client.
 #       api/types.py:505-527, api/types.py:241-246
 # 4. upsert() re-embeds every document it is handed, unconditionally, whenever
 #    embeddings is None. That is the entire reason diff-sync is worth doing.
 #       api/models/CollectionCommon.py:402-406
 #
-# One contract is NOT settled by reading the source: whether deleting an id that
-# does not exist is a silent no-op at the segment layer. SegmentAPI._delete
-# hands ids straight to the producer with no existence check (api/segment.py:
-# 695-696), so nothing raises client-side, but the segments' own behaviour is
-# not visible from there. It is made unreachable rather than assumed: the ids
-# passed to delete always come from the get() performed moments earlier, and
-# tests/test_vector_sync.py fails if a plan ever violates that.
+# Line references, for when they drift again: 0.5.23 -> 0.6.3 shifted contract 1
+# by one line (an `import inspect` at the top of Collection.py) and contract 2's
+# segment reference by sixteen (delete_database/list_databases were inserted).
+# api/types.py and api/models/CollectionCommon.py are byte-for-byte identical
+# between the two versions, so contracts 3 and 4 keep their numbers.
+#
+# TWO QUESTIONS THIS BLOCK USED TO LEAVE OPEN ARE NOW MEASURED, not reasoned:
+#
+# a. Deleting an id that does not exist. SegmentAPI._delete hands ids straight
+#    to the producer with no existence check (api/segment.py:711-712), and the
+#    probe confirms nothing raises and the count does not move — but it is NOT
+#    silent: the segment layer logs `Delete of nonexisting embedding ID: <id>`
+#    at warning level (segment/impl/vector/local_hnsw.py:310,
+#    segment/impl/vector/brute_force_index.py:101,
+#    segment/impl/metadata/sqlite.py:452). It stays unreachable rather than
+#    relied upon: the ids passed to delete always come from the get() performed
+#    moments earlier, and tests/test_vector_sync.py fails if a plan violates
+#    that.
+# b. Whether chroma hands back an '' metadata value or drops the key. It hands
+#    it back: writing {"k": "1", "empty": ""} reads back as
+#    {"empty": "", "k": "1"}. _comparable() below is therefore belt-and-braces
+#    rather than load-bearing on this version — it is kept, and its docstring
+#    says so.
 
 
 @dataclass(frozen=True)
@@ -114,10 +146,13 @@ def _comparable(metadata: dict[str, Any]) -> dict[str, Any]:
     """Metadata reduced to what a lossy round-trip cannot change.
 
     chromadb accepts '' as a metadata value on the way in (api/types.py:547-560
-    checks only the type), but whether it hands '' back rather than dropping the
-    key is not settled by reading the source, and this suite will not run a real
-    client to find out. Applied to both sides of the comparison, so an absent
-    key and an empty string compare equal whichever way it turns out.
+    checks only the type). Whether it hands '' back rather than dropping the key
+    used to be an open question here, because this suite will not run a real
+    client. It is now measured — chromadb 0.6.3 hands '' back unchanged, see the
+    contract block above and tests/tools/chroma_contract_probe.py — so on this
+    version the normalisation is belt-and-braces, not load-bearing. It is kept
+    anyway: it is applied to both sides of the comparison, so an absent key and
+    an empty string compare equal whichever way a future version behaves.
 
     Without it, every bug with an empty field — `created` is empty whenever Jira
     omits it — would be re-embedded on every sync, forever. That loses the whole

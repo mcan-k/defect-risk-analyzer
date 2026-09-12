@@ -101,28 +101,64 @@ updates:
     # resolves pillow 12.3.0. Of the 45 advisory records a full audit of the
     # resolved set returned, 40 were closed by this one bump.
     #
-    # WHY CHROMADB IS STILL HERE. 0.5.23 -> 1.5.9 moves fastapi out of runtime
-    # into a dev extra, and tests.yml does not install requirements-webhook.txt,
-    # so `tests/test_api_auth.py` stops importing and pytest aborts the whole run
-    # on a collection error — red for a reason no bot can resolve. Phase 6D-4b
-    # handles it, and narrows this entry rather than deleting it: chromadb 1.x
-    # carries CVE-2026-45829, an unauthenticated code-injection with no released
-    # fix that 0.5.x does not have.
+    # WHY CHROMADB IS STILL HERE, AND WHY THE ENTRY IS NARROWED RATHER THAN
+    # DELETED. Phase 6D-4b moved the pin 0.5.23 -> 0.6.3 and stopped there. The
+    # reason is not CI mechanics, it is a CVE with no released fix:
     #
-    # BY NAME, NOT BY SEMVER LEVEL: streamlit's bump was a *minor* version, and
-    # so is chromadb's next step, so an
-    # `update-types: [version-update:semver-major]` filter would catch neither.
+    #   CVE-2026-45829 (GHSA-f4j7-r4q5-qw2c), CRITICAL, exploit-proof-of-concept:
+    #   an UNAUTHENTICATED code injection reached by posting a malicious model
+    #   repository with trust_remote_code to the collections endpoint. It affects
+    #   `>=1.0.0` and its `last_affected` is 1.5.9 — the newest release — so
+    #   there is nowhere to upgrade to.
+    #
+    # THE >=1.0.0 BOUNDARY IS REAL, NOT A SCANNING ARTEFACT — measured, because
+    # "the old versions just were not scanned" was the obvious alternative. The
+    # machinery the attack needs is the config-driven embedding-function
+    # registry, and it does not exist in 0.5.x: `build_from_config` appears in
+    # 42 files / 36 EF classes in 1.5.9 and in 0 files in 0.5.23, and
+    # `known_embedding_functions` is read while a collection configuration is
+    # deserialised (api/collection_configuration.py, api/types.py). The /api/v2
+    # routes exist in 0.5.23 too, so the boundary is explained by that registry,
+    # not by the API version.
+    #
+    # And the server is reachable in BOTH lines: `chroma run` ships in 0.5.23
+    # (Python/FastAPI) and in 1.5.9 (a Rust CLI that needs no fastapi at all), so
+    # the difference is not "can a server be started" but "does the started
+    # server carry a pre-auth RCE". This repo only ever builds a
+    # PersistentClient, but the package ships the server to everyone who
+    # installs it.
+    #
+    # The other three chromadb advisories (CVE-2026-45830, -45833, -45831) are
+    # open in 0.5.23, 0.6.3 and 1.5.9 alike and none has a fix, so this step
+    # neither gains nor loses ground on them. 0.6.3 does lift the
+    # `tokenizers<=0.20.3` ceiling, and it keeps `fastapi` in runtime, which is
+    # why tests.yml needs no change yet.
+    #
+    # The structural half — fastapi to the dev extra, tests.yml installing
+    # requirements-webhook.txt, -8 packages — is phase 6D-5.
+    #
+    # REMOVAL TRIGGER, MECHANICAL: a weekly scheduled workflow audits
+    # `chromadb>=1.0.0` in pip-audit's requirements mode and goes red when
+    # GHSA-f4j7-r4q5-qw2c stops being reported for it **while the other three
+    # are still reported** — two conditions together, because an empty result is
+    # a broken scan rather than good news.
+    #
+    # VERSION RANGE, NOT BARE NAME: `versions: [">=1.0.0"]` keeps 0.6.x patch
+    # updates flowing while the 1.x line stays deferred. A bare name would have
+    # frozen chromadb entirely, which is what 6D-4a's half was criticised for.
     #
     # ACCEPTED COST, MEASURED: ignore silences security updates as well as
     # version updates — GitHub Docs, Controlling which dependencies are updated
     # by Dependabot: "...when it opens pull requests for version updates and
-    # security updates." So while this entry stands, a CVE in chromadb raises no
-    # pull request either. Recorded in docs/KNOWN-DEBT.md.
-    # tests/test_dependabot_config.py makes the removal trigger mechanical: it
-    # turns red the moment the pin moves. It fired on this bump, exactly as
-    # designed — the failure named `streamlit` and said what to do.
+    # security updates." So a CVE announced in chromadb 1.x raises no pull
+    # request while this stands. Recorded in docs/KNOWN-DEBT.md.
+    # tests/test_dependabot_config.py makes it mechanical: it turns red the
+    # moment the pin moves. It has now fired twice, exactly as designed — on
+    # 6D-4a naming `streamlit`, and on this bump naming `chromadb`. Both reds
+    # were observed BEFORE the entry and the expected-pin table were touched.
     ignore:
       - dependency-name: "chromadb"
+        versions: [">=1.0.0"]
 
     # Chosen, not inherited — but resting on something the documentation does
     # not state: whether a grouped pull request counts as one against this

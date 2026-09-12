@@ -17,7 +17,7 @@ groq==0.13.0
 openai==1.58.1
 
 # --- Vector Database ---
-chromadb==0.5.23
+chromadb==0.6.3
 
 # --- Jira Integration ---
 requests==2.34.2

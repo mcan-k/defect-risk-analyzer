@@ -65,7 +65,7 @@ DEPENDABOT = REPO_ROOT / ".github" / "dependabot.yml"
 # dosyası ve beklenen literal. Erteleme bu literale bağlı; literal değişirse
 # erteleme gerekçesini kaybeder.
 EXPECTED_IGNORED_PINS = {
-    "chromadb": ("requirements.txt", "chromadb==0.5.23"),
+    "chromadb": ("requirements.txt", "chromadb==0.6.3"),
 }
 
 # `  - package-ecosystem: pip` ile başlayan blok, bir sonraki

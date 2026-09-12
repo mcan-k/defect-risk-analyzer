@@ -1365,7 +1365,7 @@ Dependabot PR'ında job'ın atlandığı Actions'ta görülecek.
 
 ---
 
-## `chromadb` Dependabot'ta ertelendi — güvenlik güncellemeleri de susuyor
+## `chromadb` 1.x Dependabot'ta ertelendi — düzeltmesi olmayan bir CRITICAL yüzünden
 
 **Where:** [`.github/dependabot.yml`](../.github/dependabot.yml),
 bekçi: [`tests/test_dependabot_config.py`](../tests/test_dependabot_config.py)
@@ -1422,10 +1422,52 @@ ve *"dependabot.yml'deki girdisini de SILIN"* talimatını içeriyordu. Kırmız
 kör noktası da orada: tutulan şey tutarlılık, varlık değil — bir ad `ignore`
 listesinden silinirse bekçi görmez (M3 mutasyonu, hayatta kalması beklenen).
 
+### 6D-4b: `chromadb` 0.6.3'te durdu, `ignore` daraltıldı
+
+**Pin 1.5.9'a değil 0.6.3'e taşındı** ve `ignore` girdisi silinmek yerine
+`versions: [">=1.0.0"]` ile daraltıldı. Gerekçe tek kalem ve ölçüldü:
+**CVE-2026-45829** (GHSA-f4j7-r4q5-qw2c), CRITICAL, exploit kanıtı mevcut —
+kimlik doğrulama **öncesi** kod enjeksiyonu, `>=1.0.0`'ı etkiliyor ve
+`last_affected` değeri en son yayınlanan sürüm olan 1.5.9, yani gidilecek bir
+yer yok.
+
+**`>=1.0.0` sınırı gerçek, tarama artefaktı değil — ölçüldü,** çünkü "eski
+sürümler taranmamıştır" bariz alternatifti. Saldırının ihtiyaç duyduğu makine
+yapılandırmadan embedding function kuran kayıt: `build_from_config` 1.5.9'da
+**42 dosya / 36 EF sınıfında**, 0.5.23'te **0 dosyada**; `known_embedding_functions`
+bir koleksiyon yapılandırması JSON'dan çözülürken okunuyor
+(`api/collection_configuration.py:93,316,630`, `api/types.py:2917,2967`).
+`/api/v2` yolları 0.5.23'te de var (22 v1 + 23 v2), yani sınırı açıklayan şey
+API sürümü değil bu kayıt.
+
+**Sunucu iki hatta da kaldırılabiliyor.** `chroma run` 0.5.23'te de (Python/
+FastAPI) 1.5.9'da da (fastapi hiç gerektirmeyen bir Rust CLI) var — ilk okumam
+"1.x'te fastapi dev extra'sına gittiği için sunucu kalkamaz" demeye
+meyilliydi ve **yanlıştı**. Fark "sunucu açılabilir mi" değil, "açılan sunucu
+kimliksiz RCE taşıyor mu". Bu depo yalnız `PersistentClient` kuruyor
+(`sys.modules`'te server/web modülü yok, ölçüldü), ama paket sunucuyu kuran
+herkese sevk ediyor ve bu depo public.
+
+**Kazanılan:** `tokenizers<=0.20.3` tavanı kalktı (0.23.2). **Değişmeyen:**
+`fastapi` runtime'da kaldı, yani `tests.yml` bu fazda değişmedi ve
+`requirements-webhook.txt` no-op kalmaya devam ediyor. Yapısal yarı — fastapi'nin
+`dev` extra'sına geçmesi, `tests.yml`'in webhook dosyasını kurması, −8 paket —
+**6D-5**.
+
+**Tetikleyici ikinci kez ateşlendi.** `tests/test_dependabot_config.py` pin
+oynadığı an kırmızı verdi ve `chromadb` adını söyledi; kırmızı **önce
+gözlendi**, `EXPECTED_IGNORED_PINS` ve `ignore` girdisi **sonra** güncellendi.
+6D-4a'da `streamlit` için aynısı olmuştu. Bekçinin çalıştığı artık iki kez
+gözlendi.
+
 | Borç | İşaret |
 |---|---|
 | ~~`streamlit` donmuş durumda~~ — **6D-4a'da kapandı**: pin 1.63.0, `ignore` girdisi ve bekçi tablosu satırı silindi, 40 advisory kaydı kapandı | — |
-| `chromadb` Dependabot'ta donmuş durumda ve güvenlik güncellemeleri de susmuş | Tetikleyici: **6D-4b** — ve mekanik olarak `tests/test_dependabot_config.py`, pin oynadığı an kırmızı (6D-4a'da bir kez ateşlendi, çalıştığı gözlendi) |
+| ~~`chromadb` tümüyle donmuş durumda~~ — **6D-4b'de daraltıldı**: pin 0.6.3, `ignore` artık yalnız `>=1.0.0`, yani 0.6.x yama güncellemeleri akmaya devam ediyor | — |
+| `chromadb` **1.x hattı** ertelenmiş durumda ve o hattaki bir CVE için PR açılmaz | Tetikleyici: **CVE-2026-45829 için bir düzeltme yayınlandığında** — mekanik biçimi 6D-4d'nin haftalık workflow'u: `pip-audit -r` ile `chromadb>=1.0.0` taranır ve GHSA-f4j7-r4q5-qw2c raporlanmayı bıraktığında **öteki üçü hâlâ raporlanıyorsa** kırmızı verir. İki koşul birlikte, çünkü boş sonuç iyi haber değil bozuk taramadır |
+| **CVE-2026-45830** (GHSA-2wm9-hf6c-p5cr), HIGH — tenant yetkilendirme doğrulaması yok; kimlikli her kullanıcı her tenant'ın koleksiyonunu okuyup yazabiliyor. 0.5.23, 0.6.3 ve 1.5.9'un **üçünde de açık**, düzeltme yayınlanmamış. Bu depoda erişilemez: sunucu hiç ayağa kalkmıyor, yalnız `PersistentClient` var | Tetikleyici: **advisory'de bir `fixed` sürümü belirdiğinde** — `last_affected` bugün 1.5.9 |
+| **CVE-2026-45833** (GHSA-36p7-vc44-83pf), CRITICAL — kimlikli kod enjeksiyonu, `trust_remote_code` taşıyan bir koleksiyon güncellemesiyle, UPDATE_COLLECTION izni gerekiyor. Üç sürümde de açık, düzeltme yok. 45829'dan farkı kimlik gerektirmesi | Tetikleyici: **advisory'de bir `fixed` sürümü belirdiğinde** |
+| **CVE-2026-45831** (GHSA-xph7-9rjv-w5fr), HIGH — `SimpleRBACAuthorizationProvider` izni doğruluyor ama hangi tenant/db/koleksiyona ait olduğunu kontrol etmiyor. `>=0.5.0`, düzeltme yok. Bu depo hiçbir auth provider yapılandırmıyor | Tetikleyici: **advisory'de bir `fixed` sürümü belirdiğinde** |
 | `open-pull-requests-limit: 5`, gruplanmış bir PR'ın limite karşı nasıl sayıldığı **belgede yazmıyor** (options reference ve gruplama sayfası arandı); iki okuma iki farklı sonuç veriyor | Tetikleyici: **6D-3c'nin kapanış ölçümü** — ilk taramadan sonra açılan PR kümesi grup + major'ları içeriyorsa okuma doğrudur; grup tek başına limiti doldurup major'ların hiçbiri açılmıyorsa limit yükseltilir |
 
 ---
@@ -1498,6 +1540,47 @@ hata tam o yolun ilk adımında.
 | Borç | İşaret |
 |---|---|
 | `requirements-dev.txt` UTF-8 olmayan yerelde eski pip ile okunamıyor; README'nin kurulum adımı o makinelerde çalışmıyor | **Faz 7**, mekanik tetikleyici: `python -c "import glob,sys; sys.exit(any(any(c>127 for c in open(f,'rb').read()) for f in glob.glob('requirements*.txt')))"` **sıfırdan farklı dönerse** borç duruyor demektir. Çözüm seçenekleri: yorumları ASCII'ye çevirmek, ya da README'ye `python -m pip install --upgrade pip` adımını eklemek |
+
+---
+
+## Sözleşme bloğu elle koşulan bir araca bağlı — koşulmazsa yine bayatlar
+
+**Where:** [`src/defect_risk_analyzer/adapters/vector_store.py`](../src/defect_risk_analyzer/adapters/vector_store.py)
+sözleşme bloğu, araç:
+[`tests/tools/chroma_contract_probe.py`](../tests/tools/chroma_contract_probe.py)
+
+**KAYNAK OKUMA YETMEDİ, DAVRANIŞSAL ÖLÇÜM GEREKTİ.** Blok dört chromadb
+davranışını 0.5.23'ün kaynağından elle kopyalayarak kaydediyordu. Sözleşme 3
+"yinelenen id'de `ValueError` atar" diyordu; gerçek istisna `DuplicateIDError`
+ve MRO'su `DuplicateIDError <- ChromaError <- Exception` — **`ValueError`
+değil**. Cümle yazıldığı günden beri yanlıştı, **iki tur kaynak okumasından sağ
+çıktı**, ve ilk davranışsal probe onu **ilk koşuda** yakaladı. Bu, bloğun kendi
+yönteminin sınırıdır; blok metni artık bunu söylüyor.
+
+Davranışsal sonucu yoktu — `vector_store.py`'deki her sarmalayıcı
+`except Exception` yakalıyor, hiçbir yerde `except ValueError` yok — ama
+sonucu olmaması şans, ölçüm değildi.
+
+**6D-4b ARACI EKLEDİ, TAKIMA TEST OLARAK EKLEMEDİ.** `tests/tools/` altında,
+`test_` öneki yok, `chroma_cleanup.py`'nin komşusu. Takıma eklemek gerçek
+istemci koşmayı zorunlu kılardı; bu depoda hiç ağ testi yok ve chroma'nın
+varsayılan embedding function'ı runner'a bir ONNX modeli indirirdi — yeni bir
+CI bağımlılık sınıfı, ve 6D-4'ün kararı değil. Araç bunu sayaçlı bir yapay
+embedding function ile aşıyor: **ağ yok, 3.5 saniye, herhangi bir makinede
+koşar.** Çıktısı bloğa doğrudan yapıştırılabilir ve 100 kolon sınırına kendisi
+sarıyor (`vector_store.py` `E501` karantinasında **değil**, sarmasız çıktı 150+
+kolona çıkıyordu ve yapıştırma `ruff check .`'i kırmızıya çevirirdi — ölçüldü).
+
+**KALAN BORÇ, BEYAN EDİLMİŞ.** Araç elle koşuluyor. Pin oynatıldığında kimse
+koşmazsa blok yine bayatlar, ve bu sefer `LAST PROBED: chromadb==0.6.3` satırı
+da yanlış olur. Bloğun bayatlamasını yakalayan mekanik bir bekçi **yok** —
+`tests/test_dependabot_config.py` yalnız `ignore`-pin tutarlılığını tutuyor,
+blok metnini görmüyor.
+
+| Borç | İşaret |
+|---|---|
+| Sözleşme bloğunun tazeliği elle koşulan bir araca bağlı; bloğun `LAST PROBED` sürümü `requirements.txt`'teki pinden ayrılabilir ve hiçbir şey kırmızıya dönmez | Tetikleyici: **chromadb pini her oynadığında** aracı koş ve bloğu güncelle. Mekanikleştirmenin ucuz biçimi önerildi: bloğun `LAST PROBED: chromadb==X` literalini `requirements.txt`'in pini ile karşılaştıran, ağsız, `test_dependabot_config.py` deyimindeki bir bekçi — 6D-4b'nin kapsamı dışında bırakıldı, kararı kullanıcının |
+| Araç bir kez koşuldu (0.6.3 ve 0.5.23, bulgular birebir aynı); üçüncü bir sürümde ne olacağı ölçülmedi | Tetikleyici: **1.x'e geçiş** — 6D-5, aracı orada koşmak zorunlu |
 
 ---
 
