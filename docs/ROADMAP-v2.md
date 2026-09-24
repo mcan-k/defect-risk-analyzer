@@ -496,7 +496,31 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
 - [x] `SECURITY.md` — Faz 6B'de ölçümlerden türetildi, önce yazılıp sonra
       doğrulanmadı. Desteklenemeyen on bir iddia kasten dışarıda bırakıldı;
       hangilerinin neden yazılmadığı keşif kaydında duruyor.
-- [ ] Dependabot etkinleştir
+- [x] Dependabot etkinleştir — **6D-2** (github-actions) ve **6D-3c** (pip).
+      İki ekosistem, `versioning-strategy: increase-if-necessary`, risk-katmanlı
+      gruplama, ve bir bekçi: `tests/test_dependabot_config.py`. Kutu 6D-4c'ye
+      kadar işaretlenmemişti; kaydın kendisi bayattı.
+
+      > **6D-4 güncellemesi.** Ertelenen dört bump kapandı: **6D-4a** streamlit
+      > 1.41.1 → 1.63.0 (45 advisory kaydından 40'ı kapandı, `pillow<12` tavanı
+      > kalktı), **6D-4b** chromadb 0.5.23 → 0.6.3 (1.x'e DEĞİL — düzeltmesi
+      > olmayan bir CRITICAL yüzünden; `ignore` girdisi silinmedi, `>=1.0.0`'a
+      > daraltıldı), **6D-4c** openai 1.58.1 → 3.13.0 ve groq 0.13.0 → 1.7.0.
+      >
+      > 6D-4c üç şey ölçtü. (1) `tests/test_llm_sdk_contract.py` — bugüne kadar
+      > `llm_provider.py` ile kurulu SDK arasındaki sözleşmeyi tutan hiçbir şey
+      > yoktu; `test_llm_provider.py` SDK'yı bilerek sahteliyor ve sahte istemcisi
+      > `**kwargs` aldığı için kalkmış bir parametreyi de kabul ederdi. (2)
+      > httpx2 uyarısı kapandı — openai 3.x `httpx2` istiyor, `starlette` onu
+      > tercih ediyor, ve CI'ın uyarı özeti ilk kez **boş**. (3) İki major da
+      > çağrı yüzeyini kırmadı, yani `src/` değişmedi — bu bir tahmin değil,
+      > wheel'ler statik okunarak önce ölçüldü, sonra runtime'da iki kez
+      > doğrulandı.
+      >
+      > **Ertelenen tek şey `anyio`** (`requirements-dev.txt`, bump PR'ı tasarım
+      > gereği kırmızı) ve **chromadb 1.x**. İkisinin de tetikleyicisi
+      > `KNOWN-DEBT.md`'de. Yapısal yarı — fastapi'nin `dev` extra'sına geçmesi,
+      > `tests.yml`'in webhook dosyasını kurması, −8 paket — **6D-5**.
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 7 — Vitrin (yarım gün)

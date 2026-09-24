@@ -25,5 +25,18 @@ fastapi>=0.115.6
 uvicorn[standard]>=0.34.0
 pydantic>=2.10.4
 
-# Required by fastapi.testclient.TestClient; not imported by the application.
+# GEREKÇESİ 6D-4c'DE DEĞİŞTİ, SATIR DEĞİŞMEDİ.
+#
+# Eskiden buradaki gerekçe "fastapi.testclient.TestClient bunu gerektiriyor"du.
+# Artık gerektirmiyor: `starlette/testclient.py:33-51` önce `import httpx2`
+# deniyor ve openai 3.x `httpx2<3,>=2.7.0` istediği için o import başarılı
+# oluyor. Ölçüldü — `starlette.testclient.httpx` artık `httpx2 2.12.0` modülü.
+#
+# `httpx` yine de kümede: chromadb (`httpx>=0.27.0`) ve groq 1.7.0
+# (`httpx<1,>=0.23.0`) istiyor. Yani bu satır bir ihtiyacı karşılamıyor, bu
+# dosyanın diğer üçü gibi kodun ölçülmüş en eski çalışan sürümünü kaydediyor.
+#
+# BİR YAN ETKİ, KAYDA DEĞER: httpx ve httpx2 TLS'i farklı doğruluyor —
+# httpx `certifi` paketine, httpx2 işletim sistemi güven deposuna
+# (`truststore`) bakıyor. İkisi de kurulu. docs/KNOWN-DEBT.md'de, Faz 7 işareti.
 httpx>=0.28.1
