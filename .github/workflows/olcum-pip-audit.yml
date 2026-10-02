@@ -1,0 +1,208 @@
+# =============================================================================
+# GEÇİCİ ÖLÇÜM — MERGE EDİLMEYECEK
+# =============================================================================
+# Faz 6D-4d'nin ön koşulu: pip-audit'in CI ortamında gerçekte ne gördüğünü
+# ölçmek, tahmin etmek değil. pip-audit manifest'i değil ORTAMI tarar, ve CI'ın
+# ortamı Linux'a özgü; pip/setuptools'u `pip freeze` göstermiyor.
+#
+# İki durum, iki ayrı job, her biri taze bir runner'da:
+#   main   — main olduğu gibi
+#   bumped — pytest 9.1.1 + ruff 0.16.10
+# Kurulum tests.yml ile birebir aynı (setup-python'un yorumlayıcısı, venv yok).
+# Sonra pip-audit, nihai tasarımdaki gibi requirements-dev.txt'e eklenip birlikte
+# çözülür. Özet check-run annotation'ı olarak basılır, çünkü job logu oturum
+# istiyor ama annotation'lar istemiyor. Ham JSON logda.
+#
+# Dal ve taslak PR 2026-10-05T00:00Z'den önce kapatılıp silinir (D7'nin koşulu
+# yalnız dependabot/pip/ önekli PR'ları sayıyor, bu PR sayılmaz).
+# =============================================================================
+
+name: "Ölçüm (merge edilmeyecek) — pip-audit"
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: "pip-audit ölçümü (${{ matrix.state }})"
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        state: [main, bumped]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Bump dev pins (bumped only)
+        if: matrix.state == 'bumped'
+        run: |
+          sed -i 's/^pytest==8\.3\.4/pytest==9.1.1/; s/^ruff==0\.16\.6/ruff==0.16.10/' requirements-dev.txt
+          grep -E '^pytest==9\.1\.1' requirements-dev.txt
+          grep -E '^ruff==0\.16\.10' requirements-dev.txt
+
+      - name: Install dependencies (identical to tests.yml)
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+          pip install -e . --no-deps
+
+      - name: Snapshot A (before pip-audit)
+        run: |
+          pip freeze > freeze_a.txt
+          python -m pip list --format json > list_a.json
+
+      - name: Add pip-audit as the final design would (same file, joint resolve)
+        run: |
+          printf '\npip-audit==2.10.1\n' >> requirements-dev.txt
+          pip install -r requirements-dev.txt
+          pip freeze > freeze_b.txt
+          python -m pip list --format json > list_b.json
+
+      - name: pip-audit, no ignores, step does not fail
+        run: |
+          rc=0; pip-audit -s pypi --format json -o audit_pypi.json || rc=$?; echo "$rc" > exit_pypi.txt
+          rc=0; pip-audit -s osv  --format json -o audit_osv.json  || rc=$?; echo "$rc" > exit_osv.txt
+          for f in freeze_a.txt freeze_b.txt audit_pypi.json audit_osv.json; do
+            echo "::group::$f"; cat "$f" 2>/dev/null || echo "(missing)"; echo; echo "::endgroup::"
+          done
+
+      - name: Summary as annotations
+        env:
+          STATE: ${{ matrix.state }}
+        run: |
+          python - <<'EOF'
+          import json, os, platform
+
+          state = os.environ["STATE"]
+
+          def esc(s):
+              return s.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+
+          def notice(title, lines):
+              print(f"::notice title={esc(title)}::{esc(chr(10).join(lines))}")
+
+          def freeze(path):
+              pkgs, editable, other = {}, [], []
+              for line in open(path).read().splitlines():
+                  if not line.strip():
+                      continue
+                  if line.startswith("-e"):
+                      editable.append(line)
+                  elif "==" in line:
+                      n, v = line.split("==", 1)
+                      pkgs[n.lower().replace("_", "-")] = v
+                  else:
+                      other.append(line)
+              return pkgs, editable, other
+
+          def listed(path):
+              return {d["name"].lower(): d["version"] for d in json.load(open(path))}
+
+          a, a_e, a_o = freeze("freeze_a.txt")
+          b, b_e, b_o = freeze("freeze_b.txt")
+          la, lb = listed("list_a.json"), listed("list_b.json")
+
+          notice(f"[{state}] 1 env", [
+              f"python {platform.python_version()}",
+              f"pip {la.get('pip')} | setuptools {la.get('setuptools', 'ABSENT')} | wheel {la.get('wheel', 'ABSENT')}",
+              f"freeze A: {len(a)} packages + {len(a_e)} editable line(s) + {len(a_o)} other",
+              f"pip list A: {len(la)} entries",
+              f"freeze B (with pip-audit): {len(b)} packages",
+              f"pytest {a.get('pytest')} | ruff {a.get('ruff')} | openai {a.get('openai')}",
+          ])
+          notice(f"[{state}] 2 freeze A", [" ".join(f"{n}=={v}" for n, v in sorted(a.items()))])
+
+          added = sorted(set(b) - set(a))
+          changed = sorted(f"{n} {a[n]}->{b[n]}" for n in set(a) & set(b) if a[n] != b[n])
+          removed = sorted(set(a) - set(b))
+          notice(f"[{state}] 3 pip-audit adds", [
+              f"added {len(added)}: " + " ".join(f"{n}=={b[n]}" for n in added),
+              f"changed {len(changed)}: " + " ".join(changed),
+              f"removed {len(removed)}: " + " ".join(removed),
+          ])
+
+          def groups(vulns):
+              parent = {}
+              def find(x):
+                  parent.setdefault(x, x)
+                  while parent[x] != x:
+                      parent[x] = parent[parent[x]]
+                      x = parent[x]
+                  return x
+              for r in vulns:
+                  for al in r.get("aliases", []):
+                      parent[find(al)] = find(r["id"])
+              out = {}
+              for r in vulns:
+                  g = out.setdefault(find(r["id"]), {"ids": set(), "fix": set()})
+                  g["ids"].add(r["id"])
+                  g["ids"].update(r.get("aliases", []))
+                  g["fix"].update(r.get("fix_versions", []))
+              return list(out.values())
+
+          def audit(src):
+              rc = open(f"exit_{src}.txt").read().strip()
+              try:
+                  j = json.load(open(f"audit_{src}.json"))
+              except Exception as e:
+                  return None, [f"exit {rc}", f"PARSE FAILED: {e}"]
+              deps = j.get("dependencies", [])
+              scanned = [d for d in deps if "skip_reason" not in d]
+              skipped = [f"{d['name']} ({d['skip_reason'][:70]})" for d in deps if "skip_reason" in d]
+              names = {d["name"].lower() for d in scanned}
+              per, raw_t, ded_t = {}, 0, 0
+              lines = []
+              for d in scanned:
+                  v = d.get("vulns", [])
+                  if not v:
+                      continue
+                  gs = groups(v)
+                  raw_t += len(v)
+                  ded_t += len(gs)
+                  key = f"{d['name']}=={d['version']}"
+                  per[key] = {"raw": sorted(r["id"] for r in v), "groups": gs}
+                  lines.append(f"{key}: {len(v)} records / {len(gs)} vulns")
+                  for g in gs:
+                      cve = sorted(i for i in g["ids"] if i.startswith("CVE-")) or sorted(g["ids"])[:1]
+                      fix = ",".join(sorted(g["fix"])) or "NO FIX"
+                      lines.append(f"  {cve[0]}  fix={fix}  ids={','.join(sorted(g['ids']))}")
+              head = [
+                  f"exit {rc} | scanned {len(scanned)} | skipped {len(skipped)}: {'; '.join(skipped)}",
+                  f"pip scanned: {'pip' in names} | setuptools scanned: {'setuptools' in names}",
+                  f"TOTAL: {raw_t} records / {ded_t} vulns in {len(per)} packages",
+              ]
+              return per, head + lines
+
+          results = {}
+          for i, src in enumerate(["pypi", "osv"], start=4):
+              per, lines = audit(src)
+              results[src] = per
+              notice(f"[{state}] {i} audit -s {src}", lines)
+
+          p, o = results["pypi"], results["osv"]
+          if p is None or o is None:
+              notice(f"[{state}] 6 pypi vs osv", ["cannot compare: a report failed to parse"])
+          else:
+              diff = []
+              for k in sorted(set(p) | set(o)):
+                  pr = set(p.get(k, {}).get("raw", []))
+                  orr = set(o.get(k, {}).get("raw", []))
+                  pg = len(p.get(k, {}).get("groups", []))
+                  og = len(o.get(k, {}).get("groups", []))
+                  if pr != orr or pg != og:
+                      diff.append(f"{k}: pypi {len(pr)}r/{pg}v osv {len(orr)}r/{og}v | "
+                                  f"only pypi {sorted(pr - orr)} | only osv {sorted(orr - pr)}")
+              notice(f"[{state}] 6 pypi vs osv", diff or ["IDENTICAL (records and vulns, per package)"])
+          EOF
