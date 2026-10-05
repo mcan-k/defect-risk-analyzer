@@ -1855,6 +1855,9 @@ PyPI'de 3.19.2'ye çıkmıştı. Bu, iki tahminin öncülünü düşürdü:
 | **D2b′** | 09-24, merge öncesi | ❌ **yanlışlandı — tahminde olmayan bir sonuç** | merge 20:53:26Z (tablonun 1. satırı). 84 sn sonra `for openai` işi koştu (`success`) ✅; **X = 3.16.2** ✅ (3.17.0 o an 2,76 günlüktü, atlandı). Ama #35 supersede edilmedi, **yerinde yeniden yazıldı** — kip (iv), yukarıda. Sayı 6'ya çıkmadı. Önceden yazılan dört sonuç satırının hiçbiri değil; birine sığdırılmadı |
 | **D3** | 09-12 (yönsüz) | ölçüldü | pip'in haftalık taraması **09-14 ve 09-21'de hiç koşmadı**; aynı dosyadaki `github_actions` taraması her Pazartesi ~00:55Z'de koştu. main o günlerde hareketsizdi, yani koşu olsaydı merge-tetikli olamazdı |
 | **D4** | 10-02, **09-28 takvimde geçmişken ama hiçbir veriye bakmadan**; iki dal da önceden | ◯ **merge edilmeme dalı: yanlışlanmadı (tutarlı)** — bu dal hipotezi doğrulayamaz, yalnız yanlışlayabilirdi; aşağıdaki paragraf | koşul önce yalnız PR ve git verisinden ölçüldü: #35 09-28T00:55Z anında açıktı, 5/5 dolu, aradaki sürede PR açılıp kapanmadı, main'e push yok. Dal buna göre seçildi, **sonra** Actions okundu: `github_actions` 00:55:15Z'de koştu, **0** `pip in /.` |
+| **D5** | 10-02 08:36Z, #37'nin merge'ünden önce (PR gövdesinde) | ✅ **doğrulandı** (önceden yazılan tablonun 1. satırı) | #37 (yalnız docs) 08:55:15Z'de merge edildi. Pencere 08:55:15–09:25:15Z, 120 sn'de bir canlı izlendi: #35'in `title`, `head.sha`, `updated_at`, `state` alanları, olay geçmişi ve `event=dynamic` koşuları. **0** Dependabot koşusu (tek koşu #37'nin kendi `push` Tests'i), #35 değişmedi (`501adf9`), sayı 5. Yoklama son ~23 saniyeyi canlı okuyamadı (arka plan süre sınırı), o aralık zaman damgalarından geriye dönük kapatıldı. Docs'a dokunan bir push yenileme tetiklemedi: tek gözlem, "yenileme manifest değişikliğini izler" okumasıyla tutarlı, mekanizmayı kanıtlamıyor |
+| **D6** | 10-02, #35'in merge'ünden önce; D5'ten sonra hiçbir API/PyPI çağrısı yapılmadan | ✅ **her öğede doğrulandı** | Aday kural, aynı verinin üzerine kurulmuş (post-hoc): config'e dokunmayan bir push'tan sonra Dependabot, diff hunk bağlamı (±3 satır) push'un değiştirdiği satırların bağlamıyla örtüşen açık PR'ları yeniler. #35 10:02:25Z'de merge edildi (`requirements.txt:17`, bağlam 14–20), pencere 30 dk canlı izlendi. `pip in /.` yok ✅. Tek Dependabot koşusu `pip in / for plotly`, 10:03:51Z ✅ (#33, satır 13, bağlam 10–16). **#32 pandas yenilenmedi ✅ — ayırıcı öğe**: "aynı dosyaya dokunan her PR yenilenir" kuralı #32'nin yenilenmesini öngörürdü. #31 ve #25 de yenilenmedi ✅. openai koşusu ve yeni PR numarası yok ✅. #33: 7.1.0'dan yeni plotly yoktu, yani **rebase dalı** geçerliydi: bot `head_ref_force_pushed` 10:04:45Z (0857b56→91f9613), `renamed` yok, başlık aynı ✅. Sayı 4 ✅. Aday kural ilk örneklem-dışı testini geçti: bu tek bir test, kanıt değil |
+| **D7** | 10-02, #35'in merge'ünden önce; koşul ve dal 10-05'te **Actions okunmadan** sabitlendi | ✅ **doğrulandı — ilk kez yanlışlanabilir dalda**; alt iddia "en fazla 1 yeni PR" ❌ (aşağıda) | Koşul yalnız PR ve git verisinden ölçüldü: 10-05T00:55Z anında 4 açık pip PR (#25 #31 #32 #33); 10-02T10:02:26Z ile 10-05T01:30Z arasında main'e merge yok (HEAD `dc53431`), yani config push'u da yok. Dal (koşu bekleniyor) önce yazıldı, **sonra** Actions okundu: `github_actions in /.` 00:54:22Z, **`pip in /.` 00:54:26Z** (`success`) |
 
 **D3 ve D4'ün gücü sınırlı, ve bu açıkça yazılmalı.** Üç Pazartesi üst üste
 (09-14, 09-21, 09-28) zamanlayıcı `github_actions`'ı koşturdu, pip'i atladı.
@@ -1874,6 +1877,45 @@ gelirse. Karıştırıcılar: sayıyı düşüren push'un kendisi config'e dokun
 tarama oradan gelir ve o Pazartesi temiz okunamaz; 6D-4d'nin `pip-audit` işi de
 sayıyı değiştirebilir.
 
+> **Sonuç (2026-10-05) — D7: hipotez desteklendi.** Sayıyı ilk düşüren #35'in
+> merge'ü oldu (10-02, 5 → 4). Arada config push'u olmadan gelen ilk Pazartesi
+> 10-05'te `pip in /.` 00:54:26Z'de koştu. Üç Pazartesi 5/5'te 0 koşu, bir
+> Pazartesi 4/5'te 1 koşu: **dolu limit, zamanlanmış taramayı bastırıyor.**
+> Tahminin yanlışlanabildiği ilk durumdu ve yanlışlanmadı. Tek gözlem; ama artık
+> iki dal da gözlendi.
+>
+> Taramanın açtığı PR'lar (üçünün de Tests'i `success`, PR Risk Analysis bot
+> bekçisiyle `skipped`):
+>
+> | PR | açıldı | içerik | eski PR |
+> |---|---|---|---|
+> | #39 | 00:56:17Z | `python-patch-minor` grubu, 4 güncelleme: ruff 0.16.6→0.16.10, streamlit 1.63.0→1.64.0, openai 3.16.2→3.23.0, python-dotenv 1.2.3→1.2.4 | — (yeni) |
+> | #40 | 00:56:24Z | pandas 2.2.3→**3.0.6** | #32 (3.0.5), 00:56:27Z'de kapandı: *"Superseded by #40."* |
+> | #41 | 00:56:32Z | plotly 5.24.1→7.1.0, **hedef değişmeden** | #33 (7.1.0), 00:56:35Z'de kapandı: *"Superseded by #41."* |
+>
+> Açık pip PR sayısı 4 → **5** (#25 #31 #39 #40 #41): net +1, tahmindeki gibi.
+> **Ama "en fazla 1 yeni PR" alt iddiası numara olarak yanlış**: üç yeni numara
+> açıldı. Tahmin, tam taramanın açık PR'ları supersede edebileceğini hesaba
+> katmamıştı. Limit yeniden dolu, yani bu mekanizmaya göre bir sonraki Pazartesi
+> yine bastırılır.
+>
+> **Kapanma kipleri, birlikte okununca.** Altı gözlemin hepsine uyan aday
+> değişken **turda tam tarama olup olmadığı**. Sürüm değişimi bu değişken
+> değil:
+>
+> | gözlem | turda `pip in /.` var mı | hedef / kaynak değişti mi | kip |
+> |---|---|---|---|
+> | 09-12 #26→#35 | evet (config push, ardından `for openai`) | hedef evet, kaynak hayır | (ii) supersede |
+> | 09-24 #35 | hayır (yalnız `for openai`) | ikisi de evet | (iv) yerinde |
+> | 09-24 #33 | hayır (yalnız `for plotly`) | hedef evet | (iv) yerinde |
+> | 10-02 #33 | hayır (yalnız `for plotly`) | hiçbiri | rebase |
+> | 10-05 #32→#40 | evet (zamanlanmış) | hedef evet | (ii) supersede |
+> | 10-05 #33→#41 | evet (zamanlanmış) | **hiçbiri** | (ii) supersede |
+>
+> En temiz karşıtlık #33'ün son iki satırı: sürüm durumu birebir aynıyken bir
+> yenileme işi rebase etti, tam tarama ise supersede etti. Aday post-hoc: aynı
+> veriye uydurulmuş, hiçbir zaman önceden tahmin olarak yazılmadı.
+
 **Kontrat testi ilk gerçek girdisini gördü.** Yeniden yazılan #35'in CI'ında
 (Tests, 09-24 20:55:43Z → 20:57:02Z, `success`) `tests/test_llm_sdk_contract.py`
 **openai 3.16.2**'ye karşı koştu — mutasyon dışında gördüğü ilk gerçek bump.
@@ -1892,6 +1934,7 @@ PR için `title`, `head.sha`, `updated_at` ve olay geçmişi (`renamed`,
 
 | Borç | İşaret |
 |---|---|
-| Dependabot'un yuva sıralaması dışarıdan türetilemiyor; `groq` sekiz dağıtımın hiçbirini alamadı. **Dolum tetikleyicisi artık ölçüldü** (tam tarama yalnız config push'unda), ama pip'in zamanlanmış taramasının dolu limitte koşmaması ölçülmüş bir davranış, mekanizması bir hipotez | Tetikleyici: **açık pip PR sayısı ilk kez 5'in altına düştükten sonra, arada config push'u olmadan gelen ilk Pazartesi** — sayıyı düşürecek adaylar #35'in merge'ü ve 6D-4d'nin pytest merge'ü, hangisi önce gelirse (yukarıdaki tahmin). Hipotez doğrulanırsa limit 5'in (#25 kalıcı olarak bir yuvayı tuttuğu için etkin 4) kuyruğu kendiliğinden boşaltamayacağı anlamına gelir ve limit tasarımı yeniden tartılır |
-| ~~numpy ve ruff bump'ları deney için bekletiliyor~~ — numpy hiç beklemiyordu (`Requires-Python >=3.12`); yalnız `ruff` (0.16.6 → 0.16.8, 09-24 itibarıyla) | **Sahibi 6D-4d** (2026-09-24 kararı). Bekletmenin tek gerekçesi grup deneyiydi ve D1′ ile düştü; bump kendiliğinden de gelmeyecekti. 6D-4d `requirements-dev.txt`'e elle ekler, o anki son sürümü yeniden ölçerek |
-| Kapanma kipleri (ii) ile (iv)'ü ayıran değişken bilinmiyor; hipotez #33'te çürüdü | Tetikleyici: **bir sonraki Dependabot yenileme işi.** Her gözlemde başlangıç/hedef sürüm değişimi, öncesinde tam tarama olup olmadığı ve sonuç kipi birlikte kaydedilir |
+| ~~pip'in zamanlanmış taramasının dolu limitte koşmaması bir hipotez~~ — **10-05'te tetikleyici ateşlendi, hipotez desteklendi** (D7). Yuva sıralaması hâlâ dışarıdan türetilemiyor; `groq` sekiz dağıtımın hiçbirini alamamıştı | — |
+| Limit 5 (#25 kalıcı olarak bir yuvayı tuttuğu için etkin 4) doluyken pip'in zamanlanmış taraması koşmuyor: üç Pazartesi 5/5'te 0 koşu, 10-05'te 4/5'te 1 koşu. O tarama sayıyı yeniden 5'e çıkardı, yani kuyruk kendiliğinden boşalmıyor | Tetikleyici: **6D-4d-1'in planı — karar orada verilir, uygulama ayrı ve tek dosyalık bir PR'da.** `dependabot.yml`'e dokunmak tam tarama tetikliyor; değişiklik 4d-1'in içinde olsaydı açılan PR'lar 4d-1'in değişikliklerine karışırdı. Tartılacak seçenekler, her biri bedeliyle: limiti yükseltmek; #25'i kapatmak; ya da #25'i `versions` aralıklı bir `ignore` ile görünür biçimde dışarıda tutmak |
+| ~~numpy ve ruff bump'ları deney için bekletiliyor~~ — numpy hiç beklemiyordu (`Requires-Python >=3.12`); yalnız `ruff` (0.16.6 → 0.16.8, 09-24 itibarıyla) | **Sahibi 6D-4d** (2026-09-24 kararı). Bekletmenin tek gerekçesi grup deneyiydi ve D1′ ile düştü; bump kendiliğinden de gelmeyecekti. 6D-4d `requirements-dev.txt`'e elle ekler, o anki son sürümü yeniden ölçerek. **10-05:** D7'nin taraması ruff 0.16.10'u grup PR'ı #39'a koydu; #39'un kaderi 6D-4d-1'in planında ele alınır |
+| Kapanma kipleri (ii) ile (iv)'ü ayıran değişken kanıtlanmadı. Aday (post-hoc): **turda tam tarama olup olmadığı**, altı gözlemin altısına da uyuyor (yukarıdaki tablo). Sürüm değişimi değişken değil; #33 aynı sürüm durumunda bir kez rebase, bir kez supersede gördü | Tetikleyici: **bir sonraki tam tarama ya da yenileme işi** — aday önceden tahmin olarak yazılır ve o işte sınanır. Yanlışlayıcılar: yerinde yeniden yazan bir tam tarama, ya da supersede eden yalın bir yenileme işi |
