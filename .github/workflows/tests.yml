@@ -22,7 +22,14 @@ permissions:
 jobs:
   test:
     name: Lint & Test
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest (phase 6D-4d-1). The label moves to Ubuntu 26
+    # from 2026-10-19 (actions/runner-images#14748), and the resolved package
+    # set below is platform-specific, so an unannounced image change would land
+    # in the freeze diff as noise. pr-risk-analysis.yml is pinned to the same
+    # image so the two workflows do not diverge by platform as well as by
+    # resolution. tests/test_workflow_runners.py holds both; the move to 26.04
+    # is its own PR, trigger in docs/KNOWN-DEBT.md.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository

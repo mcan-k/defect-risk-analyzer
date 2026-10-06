@@ -1938,3 +1938,41 @@ PR için `title`, `head.sha`, `updated_at` ve olay geçmişi (`renamed`,
 | Limit 5 (#25 kalıcı olarak bir yuvayı tuttuğu için etkin 4) doluyken pip'in zamanlanmış taraması koşmuyor: üç Pazartesi 5/5'te 0 koşu, 10-05'te 4/5'te 1 koşu. O tarama sayıyı yeniden 5'e çıkardı, yani kuyruk kendiliğinden boşalmıyor | Tetikleyici: **6D-4d-1'in planı — karar orada verilir, uygulama ayrı ve tek dosyalık bir PR'da.** `dependabot.yml`'e dokunmak tam tarama tetikliyor; değişiklik 4d-1'in içinde olsaydı açılan PR'lar 4d-1'in değişikliklerine karışırdı. Tartılacak seçenekler, her biri bedeliyle: limiti yükseltmek; #25'i kapatmak; ya da #25'i `versions` aralıklı bir `ignore` ile görünür biçimde dışarıda tutmak |
 | ~~numpy ve ruff bump'ları deney için bekletiliyor~~ — numpy hiç beklemiyordu (`Requires-Python >=3.12`); yalnız `ruff` (0.16.6 → 0.16.8, 09-24 itibarıyla) | **Sahibi 6D-4d** (2026-09-24 kararı). Bekletmenin tek gerekçesi grup deneyiydi ve D1′ ile düştü; bump kendiliğinden de gelmeyecekti. 6D-4d `requirements-dev.txt`'e elle ekler, o anki son sürümü yeniden ölçerek. **10-05:** D7'nin taraması ruff 0.16.10'u grup PR'ı #39'a koydu; #39'un kaderi 6D-4d-1'in planında ele alınır |
 | Kapanma kipleri (ii) ile (iv)'ü ayıran değişken kanıtlanmadı. Aday (post-hoc): **turda tam tarama olup olmadığı**, altı gözlemin altısına da uyuyor (yukarıdaki tablo). Sürüm değişimi değişken değil; #33 aynı sürüm durumunda bir kez rebase, bir kez supersede gördü | Tetikleyici: **bir sonraki tam tarama ya da yenileme işi** — aday önceden tahmin olarak yazılır ve o işte sınanır. Yanlışlayıcılar: yerinde yeniden yazan bir tam tarama, ya da supersede eden yalın bir yenileme işi |
+
+---
+
+## Faz 6D-4d-1 eki — runner sabitlemesi, pytest 9.1.1
+
+**Where:** [`.github/workflows/tests.yml`](../.github/workflows/tests.yml),
+[`.github/workflows/pr-risk-analysis.yml`](../.github/workflows/pr-risk-analysis.yml),
+[`tests/test_workflow_runners.py`](../tests/test_workflow_runners.py),
+`requirements-dev.txt`
+
+**Runner sabitlemesi.** İki iş akışı `ubuntu-latest`'ten `ubuntu-24.04`'e
+alındı. GitHub `ubuntu-latest` etiketini 2026-10-19'dan itibaren Ubuntu 26'ya
+taşıyor (actions/runner-images#14748); geçiş kademeli olduğu için bir süre
+koşular iki imaj arasında düşebilir. Çözülen paket kümesi platforma bağlı
+(yukarıdaki 6D-3b bölümü), yani duyurulmamış bir imaj değişikliği freeze
+diff'ine gürültü olarak girerdi. Ölçüldü (2026-10-02):
+`actions/python-versions` manifest'inde 3.11.15–3.11.17 için 26.04 derlemesi
+var — geçiş sert bir kırılma getirmezdi; karar atıf ve gürültü üzerinden
+verildi. Sabitleme Python'un yama sürümünü sabitlemiyor: `setup-python`
+`3.11` için imajdaki en yeni 3.11.x'i kullanıyor.
+
+**Bekçi: `tests/test_workflow_runners.py`.** "İki iş akışının platformu
+ayrışmasın" iddiasını bir yorum söylüyordu ama tutmuyordu. İki test: her
+`runs-on:` değeri `ubuntu-24.04` olmalı (`.github/workflows/` altındaki her
+dosya, sonradan eklenenler dahil); ve tarama boş dönmemeli — bilinen iki
+dosya bulunmalı, her birinde en az bir `runs-on:` yakalanmalı. YAML
+ayrıştırıcısı kullanılmıyor: `PyYAML` doğrudan bağımlılık değil.
+
+| Mutasyon | Kırılan iddia | Gözlenen |
+|---|---|---|
+| (doğal) iki dosya da `ubuntu-latest` — sabitlemeden önce | her `runs-on` sabit değerde | birinci test **kırmızı**, iki dosyayı da adıyla gösterdi |
+| M1 `tests.yml` → `ubuntu-latest` | aynı | birinci test **kırmızı** |
+| M2 yalnız `pr-risk-analysis.yml` → `ubuntu-26.04` | iki dosya ayrışmaz | birinci test **kırmızı** |
+| M3 test deseni `runs_on:` (hiçbir satırı yakalamaz) | tarama boş değil | birinci test **boşuna yeşil**, ikinci test **kırmızı** — ikinci testin varlık sebebi |
+
+| Borç | İşaret |
+|---|---|
+| CI `ubuntu-24.04`'e sabit; Ubuntu 26'ya geçiş bilerek ertelendi | Tetikleyici: **GitHub 24.04 için kullanımdan kaldırma duyurduğunda ya da 6D-3b'nin kısıt dosyası üretilmeden önce — hangisi önce gelirse.** Geçiş kendi PR'ında, freeze diff'i gözlenerek yapılır; `tests/test_workflow_runners.py`'deki `EXPECTED_RUNNER` orada değişir |
