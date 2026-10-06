@@ -9,12 +9,12 @@
 # =============================================================================
 
 # --- Frontend ---
-streamlit==1.63.0
+streamlit==1.64.0
 plotly==5.24.1
 
 # --- LLM Providers (BYOK) ---
 groq==1.7.0
-openai==3.16.2
+openai==3.23.0
 
 # --- Vector Database ---
 chromadb==0.6.3
@@ -23,7 +23,7 @@ chromadb==0.6.3
 requests==2.34.2
 
 # --- Environment & Config ---
-python-dotenv==1.2.3
+python-dotenv==1.2.4
 
 # --- Data Processing ---
 numpy==2.4.6
