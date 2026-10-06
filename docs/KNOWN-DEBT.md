@@ -1241,7 +1241,9 @@ uzayını daraltmak için sebep yok.
 ve `anyio 4.15.x` çözmeye devam edecek — orada uyarı yok, çünkü o yol
 `ci_analyzer`'ı çalıştırıyor. `Dockerfile` da bu dosyayı hiç `pip install`
 etmiyor. İki iş akışının farklı çözünürlük test etmesi zaten **6D-3b**'nin
-maddesi; bu, o listeye bir paket daha ekliyor.
+maddesi; bu, o listeye bir paket daha ekliyor. (Bu cümle 6D-4d-1'e kadar
+depoda olmayan bir maddeye atıf yapıyordu; madde artık aşağıda, "Transitif
+sürüklenme — 6D-3b'nin kısıt dosyası ertelendi" bölümünde.)
 
 **İkinci uyarı bu fazın değil.** `StarletteDeprecationWarning: Using 'httpx'
 with 'starlette.testclient' is deprecated; install 'httpx2' instead.`
@@ -1935,9 +1937,90 @@ PR için `title`, `head.sha`, `updated_at` ve olay geçmişi (`renamed`,
 | Borç | İşaret |
 |---|---|
 | ~~pip'in zamanlanmış taramasının dolu limitte koşmaması bir hipotez~~ — **10-05'te tetikleyici ateşlendi, hipotez desteklendi** (D7). Yuva sıralaması hâlâ dışarıdan türetilemiyor; `groq` sekiz dağıtımın hiçbirini alamamıştı | — |
-| Limit 5 (#25 kalıcı olarak bir yuvayı tuttuğu için etkin 4) doluyken pip'in zamanlanmış taraması koşmuyor: üç Pazartesi 5/5'te 0 koşu, 10-05'te 4/5'te 1 koşu. O tarama sayıyı yeniden 5'e çıkardı, yani kuyruk kendiliğinden boşalmıyor | Tetikleyici: **6D-4d-1'in planı — karar orada verilir, uygulama ayrı ve tek dosyalık bir PR'da.** `dependabot.yml`'e dokunmak tam tarama tetikliyor; değişiklik 4d-1'in içinde olsaydı açılan PR'lar 4d-1'in değişikliklerine karışırdı. Tartılacak seçenekler, her biri bedeliyle: limiti yükseltmek; #25'i kapatmak; ya da #25'i `versions` aralıklı bir `ignore` ile görünür biçimde dışarıda tutmak |
-| ~~numpy ve ruff bump'ları deney için bekletiliyor~~ — numpy hiç beklemiyordu (`Requires-Python >=3.12`); yalnız `ruff` (0.16.6 → 0.16.8, 09-24 itibarıyla) | **Sahibi 6D-4d** (2026-09-24 kararı). Bekletmenin tek gerekçesi grup deneyiydi ve D1′ ile düştü; bump kendiliğinden de gelmeyecekti. 6D-4d `requirements-dev.txt`'e elle ekler, o anki son sürümü yeniden ölçerek. **10-05:** D7'nin taraması ruff 0.16.10'u grup PR'ı #39'a koydu; #39'un kaderi 6D-4d-1'in planında ele alınır |
+| Limit 5 (#25 kalıcı olarak bir yuvayı tuttuğu için etkin 4) doluyken pip'in zamanlanmış taraması koşmuyor: üç Pazartesi 5/5'te 0 koşu, 10-05'te 4/5'te 1 koşu. O tarama sayıyı yeniden 5'e çıkardı, yani kuyruk kendiliğinden boşalmıyor. **Karar verildi (6D-4d-1'in planı, 2026-10-05): limit 5 kalıyor, `anyio` pini kaldırılıyor.** Pinin tetikleyicisi ateşlendi (aşağıda, 6D-4d-1 eki), yani #25'in kalıcı yuvası kendiliğinden kalkar. Pin kendi PR'ında kaldırılır, 6D-4d-1'den sonra; `dependabot.yml` temizliği (anyio'nun `exclude-patterns`'ı ve yorumu) ayrı ve tek dosyalık bir PR'da, çünkü config push'u tam tarama tetikliyor. Reddedilen seçenekler: limiti yükseltmek (kalıcı kırmızı PR'ı gizler); #25'i elle kapatmak (kip iii belgelenmemiş ve gözlenmemiş); `versions` aralıklı `ignore` (gerekçesi kalmamış bir pini erteler, anyio'nun güvenlik güncellemelerini de susturur). **Doyma kökten çözülmüyor:** #40/#41 6D-6'ya kadar açık, ve tam taramalar boşalan yuvaları dolduruyor | Tetikleyici: **açık `dependabot/pip/` PR sayısı 5'e çıkar ve bir Pazartesi doymuş geçerse** limit kararı yeniden açılır |
+| ~~numpy ve ruff bump'ları deney için bekletiliyor~~ — numpy hiç beklemiyordu (`Requires-Python >=3.12`); yalnız `ruff` (0.16.6 → 0.16.8, 09-24 itibarıyla) | **Sahibi 6D-4d** (2026-09-24 kararı). Bekletmenin tek gerekçesi grup deneyiydi ve D1′ ile düştü; bump kendiliğinden de gelmeyecekti. 6D-4d `requirements-dev.txt`'e elle ekler, o anki son sürümü yeniden ölçerek. **10-05:** D7'nin taraması ruff 0.16.10'u grup PR'ı #39'a koydu; #39'un kaderi 6D-4d-1'in planında ele alınır. **Kapandı (2026-10-06):** #39 bütün olarak merge edildi (`ec197ae`); ruff 0.16.10 main'de. Merge'den önce #39'un head'i taze bir venv'de yerelde ölçüldü: `ruff check .` temiz, izole bakiye 24, pytest 592 + 1 |
 | Kapanma kipleri (ii) ile (iv)'ü ayıran değişken kanıtlanmadı. Aday (post-hoc): **turda tam tarama olup olmadığı**, altı gözlemin altısına da uyuyor (yukarıdaki tablo). Sürüm değişimi değişken değil; #33 aynı sürüm durumunda bir kez rebase, bir kez supersede gördü | Tetikleyici: **bir sonraki tam tarama ya da yenileme işi** — aday önceden tahmin olarak yazılır ve o işte sınanır. Yanlışlayıcılar: yerinde yeniden yazan bir tam tarama, ya da supersede eden yalın bir yenileme işi |
+
+---
+
+## Transitif sürüklenme — 6D-3b'nin kısıt dosyası ertelendi
+
+**Where:** `requirements.txt`, `requirements-dev.txt`,
+[`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (`pip freeze`
+adımı), [`.github/workflows/pr-risk-analysis.yml`](../.github/workflows/pr-risk-analysis.yml)
+
+13 doğrudan `==` pinin üstünde 106 transitif paket alt sınırla, üst sınırsız
+çözülüyor ve koşudan koşuya sürükleniyor. 6D-2 bunu görünür kıldı (`pip
+freeze` adımı), ama dondurmadı. Dondurma mekanizması **6D-3b**: bir kısıt
+dosyası (`-c constraints.txt`).
+
+**Bu bölüm 6D-4d-1'de yazıldı, faz 2026-09-03'te ertelendiği hâlde.** O günden
+beri tasarımı ve ölçülmüş ön koşulları yalnız oturum hafızasında duruyordu;
+depodaki tek iz yukarıdaki `anyio` bölümünde, var olmayan bir maddeye atıf
+yapan bir cümleydi. Bir fazın bütün tasarımının depo dışında durması sahipsiz
+borç sayıldı. Aşağıdaki ölçümler oradan **olduğu gibi** taşındı; yeni bir şey
+eklenmedi.
+
+**Neden ertelendi — sıra, evet/hayır değil (2026-09-03).** O gün 13 doğrudan
+pinin 12'si gerideydi, çoğu bir major sürüm. Bayat bir tabanın üstüne 106
+transitif paketi dondurmak bayatlığı kilitler ve 6D-4'ü tek bir büyük adıma
+çevirirdi. **Önce taban güncellenir, sonra dondurulur.**
+
+**Ölçülmüş ön koşullar (6D-3 keşfi, 2026-09-03 ve 09-06; Windows, `pip 26.2.1`):**
+
+- **Mekanizma çalışıyor — kanıtı küme eşitliği değil.** Geçici bir venv'de
+  `pip install -c constraints.txt -r requirements.txt`: exit 0, 112 paket.
+  Kısıtlar kurulumu zorlamaz, sürümleri sınırlar; `requirements.txt`'in
+  kapanışı zaten 112 idi, yani eşitlik beklenen sonuçtu, doğrulama değil.
+  Asıl kanıt, kısıtlı kurulumun aynı günün kısıtsız çözümünden ayrıştığı dört
+  nokta — kısıtlar sürümleri **geri çekti**: `anyio` 4.15.0 → 4.14.2,
+  `uvicorn` 0.52.4 → 0.52.1, `pydantic` 2.13.5 → 2.13.4, `gitpython` 3.1.61 →
+  3.1.59.
+- **SINIR — bilinçli bir daraltma değil, bir sapma.** Onaylanan plan
+  `-r requirements-dev.txt` diyordu; `-r requirements.txt` koşuldu. Dev
+  katmanı (pytest, pytest-cov, ruff, coverage ve transitifleri) kısıt altında
+  **hiç kurulmadı**. Ölçüm Windows'ta alındı. 6D-3b dev katmanını ölçülmüş
+  saymamalı.
+- **`--exclude-editable` zorunlu.** Düz `pip freeze > constraints.txt` bu
+  depoda düşüyor: `ERROR: Editable requirements are not allowed as
+  constraints`, çünkü CI `pip install -e . --no-deps` koşuyor ve freeze bir
+  `-e git+https://...#egg=defect_risk_analyzer` satırı üretiyor (113 → 112
+  satır).
+- **Dosya Linux'ta üretilmeli — CI'da gözlendi.** CI'ın kendi `pip freeze`'i
+  (2026-09-06, PR #21): `uvloop==0.22.1` var, `colorama` yok — Windows
+  çözümünün tam tersi. Windows'ta üretilen bir dosya CI'a giremez. 6D-4d-1'den
+  beri CI `ubuntu-24.04`'e sabit (aşağıdaki ek); dosya o imajda üretilmeli.
+- **Dosya `pr-risk-analysis.yml`'e de ulaşmalı.** O iş akışı yalnız
+  `requirements.txt` kuruyor ve `cache: pip` taşımıyor; iki iş akışı farklı
+  çözünürlük test ediyor. 6D-3a'dan beri `anyio`'da da ayrışıyorlar
+  (`tests.yml` pinli 4.14.2, `pr-risk-analysis.yml` o gün `groq` üzerinden
+  4.15.1 çözüyordu).
+
+**Mekanizma seçenekleri (malzeme, seçim değil):**
+
+| | yeni bağımlılık | Dependabot |
+|---|---|---|
+| `pip freeze --exclude-editable` + `-c` | yok | **ölçülmedi** — `constraints.txt` desteklenen manifest listesinde değil |
+| pip-tools (`pip-compile`) | pip-tools | **belgelenmiş** |
+| `uv pip compile` | uv | iki GitHub Docs sayfası çelişiyor; çözülmedi |
+
+**Ölçülmedi — tahmin edilmez:** Dependabot'un çıplak bir `constraints.txt`'i
+okuyup okumadığı; `pip-compile`'ı yeniden koşturup koşturmadığı; `-c`
+satırının setuptools'un dinamik okuduğu bir dosyada ne yaptığı.
+
+**Sürüklenmenin somut bir örneği — 6D-4d-1'de ölçüldü.** 2026-09-25'te
+`opentelemetry-exporter-otlp-proto-grpc` 1.45.0 yayımlandı ve yeni bir
+bağımlılık getirdi: `opentelemetry-exporter-otlp-common==0.66b0`. Zincir:
+`chromadb 0.6.3 → opentelemetry-exporter-otlp-proto-grpc>=1.2.0`. Kimse
+istemeden çözünürlük 118'den 119'a çıktı — 6D-4c'nin 09-24 ölçümünden bir
+gün sonra. CI'da (2026-10-02, ölçüm dalı) ve yerelde birebir aynı 119;
+`tests.yml`'in yorumu bu yüzden 6D-4d-1'e kadar yanlış sayıyı söylüyordu.
+Bu, kısıt dosyasının gerekçesinin ta kendisi: bir manifest değişmeden küme
+değişti.
+
+| Borç | İşaret |
+|---|---|
+| 106 transitif paket dondurulmamış; çözünürlük manifest değişmeden değişebiliyor (09-25'te otlp-common) | **6D-6 tamamlandıktan sonra, Faz 7'den önce.** Gerekçe: 6D-6 de tabanı oynatıyor (pandas, plotly majorları); kısıt dosyası ondan önce üretilirse dondurulan küme hemen yeniden açılır — "önce taban güncellensin, sonra dondurulsun" ilkesinin aynısı |
 
 ---
 
@@ -1973,6 +2056,18 @@ ayrıştırıcısı kullanılmıyor: `PyYAML` doğrudan bağımlılık değil.
 | M2 yalnız `pr-risk-analysis.yml` → `ubuntu-26.04` | iki dosya ayrışmaz | birinci test **kırmızı** |
 | M3 test deseni `runs_on:` (hiçbir satırı yakalamaz) | tarama boş değil | birinci test **boşuna yeşil**, ikinci test **kırmızı** — ikinci testin varlık sebebi |
 
+**`anyio` pininin kaldırma tetikleyicisi ateşlendi — bu PR'da değil,
+ölçüldü.** `starlette` 1.7.0 (2026-09-23, CI'ın bugün çözdüğü sürüm)
+`testclient.py:53`'ü `anyio.from_thread.BlockingPortal`'a çevirdi;
+yukarıdaki tetikleyicinin iki koşulu da sağlanıyor. Geçici bir venv'de,
+`TestClient` ile, bütün DeprecationWarning'ler kaydedilerek: starlette
+1.7.0 + anyio 4.15.1 → **0** uyarı; **kontrol** starlette 1.6.0 + anyio
+4.15.1 → **1** uyarı (alias mesajı — prob uyarıyı görebiliyor); starlette
+1.7.0 + anyio 4.14.2 → 0. Pin kendi PR'ında kaldırılır, 6D-4d-1'den hemen
+sonra ve 6D-4d-2'den önce: pip-audit'in ignore listesi son ortamda
+hesaplanır ve anyio'nun sürümü ortamı değiştiriyor.
+
 | Borç | İşaret |
 |---|---|
 | CI `ubuntu-24.04`'e sabit; Ubuntu 26'ya geçiş bilerek ertelendi | Tetikleyici: **GitHub 24.04 için kullanımdan kaldırma duyurduğunda ya da 6D-3b'nin kısıt dosyası üretilmeden önce — hangisi önce gelirse.** Geçiş kendi PR'ında, freeze diff'i gözlenerek yapılır; `tests/test_workflow_runners.py`'deki `EXPECTED_RUNNER` orada değişir |
+| `anyio==4.14.2` pininin gerekçesi starlette 1.7.0 ile kalktı | **6D-4d**, 6D-4d-1'den hemen sonra kendi PR'ında: mutasyon bekçisi (literal) silinir, gerekçe bekçisi kalır ve starlette'in geri gitmesini bekler; kırmızısı starlette 1.6.0'lı geçici bir venv'de gözlenir |
