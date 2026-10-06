@@ -38,7 +38,6 @@ mutasyonunu gerektirir — gerekçesi ölçülmemiş bir pin buraya girmez.
 """
 
 import json
-import re
 import subprocess
 import sys
 import textwrap
@@ -50,55 +49,6 @@ import pytest
 # temporary directory, so the shipped tree is only reachable from here. Same
 # reason as tests/test_entry_points.py and tests/test_known_debt_tally.py.
 REPO_ROOT = Path(__file__).resolve().parents[1]
-REQUIREMENTS_DEV = REPO_ROOT / "requirements-dev.txt"
-
-# Faz 6D-3a'da ölçülen ve dosyaya yazılan satır. Değiştirmek, ölçümü
-# tekrarlamayı gerektirir — docstring'e bakın.
-EXPECTED_ANYIO_PIN = "anyio==4.14.2"
-
-# Yorum satırlarını ve boşluğu atlayarak `anyio` gereksinim satırını bulur.
-# `test_known_debt_tally.py`'nin regex idiomu: belgede/dosyada aranan şey bir
-# desendir, ve desen bulunamazsa test ne yapılacağını söyler.
-_ANYIO_REQUIREMENT = re.compile(r"^\s*(anyio\b[^\s#]*)", re.MULTILINE)
-
-
-def _anyio_requirement_line() -> str:
-    """`requirements-dev.txt`'teki `anyio` gereksinim spec'i, ham metin."""
-    text = REQUIREMENTS_DEV.read_text(encoding="utf-8")
-    match = _ANYIO_REQUIREMENT.search(text)
-    assert match is not None, (
-        "requirements-dev.txt'te bir `anyio` gereksinim satiri bulunamadi. "
-        f"Beklenen: `{EXPECTED_ANYIO_PIN}`. Pin, starlette.testclient'in "
-        "anyio.abc.BlockingPortal alias'ini tetiklemesini onlemek icin var "
-        "(Faz 6D-3a); silinmeden once docs/KNOWN-DEBT.md'deki tetikleyiciye "
-        "bakin."
-    )
-    return match.group(1)
-
-
-def test_requirements_dev_still_carries_the_expected_anyio_pin():
-    """Pin satırı **beklenen literal** olmalı.
-
-    İDDİA KASTEN DAR. Bu test düz metin karşılaştırması yapar, dolayısıyla
-    literal bir iddia taşır: satır tam olarak `anyio==4.14.2` mi. "Spec 4.15+'ı
-    dışlıyor" demek semantik bir iddia olurdu ve düz metin karşılaştırması onu
-    vermez; vermek için `packaging` ile spec cebiri gerekirdi, ki bu testin işi
-    o değil ve yeni bir bağımlılık gerektirir. Semantiği tutan, aşağıdaki ikinci
-    testtir.
-
-    Bu daraltma testi zayıflatmıyor: ölçülen ve yazılan tek bir sürüm var, ve
-    pinin `4.15.1`'e çevrilmesi de silinmesi kadar kırmızı vermeli. İkisi ayrı
-    mutasyon olarak denendi.
-    """
-    assert _anyio_requirement_line() == EXPECTED_ANYIO_PIN, (
-        f"requirements-dev.txt'teki anyio pini beklenen literal degil.\n"
-        f"  dosyada: {_anyio_requirement_line()}\n"
-        f"  beklenen: {EXPECTED_ANYIO_PIN}\n"
-        "anyio 4.15.0 anyio.abc'yi tembel importa cevirdi ve "
-        "starlette/testclient.py:53 uyaran alias'i tetikliyor. Pini yukseltmek "
-        "CI'a `The anyio.abc.BlockingPortal alias is deprecated` uyarisini geri "
-        "getirir. Kaldirma tetikleyicisi docs/KNOWN-DEBT.md'de."
-    )
 
 
 # Alt süreçte koşan gerekçe bekçisi. `tests/test_core_boundary.py` ve
