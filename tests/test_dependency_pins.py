@@ -1,104 +1,55 @@
 """
-Gerekçesi ölçülmüş bir sürüm pini, gerekçesiyle birlikte tutulur.
+Bir pinin gerekçesi, pin kalktıktan sonra da tutulur.
 
-WHY. `anyio` 4.15.0 `anyio` ve `anyio.abc` modüllerini tembel importa çevirdi ve
-geriye-uyum re-export'larını uyaran alias'lara dönüştürdü. `starlette 1.6.0`
-`testclient.py:53`'te modül düzeyinde `anyio.abc.BlockingPortal`'a dokunuyor, bu
-yüzden CI'ın `pytest` çıktısında `The anyio.abc.BlockingPortal alias is
-deprecated` uyarısı beliriyor. 4.14.2'de aynı ad düz bir re-export
-(`from ..from_thread import BlockingPortal as BlockingPortal`), yani uyarı orada
-fiziksel olarak imkânsız. Faz 6D-3a `requirements-dev.txt`'e `anyio==4.14.2`
-koyarak uyarıyı kaldırıyor.
+TARİHÇE. Faz 6D-3a `requirements-dev.txt`'e `anyio==4.14.2` koydu: anyio 4.15.0
+`anyio.abc`'nin geriye-uyum re-export'larını uyaran alias'lara çevirdi, ve
+`starlette 1.6.0` `testclient.py:53`'te modül düzeyinde
+`anyio.abc.BlockingPortal`'a dokunuyordu; CI'ın `pytest` çıktısında
+`The anyio.abc.BlockingPortal alias is deprecated` beliriyordu. `starlette
+1.7.0` o satırı `anyio.from_thread.BlockingPortal`'a çevirdi, KNOWN-DEBT'teki
+tetikleyici ateşlendi ve pin Faz 6D-4d'de kalktı. Pinin literalini tutan
+mutasyon bekçisi onunla birlikte silindi: tutacağı satır kalmadı.
 
-Pinin kendisi tek satır. Tek satırın sorunu, sessizce kaldırılabilmesi: altı ay
-sonra biri satırı siler, CI yeşil kalır, uyarı geri gelir ve kimse görmez. Bu
-depo bu sınıfın bedelini iki kez ödedi — `desktop` extra'sı 23 yerde yazılıp hiç
-beyan edilmemişti, KNOWN-DEBT'in lint bakiyesi üç tur yanlış kaldı.
+KALAN TEK TEST NEYİ TUTUYOR. Uyarının yokluğunu — artık bir pinle değil,
+`starlette`'in 1.7.0'ın altına inmemesiyle. `anyio` serbest çözülüyor;
+`starlette` bir gün geri giderse (bir kısıt, bir yanlış pin, bir tavan) uyarı
+geri gelir ve bu test kırmızıya döner.
 
-İKİ TEST, İKİ AYRI İŞ — VE BİRİ ÖTEKİNİN YERİNİ TUTMUYOR.
+BEYAN 1 — BU MAKİNEDE MUTASYON-GEÇİRMEZ. Kırmızısı yalnız `starlette 1.6.0` +
+`anyio 4.15.x` bir ortamda mümkün. O ortam depo dışında taze bir venv'de
+kuruldu ve kırmızı gözlendi; ölçüm docs/KNOWN-DEBT.md'de.
 
-  * `test_requirements_dev_still_carries_the_expected_anyio_pin` =
-    **mutasyon bekçisi**. Pin satırının beklenen literal olduğunu doğrular.
-    Ağsız, alt süreçsiz, her makinede aynı sonucu verir; "pini sil" ve "pini
-    4.15.1 yap" mutasyonlarının ikisinde de kırmızıya döner.
-  * `test_starlette_testclient_emits_no_anyio_alias_deprecation` =
-    **gerekçe bekçisi**. Pinin ne için konduğunu tutar: uyarının yokluğu.
+BEYAN 2 — ÖLÇEMEYEN TEST GEÇMEZ. Ölçüm alınamazsa — alt süreç sıfırdan farklı
+döner, çıktısı JSON değildir, ya da `starlette.testclient` import edilemez —
+test skip değil KIRMIZI olur (6D-4d kararı; o güne kadar üçü de skip'ti).
+Beklenen tek gerçek durum Faz 6D-5: chromadb 1.x `fastapi`yi, dolayısıyla
+`starlette`'i, runtime'dan `dev` extra'sına taşıyor. O PR bu testi bilerek
+siler — koruyacağı şey kalmamıştır — ya da `starlette` başka bir yoldan
+kuruluyorsa testi o kaynağa göre günceller. Skip'e çevirmek kararın tersidir.
+Alt süreç ve JSON dallarının doğal bir kırmızısı yok; yalnız kod mutasyonuyla
+gözlendiler.
 
-BEYAN EDİLMİŞ: GEREKÇE BEKÇİSİ BU MAKİNEDE MUTASYON-GEÇİRMEZ. İkinci test
-"pini sil" mutasyonundan **sağ çıkar**, çünkü mutasyon yalnız bir metin
-dosyasını değiştirir — kurulu `anyio` yerinde kalır ve burada zaten 4.15
-öncesidir, dolayısıyla kırmızı fiziksel olarak imkânsızdır. Bu bir kusur değil,
-iki testin farklı şeyi tutmasının sonucu; ama gizlenirse ileride "iki testimiz
-var, korunuyoruz" yanılgısı üretir. Birleşik takım mutasyon protokolünü
-**yalnız birinci test sayesinde** geçiyor. İkinci testin kırmızısı geçici bir
-venv'de (`anyio==4.15.1`) gözlendi; ölçüm docs/KNOWN-DEBT.md'de.
+BEYAN 3 — FİLTRENİN KÖR NOKTASI. Eleme mesaj bazlı (`"anyio.abc"` ve
+`"deprecat"`). anyio uyarının metnini bu iki parçayı içermeyecek biçimde
+değiştirirse test boşuna yeşil geçer. Bunu tutan bir test yok (6D-4d kararı);
+filtrenin bugünkü mesajı gördüğü 6D-4d'de bir kez kanıtlandı: starlette 1.6.0
+mutasyonu kırmızıydı.
 
-BU DOSYA BİR YIĞINAK DEĞİL. Adı genel, ama buraya eklenen her yeni pin kendi
-mutasyonunu gerektirir — gerekçesi ölçülmemiş bir pin buraya girmez.
+BU DOSYA BİR YIĞINAK DEĞİL. Adı genel ve 6D-4d'den beri içinde pin yok; buraya
+yeniden eklenen her pin kendi mutasyonunu gerektirir — gerekçesi ölçülmemiş
+bir pin buraya girmez.
 """
 
 import json
-import re
 import subprocess
 import sys
 import textwrap
 from pathlib import Path
 
-import pytest
-
 # The repo, not the config sandbox: conftest points every config path at a
 # temporary directory, so the shipped tree is only reachable from here. Same
 # reason as tests/test_entry_points.py and tests/test_known_debt_tally.py.
 REPO_ROOT = Path(__file__).resolve().parents[1]
-REQUIREMENTS_DEV = REPO_ROOT / "requirements-dev.txt"
-
-# Faz 6D-3a'da ölçülen ve dosyaya yazılan satır. Değiştirmek, ölçümü
-# tekrarlamayı gerektirir — docstring'e bakın.
-EXPECTED_ANYIO_PIN = "anyio==4.14.2"
-
-# Yorum satırlarını ve boşluğu atlayarak `anyio` gereksinim satırını bulur.
-# `test_known_debt_tally.py`'nin regex idiomu: belgede/dosyada aranan şey bir
-# desendir, ve desen bulunamazsa test ne yapılacağını söyler.
-_ANYIO_REQUIREMENT = re.compile(r"^\s*(anyio\b[^\s#]*)", re.MULTILINE)
-
-
-def _anyio_requirement_line() -> str:
-    """`requirements-dev.txt`'teki `anyio` gereksinim spec'i, ham metin."""
-    text = REQUIREMENTS_DEV.read_text(encoding="utf-8")
-    match = _ANYIO_REQUIREMENT.search(text)
-    assert match is not None, (
-        "requirements-dev.txt'te bir `anyio` gereksinim satiri bulunamadi. "
-        f"Beklenen: `{EXPECTED_ANYIO_PIN}`. Pin, starlette.testclient'in "
-        "anyio.abc.BlockingPortal alias'ini tetiklemesini onlemek icin var "
-        "(Faz 6D-3a); silinmeden once docs/KNOWN-DEBT.md'deki tetikleyiciye "
-        "bakin."
-    )
-    return match.group(1)
-
-
-def test_requirements_dev_still_carries_the_expected_anyio_pin():
-    """Pin satırı **beklenen literal** olmalı.
-
-    İDDİA KASTEN DAR. Bu test düz metin karşılaştırması yapar, dolayısıyla
-    literal bir iddia taşır: satır tam olarak `anyio==4.14.2` mi. "Spec 4.15+'ı
-    dışlıyor" demek semantik bir iddia olurdu ve düz metin karşılaştırması onu
-    vermez; vermek için `packaging` ile spec cebiri gerekirdi, ki bu testin işi
-    o değil ve yeni bir bağımlılık gerektirir. Semantiği tutan, aşağıdaki ikinci
-    testtir.
-
-    Bu daraltma testi zayıflatmıyor: ölçülen ve yazılan tek bir sürüm var, ve
-    pinin `4.15.1`'e çevrilmesi de silinmesi kadar kırmızı vermeli. İkisi ayrı
-    mutasyon olarak denendi.
-    """
-    assert _anyio_requirement_line() == EXPECTED_ANYIO_PIN, (
-        f"requirements-dev.txt'teki anyio pini beklenen literal degil.\n"
-        f"  dosyada: {_anyio_requirement_line()}\n"
-        f"  beklenen: {EXPECTED_ANYIO_PIN}\n"
-        "anyio 4.15.0 anyio.abc'yi tembel importa cevirdi ve "
-        "starlette/testclient.py:53 uyaran alias'i tetikliyor. Pini yukseltmek "
-        "CI'a `The anyio.abc.BlockingPortal alias is deprecated` uyarisini geri "
-        "getirir. Kaldirma tetikleyicisi docs/KNOWN-DEBT.md'de."
-    )
 
 
 # Alt süreçte koşan gerekçe bekçisi. `tests/test_core_boundary.py` ve
@@ -129,8 +80,10 @@ _PROBE = textwrap.dedent(
 def test_starlette_testclient_emits_no_anyio_alias_deprecation():
     """`starlette.testclient` import'u anyio alias uyarısı üretmemeli.
 
-    Bu, pinin **gerekçesini** tutan test: satırın varlığını değil, satırın var
-    olma nedenini ölçer.
+    6D-3a'dan 6D-4d'ye kadar bu test `anyio==4.14.2` pininin gerekçesini
+    tutuyordu. Pin kalktı; test artık aynı yokluğu `starlette`'in 1.7.0 altına
+    inmemesi üzerinden tutuyor. Ölçemezse kırmızı olur (modül docstring'i,
+    BEYAN 2).
 
     FİLTRE KASTEN DAR — VE DARLIĞI 6D-4c'DE KARŞILIĞINI VERDİ. Assert "hiç
     uyarı yok" değildir. 6D-3a'dan 6D-4c'ye kadar beklenen ve kalması gereken
@@ -157,27 +110,38 @@ def test_starlette_testclient_emits_no_anyio_alias_deprecation():
         text=True,
         cwd=REPO_ROOT,
     )
-    if proc.returncode != 0:  # pragma: no cover
-        pytest.skip(f"alt surec calistirilamadi: {proc.stderr.strip()[:200]}")
+    # OLCEMEYEN TEST GECMEZ (Faz 6D-4d karari). Asagidaki uc assert 6D-4d'ye
+    # kadar pytest.skip idi: olcum alinamazsa test sessizce atlaniyordu ve CI
+    # yesil kaliyordu. Simdi uc dal da kirmizi - modul docstring'i, BEYAN 2.
+    assert proc.returncode == 0, (
+        f"olcum alt sureci {proc.returncode} ile dondu; uyari olculemedi.\n"
+        f"--- stderr ---\n{proc.stderr.strip()[:500]}\n"
+        "Bu test olcum yapamadiginda yesil ya da skip gecmez (Faz 6D-4d)."
+    )
 
+    lines = proc.stdout.strip().splitlines()
     try:
-        result = json.loads(proc.stdout.strip().splitlines()[-1])
-    except (ValueError, IndexError):  # pragma: no cover
-        pytest.skip(f"alt surec cikti veremedi: {proc.stdout.strip()[:200]}")
+        result = json.loads(lines[-1]) if lines else None
+    except ValueError:  # pragma: no cover
+        result = None
+    assert isinstance(result, dict), (
+        "olcum alt sureci JSON cikti vermedi; uyari olculemedi.\n"
+        f"--- stdout ---\n{proc.stdout.strip()[:500]}\n"
+        "Bu test olcum yapamadiginda yesil ya da skip gecmez (Faz 6D-4d)."
+    )
 
-    if "import_error" in result:  # pragma: no cover
-        # 6D-5 İŞARETİ (6D-4b'de kontrol edildi, tetiklenmedi). `starlette`
-        # buraya chromadb -> fastapi -> starlette zincirinden geliyor. chromadb
-        # 1.5.9 `fastapi`yi runtime'dan `dev` extra'sina tasidi, ama 6D-4b
-        # 0.6.3'te durdu ve 0.6.3 `fastapi`yi runtime'da tutuyor — olculdu,
-        # `starlette` kapanista duruyor. Risk 1.x'e gecisle birlikte geri gelir:
-        # o an bu test sessizce atlanir, birinci test yesil kalir ve pin
-        # gerekcesiz bir kisit olarak dosyada kalir.
-        pytest.skip(
-            f"starlette import edilemedi ({result['import_error']}). "
-            "starlette kapanistan dustuyse requirements-dev.txt'teki anyio pini "
-            "gerekcesini kaybetmis olabilir — 6D-4'te kontrol edilecek."
-        )
+    # 6D-5 ISARETI. `starlette` buraya chromadb -> fastapi -> starlette
+    # zincirinden geliyor; chromadb 1.x `fastapi`yi runtime'dan `dev`
+    # extra'sina tasiyor (1.5.9'da olculdu). O gecis bu assert'u kirmiziya
+    # cevirir - bilerek: testin olcecegi sey kalmaz, ve 6D-5'in PR'i testi ya
+    # siler ya da starlette'in yeni kaynagina gore gunceller. Skip'e cevirmez.
+    assert "import_error" not in result, (
+        f"starlette.testclient import edilemedi ({result.get('import_error')}).\n"
+        "Bu testin olcecegi sey kalmadi. Beklenen tek durum Faz 6D-5: chromadb "
+        "1.x fastapi'yi (onunla starlette'i) runtime'dan dev extra'sina "
+        "tasiyor. O PR bu testi bilerek silmeli ya da guncellemeli; skip'e "
+        "cevirmeyin. docs/KNOWN-DEBT.md, anyio bolumu."
+    )
 
     offenders = [
         w
@@ -187,6 +151,8 @@ def test_starlette_testclient_emits_no_anyio_alias_deprecation():
     assert not offenders, (
         "starlette.testclient import'u anyio.abc alias uyarisi uretti:\n"
         + "\n".join(f"  {w['category']}: {w['message']}" for w in offenders)
-        + "\nrequirements-dev.txt'teki `anyio==4.14.2` pini kalkmis ya da "
-        "cozunurlukte etkisiz kalmis olabilir (Faz 6D-3a)."
+        + "\nstarlette 1.7.0'in altina inmis olabilir: 1.7.0 testclient.py:53'u "
+        "anyio.from_thread.BlockingPortal'a cevirmisti. anyio pini Faz 6D-4d'de "
+        "kaldirildi; geri koymadan once starlette'in neden geriledigine bakin "
+        "(docs/KNOWN-DEBT.md, anyio bolumu)."
     )

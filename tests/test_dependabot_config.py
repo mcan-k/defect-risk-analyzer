@@ -102,7 +102,7 @@ def test_pip_ecosystem_entry_still_exists():
     blocks = _ecosystem_blocks()
     assert "pip" in blocks, (
         ".github/dependabot.yml'de `- package-ecosystem: pip` girdisi yok. "
-        "Faz 6D-3c onu ekledi; silinmesi Dependabot'un 14 `==` pinini izlemeyi "
+        "Faz 6D-3c onu ekledi; silinmesi Dependabot'un 13 `==` pinini izlemeyi"
         "sessizce birakmasi demektir. Kasitli bir kaldirma ise bu testi ve "
         "docs/KNOWN-DEBT.md'deki 6D-3c girdilerini de kaldirin."
     )
