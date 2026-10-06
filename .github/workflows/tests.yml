@@ -22,7 +22,14 @@ permissions:
 jobs:
   test:
     name: Lint & Test
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest (phase 6D-4d-1). The label moves to Ubuntu 26
+    # from 2026-10-19 (actions/runner-images#14748), and the resolved package
+    # set below is platform-specific, so an unannounced image change would land
+    # in the freeze diff as noise. pr-risk-analysis.yml is pinned to the same
+    # image so the two workflows do not diverge by platform as well as by
+    # resolution. tests/test_workflow_runners.py holds both; the move to 26.04
+    # is its own PR, trigger in docs/KNOWN-DEBT.md.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
@@ -42,11 +49,18 @@ jobs:
           pip install -r requirements-dev.txt
           pip install -e . --no-deps
 
-      # requirements.txt and requirements-dev.txt pin 12 direct dependencies with
-      # `==`, but a fresh resolve installs 118 packages — the other 106 arrive
+      # requirements.txt and requirements-dev.txt pin 13 direct dependencies with
+      # `==`, but a fresh resolve installs 119 packages — the other 106 arrive
       # transitively with no upper bound and drift between runs. They already
       # scroll past in the install output; this records them in one greppable
       # place so a version change is visible in a log diff.
+      #
+      # Measured 2026-10-02 in CI and 2026-10-06 locally. This comment said
+      # 12 / 118 until phase 6D-4d-1, and both numbers had gone stale without
+      # any edit here: 6D-3a turned anyio from transitive into a direct pin,
+      # and on 2026-09-25 opentelemetry-exporter-otlp-proto-grpc 1.45.0 (via
+      # chromadb) started requiring opentelemetry-exporter-otlp-common, one
+      # package nobody asked for. That drift is the case for phase 6D-3b.
       #
       # Placed before Ruff and Pytest on purpose: when lint or the suite breaks,
       # knowing what was actually resolved is worth the most, so the record has

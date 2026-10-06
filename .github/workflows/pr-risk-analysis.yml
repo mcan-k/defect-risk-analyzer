@@ -42,7 +42,12 @@ jobs:
     # Removal trigger in docs/KNOWN-DEBT.md.
     if: github.actor != 'dependabot[bot]'
 
-    runs-on: ubuntu-latest
+    # Pinned to the same image as tests.yml (phase 6D-4d-1), not ubuntu-latest,
+    # which moves to Ubuntu 26 from 2026-10-19. The two workflows already
+    # resolve different sets (this one installs requirements.txt only); a
+    # platform difference on top would make the gap harder to read.
+    # tests/test_workflow_runners.py fails if either file drifts alone.
+    runs-on: ubuntu-24.04
 
     steps:
       - name: Checkout repository
