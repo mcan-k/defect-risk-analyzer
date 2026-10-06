@@ -2056,6 +2056,15 @@ ayrıştırıcısı kullanılmıyor: `PyYAML` doğrudan bağımlılık değil.
 | M2 yalnız `pr-risk-analysis.yml` → `ubuntu-26.04` | iki dosya ayrışmaz | birinci test **kırmızı** |
 | M3 test deseni `runs_on:` (hiçbir satırı yakalamaz) | tarama boş değil | birinci test **boşuna yeşil**, ikinci test **kırmızı** — ikinci testin varlık sebebi |
 
+**pytest 8.3.4 → 9.1.1, elle.** Dependabot'un #31'i 09-10 tabanlıydı ve o
+günden beri hiç güncellenmedi; bump bu PR'da elle yazıldı. Kod değişikliği
+gerekmedi. **CVE-2025-71176 kapandı** (pip-audit kimliği PYSEC-2026-1845,
+GHSA-6w46-j5rx-g56g; `tmpdir` izinleri; düzeltme 9.0.3). CI'daki pip-audit
+ölçümünde (2026-10-02, ölçüm dalı, iki ayrı job) pytest 9.1.1'li ortamda hem
+`-s pypi` hem `-s osv` bu kaydı artık raporlamadı; tekil açık sayısı 5'ten
+4'e indi. Yukarıdaki "ROADMAP Faz 3'te olup Faz 3'e alınmayanlar"
+bölümündeki `pip-audit` maddesi 6D-4d-2'nin işi; burada kapanmadı.
+
 **`anyio` pininin kaldırma tetikleyicisi ateşlendi — bu PR'da değil,
 ölçüldü.** `starlette` 1.7.0 (2026-09-23, CI'ın bugün çözdüğü sürüm)
 `testclient.py:53`'ü `anyio.from_thread.BlockingPortal`'a çevirdi;
