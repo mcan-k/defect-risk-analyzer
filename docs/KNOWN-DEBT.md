@@ -1270,9 +1270,9 @@ kalıyor, yani bekçi testi "hiç uyarı yok" diye boş yere geçmiyor.
 
 | Borç | İşaret |
 |---|---|
-| Bir üst-akış uyarısını susturmak için tutulan transitif pin; `anyio` bu pin durdukça 4.14.2'de donuyor | Tetikleyici: **kurulu `starlette/testclient.py` dosyası VAR ve içinde `anyio.abc.BlockingPortal` eşleşmesi YOK olduğunda**. İki koşul birlikte: tek başına "grep boş döndü", starlette hiç kurulu değilse de doğrudur ve tetikleyiciyi yanlışlıkla ateşlenmiş gösterir. **Dosya yoksa bu bir tetikleyici değil, aşağıdaki 6D-4 sorusudur** |
-| `chromadb` 1.5.9 `fastapi`yi runtime'dan `dev` extra'sına taşıdı; 6D-4'ün chromadb bump'ı sonrası `starlette` `requirements-dev.txt`'in kapanışından düşerse gerekçe bekçisi sessizce `skip`'e geçer, mutasyon bekçisi yeşil kalır ve pin gerekçesiz bir kısıt olarak dosyada kalır | Tetikleyici: **6D-4**, chromadb bump'ıyla birlikte kontrol edilecek |
-| `tests/test_dependency_pins.py` adı genel; dosya bir yığınak değil | Tetikleyici: **dosyaya ikinci bir pin eklendiğinde** — her yeni pin kendi mutasyonunu gerektirir |
+| ~~Bir üst-akış uyarısını susturmak için tutulan transitif pin; `anyio` bu pin durdukça 4.14.2'de donuyor~~ — **Kapandı (6D-4d, 2026-10-06):** tetikleyici ateşlendi (starlette 1.7.0, aşağıdaki 6D-4d-1 eki); pin kaldırıldı, literal bekçi silindi, gerekçe bekçisi kaldı ve artık starlette'in 1.7.0 altına inmesini bekliyor (aşağıdaki 6D-4d eki) | — |
+| `chromadb` 1.x `fastapi`yi runtime'dan `dev` extra'sına taşıyor (1.5.9'da ölçüldü); 6D-4b 0.6.3'te durdu ve `starlette` kapanışta kaldı (6D-4b'de kontrol edildi, tetiklenmedi). 1.x'e geçişte `starlette` `requirements-dev.txt`'in kapanışından düşerse gerekçe bekçisi **kırmızıya döner**: 6D-4d'den beri ölçemeyen bekçi skip değil kırmızı (kullanıcı kararı 2026-10-06). Kırmızı bir kusur değil, sinyal: testin koruyacağı şey kalmamıştır | Tetikleyici: **6D-5**, chromadb 1.x geçişiyle. O PR testi bilerek siler ya da `starlette`'in yeni kaynağına göre günceller; skip'e çevirmez |
+| `tests/test_dependency_pins.py` adı genel; dosya bir yığınak değil | Tetikleyici: **dosyaya yeniden bir pin eklendiğinde** (6D-4d'den beri dosyada pin yok, yalnız bir gerekçe bekçisi var) — her yeni pin kendi mutasyonunu gerektirir |
 
 **Faz 6D-3c eki — anyio'nun bump PR'ı tasarım gereği kırmızıdır.** pip
 ekosistemi açıldığına göre Dependabot bu pini 4.15.x'e yükseltmek için PR
@@ -1939,7 +1939,7 @@ PR için `title`, `head.sha`, `updated_at` ve olay geçmişi (`renamed`,
 | ~~pip'in zamanlanmış taramasının dolu limitte koşmaması bir hipotez~~ — **10-05'te tetikleyici ateşlendi, hipotez desteklendi** (D7). Yuva sıralaması hâlâ dışarıdan türetilemiyor; `groq` sekiz dağıtımın hiçbirini alamamıştı | — |
 | Limit 5 (#25 kalıcı olarak bir yuvayı tuttuğu için etkin 4) doluyken pip'in zamanlanmış taraması koşmuyor: üç Pazartesi 5/5'te 0 koşu, 10-05'te 4/5'te 1 koşu. O tarama sayıyı yeniden 5'e çıkardı, yani kuyruk kendiliğinden boşalmıyor. **Karar verildi (6D-4d-1'in planı, 2026-10-05): limit 5 kalıyor, `anyio` pini kaldırılıyor.** Pinin tetikleyicisi ateşlendi (aşağıda, 6D-4d-1 eki), yani #25'in kalıcı yuvası kendiliğinden kalkar. Pin kendi PR'ında kaldırılır, 6D-4d-1'den sonra; `dependabot.yml` temizliği (anyio'nun `exclude-patterns`'ı ve yorumu) ayrı ve tek dosyalık bir PR'da, çünkü config push'u tam tarama tetikliyor. Reddedilen seçenekler: limiti yükseltmek (kalıcı kırmızı PR'ı gizler); #25'i elle kapatmak (kip iii belgelenmemiş ve gözlenmemiş); `versions` aralıklı `ignore` (gerekçesi kalmamış bir pini erteler, anyio'nun güvenlik güncellemelerini de susturur). **Doyma kökten çözülmüyor:** #40/#41 6D-6'ya kadar açık, ve tam taramalar boşalan yuvaları dolduruyor | Tetikleyici: **açık `dependabot/pip/` PR sayısı 5'e çıkar ve bir Pazartesi doymuş geçerse** limit kararı yeniden açılır |
 | ~~numpy ve ruff bump'ları deney için bekletiliyor~~ — numpy hiç beklemiyordu (`Requires-Python >=3.12`); yalnız `ruff` (0.16.6 → 0.16.8, 09-24 itibarıyla) | **Sahibi 6D-4d** (2026-09-24 kararı). Bekletmenin tek gerekçesi grup deneyiydi ve D1′ ile düştü; bump kendiliğinden de gelmeyecekti. 6D-4d `requirements-dev.txt`'e elle ekler, o anki son sürümü yeniden ölçerek. **10-05:** D7'nin taraması ruff 0.16.10'u grup PR'ı #39'a koydu; #39'un kaderi 6D-4d-1'in planında ele alınır. **Kapandı (2026-10-06):** #39 bütün olarak merge edildi (`ec197ae`); ruff 0.16.10 main'de. Merge'den önce #39'un head'i taze bir venv'de yerelde ölçüldü: `ruff check .` temiz, izole bakiye 24, pytest 592 + 1 |
-| Kapanma kipleri (ii) ile (iv)'ü ayıran değişken kanıtlanmadı. Aday (post-hoc): **turda tam tarama olup olmadığı**, altı gözlemin altısına da uyuyor (yukarıdaki tablo). Sürüm değişimi değişken değil; #33 aynı sürüm durumunda bir kez rebase, bir kez supersede gördü | Tetikleyici: **bir sonraki tam tarama ya da yenileme işi** — aday önceden tahmin olarak yazılır ve o işte sınanır. Yanlışlayıcılar: yerinde yeniden yazan bir tam tarama, ya da supersede eden yalın bir yenileme işi |
+| ~~Kapanma kipleri (ii) ile (iv)'ü ayıran değişken kanıtlanmadı. Aday (post-hoc): **turda tam tarama olup olmadığı**, altı gözlemin altısına da uyuyor (yukarıdaki tablo). Sürüm değişimi değişken değil; #33 aynı sürüm durumunda bir kez rebase, bir kez supersede gördü~~ — **Sınanmadan kapatıldı (2026-10-06):** deney dizisi D7 ile kapandı (kullanıcı kararı 2026-10-05); tetikleyici 10-06'da ateşlendi ama aday önceden tahmin olarak yazılmamıştı. 10-06 gözlemleri aşağıdaki 6D-4d ekinde | ~~Tetikleyici: **bir sonraki tam tarama ya da yenileme işi** — aday önceden tahmin olarak yazılır ve o işte sınanır. Yanlışlayıcılar: yerinde yeniden yazan bir tam tarama, ya da supersede eden yalın bir yenileme işi~~ |
 
 ---
 
@@ -1949,10 +1949,11 @@ PR için `title`, `head.sha`, `updated_at` ve olay geçmişi (`renamed`,
 [`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (`pip freeze`
 adımı), [`.github/workflows/pr-risk-analysis.yml`](../.github/workflows/pr-risk-analysis.yml)
 
-13 doğrudan `==` pinin üstünde 106 transitif paket alt sınırla, üst sınırsız
-çözülüyor ve koşudan koşuya sürükleniyor. 6D-2 bunu görünür kıldı (`pip
-freeze` adımı), ama dondurmadı. Dondurma mekanizması **6D-3b**: bir kısıt
-dosyası (`-c constraints.txt`).
+12 doğrudan `==` pinin üstünde 107 transitif paket alt sınırla, üst sınırsız
+çözülüyor ve koşudan koşuya sürükleniyor (6D-4d'ye kadar 13 / 106; `anyio`
+pini kalktı, paket transitif olarak kümede kaldı). 6D-2 bunu görünür kıldı
+(`pip freeze` adımı), ama dondurmadı. Dondurma mekanizması **6D-3b**: bir
+kısıt dosyası (`-c constraints.txt`).
 
 **Bu bölüm 6D-4d-1'de yazıldı, faz 2026-09-03'te ertelendiği hâlde.** O günden
 beri tasarımı ve ölçülmüş ön koşulları yalnız oturum hafızasında duruyordu;
@@ -2078,5 +2079,82 @@ hesaplanır ve anyio'nun sürümü ortamı değiştiriyor.
 
 | Borç | İşaret |
 |---|---|
-| CI `ubuntu-24.04`'e sabit; Ubuntu 26'ya geçiş bilerek ertelendi | Tetikleyici: **GitHub 24.04 için kullanımdan kaldırma duyurduğunda ya da 6D-3b'nin kısıt dosyası üretilmeden önce — hangisi önce gelirse.** Geçiş kendi PR'ında, freeze diff'i gözlenerek yapılır; `tests/test_workflow_runners.py`'deki `EXPECTED_RUNNER` orada değişir |
-| `anyio==4.14.2` pininin gerekçesi starlette 1.7.0 ile kalktı | **6D-4d**, 6D-4d-1'den hemen sonra kendi PR'ında: mutasyon bekçisi (literal) silinir, gerekçe bekçisi kalır ve starlette'in geri gitmesini bekler; kırmızısı starlette 1.6.0'lı geçici bir venv'de gözlenir |
+| CI `ubuntu-24.04`'e sabit; Ubuntu 26'ya geçiş bilerek ertelendi | Tetikleyici: **GitHub 24.04 için kullanımdan kaldırma duyurduğunda ya da 6D-3b'nin kısıt dosyası üretilmeden önce — hangisi önce gelirse.** Geçiş kendi PR'ında, freeze diff'i gözlenerek yapılır; `tests/test_workflow_runners.py`'deki `EXPECTED_RUNNER` orada değişir. Aynı PR `tests/test_env_writer.py:335`'in docstring'indeki `ubuntu-latest`'i de günceller (6D-4d-1'den beri bayat; 6D-4d'de kaydedildi, düzeltilmedi) |
+| ~~`anyio==4.14.2` pininin gerekçesi starlette 1.7.0 ile kalktı~~ | **Kapandı (6D-4d, 2026-10-06)** — aşağıdaki 6D-4d eki |
+
+---
+
+## Faz 6D-4d eki — `anyio` pini kaldırıldı
+
+**Where:** `requirements-dev.txt`,
+[`tests/test_dependency_pins.py`](../tests/test_dependency_pins.py),
+[`.github/workflows/tests.yml`](../.github/workflows/tests.yml) (yorum),
+[`tests/test_dependabot_config.py`](../tests/test_dependabot_config.py) (mesaj)
+
+**Pin ve literal bekçisi birlikte kalktı.** Yukarıdaki 6D-4d-1 ekinde ölçülen
+tetikleyici üzerine `anyio==4.14.2` ve gerekçe bloğu `requirements-dev.txt`'ten
+çıktı; `anyio` transitif olarak kümede kalıyor ve serbest çözülüyor.
+`test_requirements_dev_still_carries_the_expected_anyio_pin` tutacağı satırı
+kaybettiği için silindi. Gerekçe bekçisi
+(`test_starlette_testclient_emits_no_anyio_alias_deprecation`) kaldı: aynı
+uyarının yokluğunu artık `starlette`'in 1.7.0 altına inmemesi üzerinden
+tutuyor; filtresi değişmedi. Bayatlayan sayılar düzeltildi: `tests.yml`'in
+yorumu 13 / 106 → 12 / 107, `test_dependabot_config.py`'nin mesajı
+Dependabot'un gördüğü `==` pinleri için 14 → 13 (birim: kökteki bütün
+`requirements*.txt`, `requirements-desktop.txt`'in `keyring`'i dahil).
+`.github/dependabot.yml:68`'deki "14" ve anyio'nun `exclude-patterns`'ı
+sıradaki tek dosyalık PR'ın işi.
+
+**Ölçemeyen bekçi geçmez (kullanıcı kararı, 2026-10-06).** Gerekçe bekçisinin
+üç dalı skip'ten kırmızıya döndü: alt süreç sıfırdan farklı döner, çıktısı
+JSON değildir, `starlette.testclient` import edilemez. Skip'li hâlinde
+`starlette` kapanıştan düştüğünde test sessizce atlanır ve CI yeşil kalırdı.
+Beklenen tek gerçek durum 6D-5 (yukarıdaki anyio bölümünün borç tablosu): o
+PR testi bilerek siler ya da günceller. Pozitif kontrol testi eklenmedi;
+filtrenin kör noktası — anyio uyarının metnini "anyio.abc" ve "deprecat"
+içermeyecek biçimde değiştirirse test boşuna yeşil geçer — testin modül
+docstring'inde beyan edildi. Filtrenin bugünkü mesajı gördüğünü aşağıdaki
+M1 bir kez kanıtlıyor.
+
+| Mutasyon | Kırılan iddia | Gözlenen |
+|---|---|---|
+| M0 (kontrol) taze venv, starlette 1.7.0 + anyio 4.15.1 | — | yeşil |
+| M1 depo dışı taze venv, `starlette==1.6.0` + `anyio==4.15.1` (`pip check` temiz) | starlette geri giderse uyarı görünür | **kırmızı**, `:151`: `DeprecationWarning: The anyio.abc.BlockingPortal alias is deprecated, use anyio.from_thread.BlockingPortal instead.` |
+| M2 aynı venv, `pip uninstall starlette` | hedef yoksa geçmez | **kırmızı**, `:138` (`import_error` assert'i): `starlette.testclient import edilemedi (ModuleNotFoundError: No module named 'starlette').` |
+| M3 yerel `.venv`, alt süreç komutu `import sys; sys.exit(3)` | alt süreç hatası geçmez | **kırmızı**, `:116`: `olcum alt sureci 3 ile dondu; uyari olculemedi.` |
+| M4a aynı, komut `print('not json')` | JSON olmayan çıktı geçmez | **kırmızı**, `:127`: `olcum alt sureci JSON cikti vermedi; uyari olculemedi.` (stdout `not json`) |
+| M4b aynı, komut `pass` (boş stdout) | boş çıktı geçmez | **kırmızı**, `:127`, aynı mesaj, stdout boş |
+
+M1–M4b, commit `d2136f4` üzerinde koştu. M3–M4b test dosyasının kendi kodunu
+değiştirdi; her biri dosya kopyasıyla geri alındı ve `cmp` ile `HEAD`'e karşı
+doğrulandı. Alt süreç ve JSON dallarının doğal bir kırmızısı yok: alt süreci
+bozacak bir ortam değişkeni üst pytest sürecini de bozar.
+
+**Taze kurulum (2026-10-06, Windows, depo dışı venv, CI ile aynı adımlar:
+`pip install -r requirements-dev.txt`, `pip install -e . --no-deps`).** Python
+3.11.9 (`tests.yml`: `python-version: "3.11"`; CI yama sürümü imajdaki en
+yeni 3.11.x). Çözülen `anyio` 4.15.1, `starlette` 1.7.0. Paket sayısı **119**
+(`pip freeze --exclude-editable` satırı); mevcut `.venv`'den fark iki satır:
+`anyio` 4.14.2 → 4.15.1 ve `posthog` 7.63.0 → 7.64.0 (transitif sürüklenme,
+bu değişiklikle ilgisiz). `pytest`: 593 passed, 1 skipped
+(`test_env_writer.py:333`), uyarı özeti bölümü yok.
+
+**"Kapanma kipleri" tetikleyicisi 2026-10-06'da ateşlendi — gözlem, sınama
+değil.** "Faz 6D-4c eki"nin borç tablosundaki "Kapanma kipleri (ii) ile
+(iv)" satırının tetikleyicisi "bir sonraki tam tarama ya da yenileme işi" idi. #39'un merge'ünden (08:17:36Z)
+sonra `pip in / for plotly` (08:19:01Z) ve `pip in / for pytest` (08:19:02Z)
+yenileme işleri koştu; `pip in /.` yoktu. #41 (08:19:50Z) ve #31 (08:19:57Z)
+`head_ref_force_pushed` gördü — rebase, supersede yok. **#40 (pandas) hiç olay
+görmedi**, oysa #39 `requirements.txt:26`'yı değiştirdi (bağlam 23–29) ve
+pandas :30'da (bağlam 27–33): D6'nın post-hoc bağlam kuralıyla çelişiyor;
+kaydedildi, analiz edilmedi. #43'ün merge'ünden (10:15:27Z) sonra `pip in /
+for pytest` 10:16:49Z'de koştu; dependabot[bot] #31'e 10:17:35Z'de *"Looks
+like pytest is up-to-date now, so this is no longer needed."* yazdı ve
+10:17:37Z'de kapattı — kip (i). Aday değişken önceden tahmin olarak
+yazılmadığı için bu bir sınama sayılmaz; satır bu yüzden sınanmadan kapatıldı.
+Kapatılış biçimi aynı tablodaki pip taraması satırından farklı: orada yalnız
+ilk hücre çizilip ikincisi "—" yapılmıştı; burada iki hücrenin de metni
+korunarak üstü çizildi, tetikleyici metni silinmesin diye.
+
+Bu ek yeni bir borç açmıyor; kapanışları yukarıdaki anyio bölümünde ve
+6D-4d-1 ekinin tablosunda.
