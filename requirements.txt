@@ -9,12 +9,12 @@
 # =============================================================================
 
 # --- Frontend ---
-streamlit==1.64.0
+streamlit==1.65.0
 plotly==5.24.1
 
 # --- LLM Providers (BYOK) ---
 groq==1.7.0
-openai==3.23.0
+openai==3.24.0
 
 # --- Vector Database ---
 chromadb==0.6.3
