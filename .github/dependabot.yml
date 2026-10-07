@@ -65,7 +65,7 @@ updates:
     # (BumpVersions) rewrites `>=0.115.6` to `>=<latest>` unconditionally;
     # increase-if-necessary starts with `return req if new_version_satisfies?`,
     # so a lower bound that already admits the new version is left untouched.
-    # An `==` pin never admits a new version, so the 14 exact pins are still
+    # An `==` pin never admits a new version, so the 13 exact pins are still
     # bumped. Net effect: Dependabot acts on the pins and leaves the four
     # deliberate `>=` bounds — whose whole design is "let the resolver decide" —
     # exactly as they are.
@@ -78,18 +78,11 @@ updates:
     groups:
       python-patch-minor:
         patterns: ["*"]
-        # anyio is excluded because its bump pull request is RED BY DESIGN, not
-        # broken. requirements-dev.txt pins anyio==4.14.2 to keep starlette's
-        # deprecated anyio.abc alias out of the CI log (phase 6D-3a), and
-        # tests/test_dependency_pins.py holds both the literal and the reason —
-        # so a 4.15.x bump turns two tests red on purpose. That is the signal we
-        # want. Inside the group it would hold every unrelated patch/minor bump
-        # hostage to a pull request that can never be merged.
-        exclude-patterns: ["anyio"]
         update-types: ["patch", "minor"]
 
-    # Deferred to phase 6D-4. This started as two entries; streamlit's left in
-    # 6D-4a and chromadb's is still here.
+    # Deferred, first to phase 6D-4; the 1.x line that remains belongs to phase
+    # 6D-5. This started as two entries; streamlit's left in 6D-4a and
+    # chromadb's is still here.
     #
     # WHAT STREAMLIT'S REMOVAL COST AND BOUGHT, MEASURED (OSV, 2026-09-09).
     # While the entry stood it was silencing two real advisories in streamlit
@@ -108,8 +101,8 @@ updates:
     #   CVE-2026-45829 (GHSA-f4j7-r4q5-qw2c), CRITICAL, exploit-proof-of-concept:
     #   an UNAUTHENTICATED code injection reached by posting a malicious model
     #   repository with trust_remote_code to the collections endpoint. It affects
-    #   `>=1.0.0` and its `last_affected` is 1.5.9 — the newest release — so
-    #   there is nowhere to upgrade to.
+    #   `>=1.0.0` and its `last_affected` is 1.5.9 — the newest release when
+    #   measured in 6D-4b — so there is nowhere to upgrade to.
     #
     # THE >=1.0.0 BOUNDARY IS REAL, NOT A SCANNING ARTEFACT — measured, because
     # "the old versions just were not scanned" was the obvious alternative. The
@@ -137,11 +130,11 @@ updates:
     # The structural half — fastapi to the dev extra, tests.yml installing
     # requirements-webhook.txt, -8 packages — is phase 6D-5.
     #
-    # REMOVAL TRIGGER, MECHANICAL: a weekly scheduled workflow audits
-    # `chromadb>=1.0.0` in pip-audit's requirements mode and goes red when
-    # GHSA-f4j7-r4q5-qw2c stops being reported for it **while the other three
-    # are still reported** — two conditions together, because an empty result is
-    # a broken scan rather than good news.
+    # REMOVAL TRIGGER, MECHANICAL, as designed for phase 6D-4d-3's weekly
+    # scheduled workflow: audit `chromadb>=1.0.0` in pip-audit's requirements
+    # mode; red when GHSA-f4j7-r4q5-qw2c stops being reported for it **while the
+    # other three still are** — two conditions together, because an empty
+    # result is a broken scan rather than good news.
     #
     # VERSION RANGE, NOT BARE NAME: `versions: [">=1.0.0"]` keeps 0.6.x patch
     # updates flowing while the 1.x line stays deferred. A bare name would have
@@ -154,18 +147,20 @@ updates:
     # request while this stands. Recorded in docs/KNOWN-DEBT.md.
     # tests/test_dependabot_config.py makes it mechanical: it turns red the
     # moment the pin moves. It has now fired twice, exactly as designed — on
-    # 6D-4a naming `streamlit`, and on this bump naming `chromadb`. Both reds
+    # 6D-4a naming `streamlit`, and on 6D-4b's bump naming `chromadb`. Both reds
     # were observed BEFORE the entry and the expected-pin table were touched.
     ignore:
       - dependency-name: "chromadb"
         versions: [">=1.0.0"]
 
-    # Chosen, not inherited — but resting on something the documentation does
-    # not state: whether a grouped pull request counts as one against this
-    # limit. Neither the options reference nor the grouping page says. Day one
-    # is expected to be ~10 open pull requests (8 majors + 1 patch/minor group +
-    # anyio), and 5 is meant as a work queue that drains as they are merged or
-    # closed. If the first scan instead shows the group alone filling the limit
-    # and no majors at all, the reading is the other one and this number goes
-    # up. That check is part of 6D-3c's closing measurement.
+    # A grouped pull request counts as ONE against this limit. The documentation
+    # did not say so when checked in 6D-3c; the first scan's round (2026-09-08)
+    # measured it: the 5 slots went to the patch/minor group plus four single
+    # pull requests. That was the check 6D-3c's closing measurement owed, and
+    # it kept the number at 5. Observed since: on three Mondays at 5/5 pip's
+    # scheduled scan did not run, and on 2026-10-05 at 4/5 it did. Decision of
+    # 2026-10-05: the limit stays 5, and it is reopened if the open
+    # `dependabot/pip/` pull request count reaches 5 and a Monday passes
+    # saturated (docs/KNOWN-DEBT.md, the limit row in
+    # "Faz 6D-4c eki — Dependabot yuva kuyruğu").
     open-pull-requests-limit: 5
