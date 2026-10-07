@@ -43,7 +43,16 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          # setuptools is upgraded, not pinned (phase 6D-4d-2). It is not one
+          # of our dependencies: it ships with setup-python's interpreter, and
+          # on 2026-10-07 (PR #47) that copy was 79.0.1, which carries
+          # CVE-2026-59890 (fixed in 83.0.0). Our build never uses it —
+          # `pip install -e .` builds in an isolated env with its own
+          # setuptools>=77 — but pip-audit scans this environment and would
+          # report it. ubuntu-24.04 does not pin the Python patch release
+          # either, so the upgrade also removes that dependency. Measured in
+          # #47: 79.0.1 -> 84.0.0, and the record is gone.
+          python -m pip install --upgrade pip setuptools
           # requirements-dev.txt starts with `-r requirements.txt`, so this
           # installs the runtime deps plus pytest and the pinned ruff.
           pip install -r requirements-dev.txt
