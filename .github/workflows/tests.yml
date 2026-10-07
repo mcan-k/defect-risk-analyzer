@@ -43,26 +43,35 @@ jobs:
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
+          # setuptools is upgraded, not pinned (phase 6D-4d-2). It is not one
+          # of our dependencies: it ships with setup-python's interpreter, and
+          # on 2026-10-07 (PR #47) that copy was 79.0.1, which carries
+          # CVE-2026-59890 (fixed in 83.0.0). Our build never uses it —
+          # `pip install -e .` builds in an isolated env with its own
+          # setuptools>=77 — but pip-audit scans this environment and would
+          # report it. ubuntu-24.04 does not pin the Python patch release
+          # either, so the upgrade also removes that dependency. Measured in
+          # #47: 79.0.1 -> 84.0.0, and the record is gone.
+          python -m pip install --upgrade pip setuptools
           # requirements-dev.txt starts with `-r requirements.txt`, so this
           # installs the runtime deps plus pytest and the pinned ruff.
           pip install -r requirements-dev.txt
           pip install -e . --no-deps
 
-      # requirements.txt and requirements-dev.txt pin 12 direct dependencies with
-      # `==`, but a fresh resolve installs 119 packages — the other 107 arrive
-      # transitively with no upper bound and drift between runs. They already
-      # scroll past in the install output; this records them in one greppable
-      # place so a version change is visible in a log diff.
+      # requirements.txt and requirements-dev.txt pin their direct dependencies
+      # with `==`; everything else arrives transitively with no upper bound and
+      # drifts between runs. It already scrolls past in the install output;
+      # this records it in one greppable place so a version change is visible
+      # in a log diff.
       #
-      # Measured 2026-10-02 in CI and 2026-10-06 locally. This comment said
-      # 12 / 118 until phase 6D-4d-1, and both numbers had gone stale without
-      # any edit here: 6D-3a turned anyio from transitive into a direct pin,
-      # and on 2026-09-25 opentelemetry-exporter-otlp-proto-grpc 1.45.0 (via
-      # chromadb) started requiring opentelemetry-exporter-otlp-common, one
-      # package nobody asked for. That drift is the case for phase 6D-3b.
-      # Phase 6D-4d removed the anyio pin again (13 -> 12 direct); anyio stays
-      # in the set as a transitive.
+      # The counts are a dated measurement, not a claim about today. Measured
+      # 2026-10-07 in CI (PR #47, ubuntu-24.04): 13 direct, 136 packages, 123
+      # transitive. 16 of the 136 arrive with pip-audit (phase 6D-4d-2). One
+      # more, aiohttp-retry, arrived that same day with no edit here:
+      # kubernetes 37.0.0 (via chromadb) started requiring it. The count had
+      # gone stale the same way on 2026-09-25 (opentelemetry-exporter-otlp-
+      # common, via chromadb). That drift is the case for phase 6D-3b; the
+      # history of this comment's numbers is in docs/KNOWN-DEBT.md.
       #
       # Placed before Ruff and Pytest on purpose: when lint or the suite breaks,
       # knowing what was actually resolved is worth the most, so the record has
@@ -70,7 +79,7 @@ jobs:
       #
       # Only here, not in pr-risk-analysis.yml: that workflow installs
       # requirements.txt, a subset of this one (same runtime deps, minus
-      # pytest/pytest-cov/ruff), so a second freeze would record the same
+      # pytest/pytest-cov/ruff/pip-audit), so a second freeze would record the same
       # resolution twice.
       - name: pip freeze (resolved dependency versions)
         run: pip freeze
@@ -81,3 +90,28 @@ jobs:
 
       - name: Pytest
         run: pytest
+
+      # pip-audit runs with no ignores and this step never fails: it only writes
+      # the report. The verdict is the next step's, in both directions — a
+      # finding not on the ignore list, or an ignored id that is no longer
+      # reported (phase 6D-4d-2; design in the gate's docstring). A missing,
+      # empty or partial report is red there, so swallowing pip-audit's exit
+      # code here cannot turn a crash into a pass.
+      #
+      # After Pytest, so an advisory published overnight cannot erase a PR's
+      # test evidence (phase 6D-3c's lesson: a step that fails first hides
+      # every step after it). `!cancelled()` lets both audit steps run even
+      # when Ruff or Pytest failed, for the same reason in the other direction.
+      - name: pip-audit (report only)
+        if: ${{ !cancelled() }}
+        run: |
+          rc=0
+          pip-audit --format json -o "$RUNNER_TEMP/pip-audit.json" || rc=$?
+          echo "pip-audit exit code: $rc (1 = vulnerabilities found)"
+
+      - name: pip-audit gate
+        if: ${{ !cancelled() }}
+        run: >-
+          python .github/scripts/pip_audit_gate.py
+          --report "$RUNNER_TEMP/pip-audit.json"
+          --ignore .github/pip-audit-ignore.toml

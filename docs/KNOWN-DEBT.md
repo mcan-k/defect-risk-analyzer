@@ -930,8 +930,11 @@ gerçeğin sessizce ayrışmaması için buraya yazıldı.
   `blind_spot_detector.py` Faz 5A'da karşılandı (`tests/test_blind_spots.py`);
   `component_classifier` için ayrıca yukarıdaki "`classify_bugs` diske hiç
   yazmıyor" kaydına bakın.
-- **`pip-audit`** — ROADMAP hem `requirements-dev.txt` hem CI için istiyor;
-  ikisinde de yok. Faz 3 CI'a `pytest` + `ruff` ekledi, bunu eklemedi.
+- ~~**`pip-audit`** — ROADMAP hem `requirements-dev.txt` hem CI için istiyor;
+  ikisinde de yok. Faz 3 CI'a `pytest` + `ruff` ekledi, bunu eklemedi.~~
+  **Kapandı (6D-4d-2, 2026-10-07):** `pip-audit==2.10.1`
+  `requirements-dev.txt`'te, CI'da ignore'suz rapor ve iki yönlü bir kapı.
+  Aşağıdaki "Faz 6D-4d-2 eki".
 - **Kapsam rozeti / `pytest-cov` eşiği** — **bilerek reddedildi**, ertelenmedi.
   Yüzde hedefi, kapsamı yükseltmek için zayıf test yazma baskısı yaratır; ölçüt
   testin gerçekten bir şeyi kontrol etmesidir. `pytest-cov` kurulu kalıyor,
@@ -1515,7 +1518,7 @@ gözlendi.
 | **CVE-2026-45830** (GHSA-2wm9-hf6c-p5cr), HIGH — tenant yetkilendirme doğrulaması yok; kimlikli her kullanıcı her tenant'ın koleksiyonunu okuyup yazabiliyor. 0.5.23, 0.6.3 ve 1.5.9'un **üçünde de açık**, düzeltme yayınlanmamış. Bu depoda erişilemez: sunucu hiç ayağa kalkmıyor, yalnız `PersistentClient` var | Tetikleyici: **advisory'de bir `fixed` sürümü belirdiğinde** — `last_affected` bugün 1.5.9 |
 | **CVE-2026-45833** (GHSA-36p7-vc44-83pf), CRITICAL — kimlikli kod enjeksiyonu, `trust_remote_code` taşıyan bir koleksiyon güncellemesiyle, UPDATE_COLLECTION izni gerekiyor. Üç sürümde de açık, düzeltme yok. 45829'dan farkı kimlik gerektirmesi | Tetikleyici: **advisory'de bir `fixed` sürümü belirdiğinde** |
 | **CVE-2026-45831** (GHSA-xph7-9rjv-w5fr), HIGH — `SimpleRBACAuthorizationProvider` izni doğruluyor ama hangi tenant/db/koleksiyona ait olduğunu kontrol etmiyor. `>=0.5.0`, düzeltme yok. Bu depo hiçbir auth provider yapılandırmıyor | Tetikleyici: **advisory'de bir `fixed` sürümü belirdiğinde** |
-| `open-pull-requests-limit: 5`, gruplanmış bir PR'ın limite karşı nasıl sayıldığı **belgede yazmıyor** (options reference ve gruplama sayfası arandı); iki okuma iki farklı sonuç veriyor | Tetikleyici: **6D-3c'nin kapanış ölçümü** — ilk taramadan sonra açılan PR kümesi grup + major'ları içeriyorsa okuma doğrudur; grup tek başına limiti doldurup major'ların hiçbiri açılmıyorsa limit yükseltilir |
+| ~~`open-pull-requests-limit: 5`, gruplanmış bir PR'ın limite karşı nasıl sayıldığı **belgede yazmıyor** (options reference ve gruplama sayfası arandı); iki okuma iki farklı sonuç veriyor~~ — **Cevaplandı (6D-3c'nin kapanış ölçümü); satır 6D-4d-2'de kapatıldı (2026-10-07).** Grup PR'ı limite karşı **tek PR** sayılıyor: ilk turda beş yuvanın biri grup #24, öteki dördü ayrı PR'lar (aşağıda, "Faz 6D-4c eki"nin yuva tablosu, tur 1). Cevap o gün ölçülmüştü ama bu satır çizilmemişti | ~~Tetikleyici: **6D-3c'nin kapanış ölçümü** — ilk taramadan sonra açılan PR kümesi grup + major'ları içeriyorsa okuma doğrudur; grup tek başına limiti doldurup major'ların hiçbiri açılmıyorsa limit yükseltilir~~ |
 
 ---
 
@@ -1937,7 +1940,7 @@ PR için `title`, `head.sha`, `updated_at` ve olay geçmişi (`renamed`,
 | Borç | İşaret |
 |---|---|
 | ~~pip'in zamanlanmış taramasının dolu limitte koşmaması bir hipotez~~ — **10-05'te tetikleyici ateşlendi, hipotez desteklendi** (D7). Yuva sıralaması hâlâ dışarıdan türetilemiyor; `groq` sekiz dağıtımın hiçbirini alamamıştı | — |
-| Limit 5 (#25 kalıcı olarak bir yuvayı tuttuğu için etkin 4) doluyken pip'in zamanlanmış taraması koşmuyor: üç Pazartesi 5/5'te 0 koşu, 10-05'te 4/5'te 1 koşu. O tarama sayıyı yeniden 5'e çıkardı, yani kuyruk kendiliğinden boşalmıyor. **Karar verildi (6D-4d-1'in planı, 2026-10-05): limit 5 kalıyor, `anyio` pini kaldırılıyor.** Pinin tetikleyicisi ateşlendi (aşağıda, 6D-4d-1 eki), yani #25'in kalıcı yuvası kendiliğinden kalkar. Pin kendi PR'ında kaldırılır, 6D-4d-1'den sonra; `dependabot.yml` temizliği (anyio'nun `exclude-patterns`'ı ve yorumu) ayrı ve tek dosyalık bir PR'da, çünkü config push'u tam tarama tetikliyor. Reddedilen seçenekler: limiti yükseltmek (kalıcı kırmızı PR'ı gizler); #25'i elle kapatmak (kip iii belgelenmemiş ve gözlenmemiş); `versions` aralıklı `ignore` (gerekçesi kalmamış bir pini erteler, anyio'nun güvenlik güncellemelerini de susturur). **Doyma kökten çözülmüyor:** #40/#41 6D-6'ya kadar açık, ve tam taramalar boşalan yuvaları dolduruyor | Tetikleyici: **açık `dependabot/pip/` PR sayısı 5'e çıkar ve bir Pazartesi doymuş geçerse** limit kararı yeniden açılır |
+| Limit 5 (#25 kalıcı olarak bir yuvayı tuttuğu için etkin 4) doluyken pip'in zamanlanmış taraması koşmuyor: üç Pazartesi 5/5'te 0 koşu, 10-05'te 4/5'te 1 koşu. O tarama sayıyı yeniden 5'e çıkardı, yani kuyruk kendiliğinden boşalmıyor. **Karar verildi (6D-4d-1'in planı, 2026-10-05): limit 5 kalıyor, `anyio` pini kaldırılıyor.** Pinin tetikleyicisi ateşlendi (aşağıda, 6D-4d-1 eki), yani #25'in kalıcı yuvası kendiliğinden kalkar. Pin kendi PR'ında kaldırılır, 6D-4d-1'den sonra; `dependabot.yml` temizliği (anyio'nun `exclude-patterns`'ı ve yorumu) ayrı ve tek dosyalık bir PR'da, çünkü config push'u tam tarama tetikliyor. Reddedilen seçenekler: limiti yükseltmek (kalıcı kırmızı PR'ı gizler); #25'i elle kapatmak (kip iii belgelenmemiş ve gözlenmemiş); `versions` aralıklı `ignore` (gerekçesi kalmamış bir pini erteler, anyio'nun güvenlik güncellemelerini de susturur). **Doyma kökten çözülmüyor:** #40/#41 6D-6'ya kadar açık, ve tam taramalar boşalan yuvaları dolduruyor. **Sonuç (6D-4d-2'de kaydedildi):** #44'ün merge'ünden sonra #25'i dependabot[bot] 2026-10-06T21:41:39Z'de kapattı, yorumu: *"Looks like anyio is no longer a dependency, so this is no longer needed."* (merge edilmedi). `dependabot.yml` temizliği #45'te (`c0efd4d`, 2026-10-07T08:25:19Z) merge edildi; tam tarama `pip in /.` 08:25:27Z'de koştu ve config hatası olmadan `success` bitti, `github_actions in /.` de koştu, yenileme işi yoktu; yeni grup PR'ı #46 08:27:11Z'de açıldı, açık pip PR sayısı 2 → 3 (#40, #41, #46). #46 11:17:21Z'de merge edildi (`58c2c39`), sayı yeniden 2 | Tetikleyici: **açık `dependabot/pip/` PR sayısı 5'e çıkar ve bir Pazartesi doymuş geçerse** limit kararı yeniden açılır |
 | ~~numpy ve ruff bump'ları deney için bekletiliyor~~ — numpy hiç beklemiyordu (`Requires-Python >=3.12`); yalnız `ruff` (0.16.6 → 0.16.8, 09-24 itibarıyla) | **Sahibi 6D-4d** (2026-09-24 kararı). Bekletmenin tek gerekçesi grup deneyiydi ve D1′ ile düştü; bump kendiliğinden de gelmeyecekti. 6D-4d `requirements-dev.txt`'e elle ekler, o anki son sürümü yeniden ölçerek. **10-05:** D7'nin taraması ruff 0.16.10'u grup PR'ı #39'a koydu; #39'un kaderi 6D-4d-1'in planında ele alınır. **Kapandı (2026-10-06):** #39 bütün olarak merge edildi (`ec197ae`); ruff 0.16.10 main'de. Merge'den önce #39'un head'i taze bir venv'de yerelde ölçüldü: `ruff check .` temiz, izole bakiye 24, pytest 592 + 1 |
 | ~~Kapanma kipleri (ii) ile (iv)'ü ayıran değişken kanıtlanmadı. Aday (post-hoc): **turda tam tarama olup olmadığı**, altı gözlemin altısına da uyuyor (yukarıdaki tablo). Sürüm değişimi değişken değil; #33 aynı sürüm durumunda bir kez rebase, bir kez supersede gördü~~ — **Sınanmadan kapatıldı (2026-10-06):** deney dizisi D7 ile kapandı (kullanıcı kararı 2026-10-05); tetikleyici 10-06'da ateşlendi ama aday önceden tahmin olarak yazılmamıştı. 10-06 gözlemleri aşağıdaki 6D-4d ekinde | ~~Tetikleyici: **bir sonraki tam tarama ya da yenileme işi** — aday önceden tahmin olarak yazılır ve o işte sınanır. Yanlışlayıcılar: yerinde yeniden yazan bir tam tarama, ya da supersede eden yalın bir yenileme işi~~ |
 
@@ -1951,7 +1954,9 @@ adımı), [`.github/workflows/pr-risk-analysis.yml`](../.github/workflows/pr-ris
 
 12 doğrudan `==` pinin üstünde 107 transitif paket alt sınırla, üst sınırsız
 çözülüyor ve koşudan koşuya sürükleniyor (6D-4d'ye kadar 13 / 106; `anyio`
-pini kalktı, paket transitif olarak kümede kaldı). 6D-2 bunu görünür kıldı
+pini kalktı, paket transitif olarak kümede kaldı). **6D-4d-2'den beri, ölçüm
+2026-10-07 (CI, #47): 13 doğrudan, 136 paket, 123 transitif** — aşağıdaki
+ikinci örnek. 6D-2 bunu görünür kıldı
 (`pip freeze` adımı), ama dondurmadı. Dondurma mekanizması **6D-3b**: bir
 kısıt dosyası (`-c constraints.txt`).
 
@@ -2019,9 +2024,34 @@ gün sonra. CI'da (2026-10-02, ölçüm dalı) ve yerelde birebir aynı 119;
 Bu, kısıt dosyasının gerekçesinin ta kendisi: bir manifest değişmeden küme
 değişti.
 
+**İkinci örnek, ve kümeye bilerek eklenen 16 paket — 6D-4d-2'de ölçüldü
+(2026-10-07, CI, PR #47, `ubuntu-24.04`).** İki ayrı şey, ikisi de aynı
+ölçümde:
+
+- **Sürüklenme.** `kubernetes` 37.0.0 2026-10-07T00:51Z'de yayımlandı ve yeni
+  bir bağımlılık getirdi: `aiohttp-retry>=2.9.1` (36.0.3'te yoktu). Zincir:
+  `chromadb 0.6.3 → kubernetes>=28.1.0`. pip-audit'siz çözünürlük 119'dan
+  120'ye çıktı — aynı gün, hiçbir manifest değişmeden. Ad bazında fark, yerel
+  `.venv`'e (119) karşı: yalnız `+aiohttp-retry` (artı bilinen
+  `uvloop`/`colorama` platform takası).
+- **pip-audit'in getirdiği 16 transitif paket** (`pip-audit==2.10.1`,
+  `requirements-dev.txt`, 6D-4d-2): boolean.py, cachecontrol,
+  cyclonedx-python-lib, defusedxml, license-expression, msgpack,
+  packageurl-python, pip-api, pip-audit, pip-requirements-parser,
+  platformdirs, py-serializable, pyparsing, sortedcontainers, tomli, tomli-w.
+  Ölçüm: aynı job'da pip-audit'siz bir `--dry-run` çözümüne (120 paket)
+  karşı ad farkı; 136 − 16 = 120, yani çıkan ad yok. Sürüm farkı bu ölçümde
+  karşılaştırılmadı (2026-10-02'de 0'dı). 2026-10-02'deki ölçümle adları ve
+  sayısı aynı. pip-audit ayrıca kendi kurulduğu ortamı da tarıyor, yani bu 16 paket
+  denetlenen kümede; hiçbirinde kayıt yok.
+
+Toplam: `pip freeze` 137 satır = 136 `==` satırı + 1 `-e` satırı; 13 doğrudan
+pin, 123 transitif. `tests.yml`'in yorumu bu yüzden artık tarihli: sayı bir
+ölçümdür, bugün için bir iddia değil.
+
 | Borç | İşaret |
 |---|---|
-| 106 transitif paket dondurulmamış; çözünürlük manifest değişmeden değişebiliyor (09-25'te otlp-common) | **6D-6 tamamlandıktan sonra, Faz 7'den önce.** Gerekçe: 6D-6 de tabanı oynatıyor (pandas, plotly majorları); kısıt dosyası ondan önce üretilirse dondurulan küme hemen yeniden açılır — "önce taban güncellensin, sonra dondurulsun" ilkesinin aynısı |
+| 123 transitif paket (2026-10-07, #47) dondurulmamış; çözünürlük manifest değişmeden değişebiliyor (09-25'te otlp-common, 10-07'de aiohttp-retry). pip-audit'in 16 transitifi de bu kümede | **6D-6 tamamlandıktan sonra, Faz 7'den önce.** Gerekçe: 6D-6 de tabanı oynatıyor (pandas, plotly majorları); kısıt dosyası ondan önce üretilirse dondurulan küme hemen yeniden açılır — "önce taban güncellensin, sonra dondurulsun" ilkesinin aynısı |
 
 ---
 
@@ -2103,7 +2133,8 @@ yorumu 13 / 106 → 12 / 107, `test_dependabot_config.py`'nin mesajı
 Dependabot'un gördüğü `==` pinleri için 14 → 13 (birim: kökteki bütün
 `requirements*.txt`, `requirements-desktop.txt`'in `keyring`'i dahil).
 `.github/dependabot.yml:68`'deki "14" ve anyio'nun `exclude-patterns`'ı
-sıradaki tek dosyalık PR'ın işi.
+sıradaki tek dosyalık PR'ın işi. **Yapıldı: #45** (`c0efd4d`, 2026-10-07);
+6D-4d-2 `pip-audit`'i eklediği için aynı sayı orada yeniden 13 → 14 oldu.
 
 **Ölçemeyen bekçi geçmez (kullanıcı kararı, 2026-10-06).** Gerekçe bekçisinin
 üç dalı skip'ten kırmızıya döndü: alt süreç sıfırdan farklı döner, çıktısı
@@ -2158,3 +2189,118 @@ korunarak üstü çizildi, tetikleyici metni silinmesin diye.
 
 Bu ek yeni bir borç açmıyor; kapanışları yukarıdaki anyio bölümünde ve
 6D-4d-1 ekinin tablosunda.
+
+---
+
+## Faz 6D-4d-2 eki — pip-audit kapısı
+
+**Where:** [`.github/workflows/tests.yml`](../.github/workflows/tests.yml)
+(kurulum adımı ve son iki adım),
+[`.github/scripts/pip_audit_gate.py`](../.github/scripts/pip_audit_gate.py),
+[`.github/pip-audit-ignore.toml`](../.github/pip-audit-ignore.toml),
+[`tests/test_pip_audit_gate.py`](../tests/test_pip_audit_gate.py),
+`requirements-dev.txt`
+
+**Tasarım — kullanıcının dört koşulu (2026-10-02) ve kararları (10-07).**
+pip-audit CI'da Pytest'ten sonra, ignore'suz koşar ve yalnız JSON yazar; adım
+düşmez. Kararı doğrulayıcı verir, iki yönde: listede olmayan bir bulgu
+("yeni bulgu") ya da listede olup raporlanmayan bir kimlik ("bayat ignore" —
+koşul b'nin mekanik tetikleyicisi). Rapor yoksa, boşsa, JSON değilse,
+`dependencies` taşımıyorsa, hiç paket taranmamışsa ya da projenin kendisinden
+başka bir paket atlanmışsa da kırmızı: boş ya da kısmi bir tarama iyi haber
+değil, bozuk taramadır. Kaynak varsayılan (`pypi`), `--skip-editable` yok;
+projenin editable kurulumu pypi'de `skip_reason` ile atlanıyor ve atlanmasına
+izin verilen tek paket o. Eşleşme kimlik ∪ alias üzerinden (pip-audit kaydı
+PYSEC kimliğiyle verir, liste CVE'yi tutar) ve aynı kaydın tekrarları tek
+bulguya katlanır. Dağılım her koşuda bir notice annotation'ı olarak basılıyor:
+koşul (d) her koşuda yeniden ölçülür. Her iki denetim adımı `!cancelled()`
+taşıyor — Ruff ya da Pytest düşse de denetim koşar, ve denetim Pytest'ten
+sonra olduğu için gece yayımlanan bir advisory bir PR'ın test kanıtını
+silemez (6D-3c'nin dersi).
+
+**Gerekçe bağlantısı — koşul (a) ve (c).** Ignore listesindeki her kimliğin
+yukarıdaki chromadb bölümünde kendi satırı var (`| **CVE-…** (GHSA-…) … |
+Tetikleyici: … |`); yeni bir gerekçe bölümü açılmadı. Bekçi
+(`test_every_ignored_id_has_its_own_known_debt_row`) her kimlik için tam bir
+satır, satırda başka ignore kimliği olmamasını ve bir tetikleyiciyi istiyor;
+`test_ignore_ids_and_known_debt_rows_are_found` liste ya da desen boş
+dönerse kırmızı. Beyan edilmiş kör nokta, testin docstring'inde: bekçi
+listede bulunan kimlikler üzerinde döner, silinen bir satırı göremez — ama
+sistem kapalı, çünkü silinen satır kapıyı "yeni bulgu" ile kırmızıya çevirir
+(aşağıda M1).
+
+**setuptools — ignore değil, yükseltme (kullanıcı kararı, 2026-10-02).**
+CI'daki setuptools setup-python'un yorumlayıcısıyla geliyor, bizim pinimiz
+değil, ve derleme onu kullanmıyor (`pip install -e .` izole ortamda kendi
+`setuptools>=77`'sini kuruyor). `tests.yml` kurulumda `--upgrade pip
+setuptools` koşuyor.
+
+**Ölçüm — PR #47, 2026-10-07 (taslak, merge edilmedi, kapatıldı, dal
+silindi).** `58c2c39` üstünde iki ayrı job, bu PR'daki kurulum sırasının
+aynısı; tek fark setuptools yükseltmesi. Sonuçlar check-run annotation'ı
+olarak, kimliksiz API'den okundu. Geçerlilik kontrolü tuttu: önekli
+annotation sayısı beklenenle eşit (16, 12), kayıt indeksleri eksiksiz,
+kapasite hatası yok, iki rapor da okunabildi, öneksiz annotation yok. Ortak:
+Python 3.11.16, pip 26.2.1, websockets 17.2, streamlit 1.65.0, openai 3.24.0,
+pip-audit 2.10.1. Birimler: **kayıt** = JSON'daki ham `vulns[]` girdisi
+(tekrarlar dahil), **tekil** = bir paket içinde kimlik ∪ alias bileşeni.
+
+| job | setuptools | pypi kayıt | osv kayıt | tekil |
+|---|---|---|---|---|
+| yükseltmesiz | 79.0.1 | 5 (chromadb 3, setuptools 2) | 8 (chromadb 6, setuptools 2) | 4 |
+| `--upgrade pip setuptools` | 84.0.0 | 3 | 6 | **3** |
+
+**Dağılım — koşul (d):**
+
+| pip-audit kimliği | CVE (öteki alias'lar) | paket | düzeltme | nasıl kapanır |
+|---|---|---|---|---|
+| PYSEC-2026-3813 | CVE-2026-45830 (GHSA-2wm9-hf6c-p5cr) | chromadb 0.6.3 | yok | advisory'de `fixed` sürümü belirdiğinde — ignore'da |
+| PYSEC-2026-3814 | CVE-2026-45833 (GHSA-36p7-vc44-83pf) | chromadb 0.6.3 | yok | aynı — ignore'da |
+| PYSEC-2026-3815 | CVE-2026-45831 (GHSA-xph7-9rjv-w5fr) | chromadb 0.6.3 | yok | aynı — ignore'da |
+| PYSEC-2026-3447 | CVE-2026-59890 (GHSA-h35f-9h28-mq5c, BIT-setuptools-2026-59890) | setuptools 79.0.1 | 83.0.0 | `tests.yml`'in yükseltmesiyle kapandı — ignore'da değil |
+| PYSEC-2026-1845 | CVE-2025-71176 (GHSA-6w46-j5rx-g56g) | pytest 8.3.4 | 9.0.3 | 6D-4d-1'in pytest 9.1.1'iyle kapandı |
+
+**Yerel Windows CI'ın yerine geçmiyor.** Python 3.11.9'un `venv`'i
+setuptools 65.5.0 kuruyor; depo dışı taze bir venv'de kapı dört setuptools
+CVE'si için (CVE-2022-40897, CVE-2024-6345, CVE-2025-47273, CVE-2026-59890;
+11 kayıt / 7 tekil) kırmızı. Yerelde kapıyı koşturmak için önce
+`python -m pip install --upgrade setuptools`.
+
+**Mutasyonlar.** Rapor ve ignore mutasyonları depo dışı taze bir venv'de
+(`py -3.11`, setuptools 84.0.0'a yükseltilmiş, `requirements-dev.txt`
+kurulu) gerçek bir pip-audit raporuyla koştu; kod ve belge mutasyonları aynı
+venv'in pytest'iyle. Her biri dosya kopyasıyla geri alındı ve `cmp` ile hem
+kopyaya hem `git cat-file --filters` çıktısına karşı doğrulandı.
+
+| Mutasyon | Kırılan iddia | Gözlenen |
+|---|---|---|
+| (doğal) taze venv, setuptools 65.5.0 (yükseltmesiz) | yükseltme olmadan kapı geçmez | **kırmızı**, "yeni bulgu": dört setuptools CVE'si |
+| M0 (kontrol) aynı venv, setuptools 84.0.0 | — | **yeşil**: 138 paket, 3 kayıt, 3 tekil, üçü listede |
+| M1 ignore'dan CVE-2026-45830 silindi | listede olmayan bulgu geçmez | kapı **kırmızı**, "yeni bulgu: chromadb==0.6.3 CVE-2026-45830"; bekçi **yeşil** (beyan edilmiş kör nokta) |
+| M2 ignore'a CVE-2099-00001 eklendi | bayat ignore geçmez | kapı **kırmızı**, "bayat ignore: CVE-2099-00001"; bekçi de **kırmızı** (gerekçe satırı yok) |
+| M3a rapor dosyası yok | çöken pip-audit geçmez | **kırmızı**, "rapor yok: …" |
+| M3b rapor 0 bayt | boş rapor geçmez | **kırmızı**, "rapor bos" |
+| M3c rapor JSON değil | bozuk rapor geçmez | **kırmızı**, "rapor JSON degil (Expecting value …)" |
+| M4 rapor `{}` | `dependencies` yoksa geçmez | **kırmızı**, "raporda `dependencies` listesi yok" |
+| M5a `dependencies: []` | hiç paket taranmadıysa geçmez | **kırmızı**, "hic paket taranmamis" |
+| M5b yalnız proje atlanmış | aynı | **kırmızı**, "hic paket taranmamis" |
+| M11a gerçek rapor, `numpy` `skip_reason` ile | kısmi tarama geçmez | **kırmızı**, "tarama eksik: projeden baska atlanan paket(ler): numpy" |
+| M11b kodda yabancı-skip kontrolü kaldırıldı | aynı | `test_a_skipped_package_other_than_the_project_fails` **kırmızı** ("DID NOT RAISE") |
+| M6 kodda tekilleştirme kaldırıldı | tekrarlar tek bulgu | `test_duplicate_records_fold_into_one_finding` **kırmızı** (`assert 2 == 1`) |
+| M7 kodda alias'lar kimliğe katılmıyor | CVE, PYSEC kaydını alias'tan bulur | **6 test kırmızı**: eşleşme, yeni bulgu, bayat, CVE↔PYSEC, GHSA, tekrar |
+| M8 KNOWN-DEBT'te CVE-2026-45833 satırı silindi (ayrıca: yalnız kalın kimliği bozuldu) | her kimliğin satırı var | iki biçimde de bekçi **kırmızı**, "CVE-2026-45833: 0 gerekce satiri (tam 1 olmali)" |
+| M9 45833 satırı 45831'i de taşıyor | toplu satır yok | bekçi **kırmızı**, "CVE-2026-45833: satir baska ignore kimligi de tasiyor: ['CVE-2026-45831']" |
+| M10 bekçinin deseni hiçbir satırı yakalamıyor | bekçi boşuna geçmez | **iki test kırmızı**: üç kimlik için "0 gerekce satiri", ve "hic gerekce satiri bulunamadi" |
+
+**Gözlenmedi — CI'da:** kapının kırmızısı yalnız yerelde gözlendi; CI'da
+yalnız yeşil hâli gözlenecek (bu PR'ın kendi koşusu). CI'ın yükseltmesiz
+durumu #47'de ölçüldü (setuptools 79.0.1 kaydı), ama kapının kendisi o koşuda
+yoktu.
+
+| Borç | İşaret |
+|---|---|
+| Kapı ağa bağlı: pip-audit PyPI'ye ulaşamazsa rapor yazılmaz ya da bozuk çıkar, kapı kırmızı — ilgisiz bir PR da kırmızı görünür. Bu bilinçli: "sonuçsuz"u yeşil saymak, boş taramayı iyi haber saymak olurdu | Tetikleyici: **ağ kaynaklı ilk kırmızı.** O zaman yeniden deneme mi, ayrı bir "sonuçsuz" durumu mu — karar o gün, gözlenen hata metniyle verilir |
+| Gece yayımlanan bir advisory, açık her PR'ı (Dependabot'unkiler dahil) kırmızıya çevirir. Tasarım gereği; yol: aynı PR'da ya bump, ya da kimlik ignore'a ve gerekçesi bu dosyaya | Tetikleyici: **ilk "yeni bulgu" kırmızısı** — yol o gün izlenir ve buraya bir satır yazılır |
+| setuptools sabitlenmedi, yükseltiliyor: her koşu o günün en yeni sürümünü alıyor (2026-10-07'de 84.0.0) | Tetikleyici: **6D-3b'nin kısıt dosyası üretildiğinde** — setuptools'un da kısıt altına girip girmeyeceği orada karara bağlanır |
+| `pr-risk-analysis.yml` denetlenmiyor. Kurduğu küme `tests.yml`'inkinin alt kümesi, ama çözünürlüğü ayrı (6D-3b'nin bilinen ayrışması) | Tetikleyici: **6D-3b** — iki iş akışı aynı kısıt dosyasını kullandığında bu satır kapanır |
+| `tests.yml:56–57`'deki yorum ("installs the runtime deps plus pytest and the pinned ruff") eksik: `pip-audit`'i de, zaten 6D-4d-2'den önce `pytest-cov`'u da saymıyor. Bilerek dokunulmadı: satır C1'in değiştirdiği `--upgrade pip setuptools` satırına bitişik; C2 burayı da değiştirseydi iki hunk arasında değişmemiş satır kalmaz, C1 tek başına temiz revert edilemezdi (bugün aralarında 5 satır var) | Tetikleyici: **`tests.yml`'e dokunan bir sonraki PR** — yorum orada iki paketi de sayacak biçimde düzeltilir |

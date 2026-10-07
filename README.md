@@ -385,7 +385,7 @@ defect-risk-analyzer/
 ├── pyproject.toml              # Packaging (PEP 621) + ruff config
 ├── requirements.txt            # Core deps (also read by pyproject.toml)
 ├── requirements-webhook.txt    # Optional FastAPI service deps — ".[webhook]"
-├── requirements-dev.txt        # pytest, pytest-cov, ruff
+├── requirements-dev.txt        # pytest, pytest-cov, ruff, pip-audit
 ├── Dockerfile
 ├── docker-compose.yml
 ├── .env.example

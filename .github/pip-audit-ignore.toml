@@ -1,0 +1,19 @@
+# pip-audit kapısının ignore listesi — .github/scripts/pip_audit_gate.py okur.
+#
+# Her kimlik kendi satırında, toplu satır yok. Kimlik CVE'dir, CVE yoksa GHSA;
+# pip-audit kaydı PYSEC kimliğiyle raporlar, kapı alias'lar üzerinden eşleştirir.
+#
+# Gerekçe ve tetikleyici burada DEĞİL, docs/KNOWN-DEBT.md'de: her kimliğin
+# orada kendi `| **CVE-…** (GHSA-…)` satırı var (chromadb bölümü), ve
+# tests/test_pip_audit_gate.py bunu tutuyor. Bir kimlik eklemek o satırı
+# eklemeyi gerektirir.
+#
+# Kaynak: PR #47'nin CI ölçümü (2026-10-07). Üçü de chromadb 0.6.3'te,
+# düzeltme sürümü yok. Raporlanmayı bıraktıklarında kapı "bayat ignore" ile
+# kırmızıya döner ve satır silinir. setuptools burada değil: CI onu
+# yükseltiyor (tests.yml).
+ignore = [
+  "CVE-2026-45830",
+  "CVE-2026-45833",
+  "CVE-2026-45831",
+]
