@@ -65,7 +65,7 @@ updates:
     # (BumpVersions) rewrites `>=0.115.6` to `>=<latest>` unconditionally;
     # increase-if-necessary starts with `return req if new_version_satisfies?`,
     # so a lower bound that already admits the new version is left untouched.
-    # An `==` pin never admits a new version, so the 13 exact pins are still
+    # An `==` pin never admits a new version, so the 14 exact pins are still
     # bumped. Net effect: Dependabot acts on the pins and leaves the four
     # deliberate `>=` bounds — whose whole design is "let the resolver decide" —
     # exactly as they are.
