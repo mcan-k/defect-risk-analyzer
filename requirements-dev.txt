@@ -15,3 +15,8 @@ pytest-cov==7.1.0
 
 # --- Linting ---
 ruff==0.16.10
+
+# --- Security audit ---
+# Scans the installed environment in CI; the verdict is
+# .github/scripts/pip_audit_gate.py's (phase 6D-4d-2).
+pip-audit==2.10.1
