@@ -1514,7 +1514,7 @@ gözlendi.
 |---|---|
 | ~~`streamlit` donmuş durumda~~ — **6D-4a'da kapandı**: pin 1.63.0, `ignore` girdisi ve bekçi tablosu satırı silindi, 40 advisory kaydı kapandı | — |
 | ~~`chromadb` tümüyle donmuş durumda~~ — **6D-4b'de daraltıldı**: pin 0.6.3, `ignore` artık yalnız `>=1.0.0`, yani 0.6.x yama güncellemeleri akmaya devam ediyor | — |
-| `chromadb` **1.x hattı** ertelenmiş durumda ve o hattaki bir CVE için PR açılmaz | Tetikleyici: **CVE-2026-45829 için bir düzeltme yayınlandığında** — mekanik biçimi 6D-4d'nin haftalık workflow'u: `pip-audit -r` ile `chromadb>=1.0.0` taranır ve GHSA-f4j7-r4q5-qw2c raporlanmayı bıraktığında **öteki üçü hâlâ raporlanıyorsa** kırmızı verir. İki koşul birlikte, çünkü boş sonuç iyi haber değil bozuk taramadır |
+| `chromadb` **1.x hattı** ertelenmiş durumda ve o hattaki bir CVE için PR açılmaz | Tetikleyici: **CVE-2026-45829 için bir düzeltme yayınlandığında.** ~~mekanik biçimi 6D-4d'nin haftalık workflow'u: `pip-audit -r` ile `chromadb>=1.0.0` taranır ve GHSA-f4j7-r4q5-qw2c raporlanmayı bıraktığında **öteki üçü hâlâ raporlanıyorsa** kırmızı verir. İki koşul birlikte, çünkü boş sonuç iyi haber değil bozuk taramadır~~ — **6D-4d-3'te değişti (2026-10-07):** "öteki üçü" şartı asıl olayı sessizce "sonuçsuz"a çevirecekti. Dört advisory'nin dördü de kapalı aralıklı, `last_affected: 1.5.9` (OSV, 2026-10-07; 45829 `introduced 1.0.0`, 45830 ve 45833 `0.4.17`, 45831 `0.5.0`); yeni bir 1.x sürümünde dördü birden görünmeyebilir. Yerine pozitif kontrol: [`chromadb-1x-watch.yml`](../.github/workflows/chromadb-1x-watch.yml) her Çarşamba iki tarama yapar, kontrol (`chromadb==` sabit bir sürüm; tek yeri izleyici betiği) ve hedef (`chromadb>=1.0.0`). **Kırmızı "iş var"** = kontrol 45829'u raporluyor, hedef raporlamıyor → bu girdi silinir, 6D-5 başlar. Bozuk tarama kendi başlığıyla kırmızı ("izleyici bozuk"). Ayrıntı: "Faz 6D-4d-3 eki" |
 | **CVE-2026-45830** (GHSA-2wm9-hf6c-p5cr), HIGH — tenant yetkilendirme doğrulaması yok; kimlikli her kullanıcı her tenant'ın koleksiyonunu okuyup yazabiliyor. 0.5.23, 0.6.3 ve 1.5.9'un **üçünde de açık**, düzeltme yayınlanmamış. Bu depoda erişilemez: sunucu hiç ayağa kalkmıyor, yalnız `PersistentClient` var | Tetikleyici: **advisory'de bir `fixed` sürümü belirdiğinde** — `last_affected` bugün 1.5.9 |
 | **CVE-2026-45833** (GHSA-36p7-vc44-83pf), CRITICAL — kimlikli kod enjeksiyonu, `trust_remote_code` taşıyan bir koleksiyon güncellemesiyle, UPDATE_COLLECTION izni gerekiyor. Üç sürümde de açık, düzeltme yok. 45829'dan farkı kimlik gerektirmesi | Tetikleyici: **advisory'de bir `fixed` sürümü belirdiğinde** |
 | **CVE-2026-45831** (GHSA-xph7-9rjv-w5fr), HIGH — `SimpleRBACAuthorizationProvider` izni doğruluyor ama hangi tenant/db/koleksiyona ait olduğunu kontrol etmiyor. `>=0.5.0`, düzeltme yok. Bu depo hiçbir auth provider yapılandırmıyor | Tetikleyici: **advisory'de bir `fixed` sürümü belirdiğinde** |
@@ -2304,3 +2304,167 @@ yoktu.
 | setuptools sabitlenmedi, yükseltiliyor: her koşu o günün en yeni sürümünü alıyor (2026-10-07'de 84.0.0) | Tetikleyici: **6D-3b'nin kısıt dosyası üretildiğinde** — setuptools'un da kısıt altına girip girmeyeceği orada karara bağlanır |
 | `pr-risk-analysis.yml` denetlenmiyor. Kurduğu küme `tests.yml`'inkinin alt kümesi, ama çözünürlüğü ayrı (6D-3b'nin bilinen ayrışması) | Tetikleyici: **6D-3b** — iki iş akışı aynı kısıt dosyasını kullandığında bu satır kapanır |
 | `tests.yml:56–57`'deki yorum ("installs the runtime deps plus pytest and the pinned ruff") eksik: `pip-audit`'i de, zaten 6D-4d-2'den önce `pytest-cov`'u da saymıyor. Bilerek dokunulmadı: satır C1'in değiştirdiği `--upgrade pip setuptools` satırına bitişik; C2 burayı da değiştirseydi iki hunk arasında değişmemiş satır kalmaz, C1 tek başına temiz revert edilemezdi (bugün aralarında 5 satır var) | Tetikleyici: **`tests.yml`'e dokunan bir sonraki PR** — yorum orada iki paketi de sayacak biçimde düzeltilir |
+
+---
+
+## Faz 6D-4d-3 eki — chromadb 1.x izleyicisi
+
+**Where:** [`.github/workflows/chromadb-1x-watch.yml`](../.github/workflows/chromadb-1x-watch.yml),
+[`.github/scripts/chromadb_1x_watch.py`](../.github/scripts/chromadb_1x_watch.py),
+[`tests/test_chromadb_1x_watch.py`](../tests/test_chromadb_1x_watch.py),
+`tests/test_workflow_runners.py` (`KNOWN_WORKFLOWS`), `.github/dependabot.yml`
+(kaldırma tetikleyicisinin yorumu)
+
+**Ne tutuyor.** `dependabot.yml` chromadb'yi `>=1.0.0` için erteliyor, tek
+gerekçe CVE-2026-45829 (GHSA-f4j7-r4q5-qw2c): her 1.x'te açık, düzeltmesi
+yok. Bu iş akışı haftada bir, en yeni 1.x'in hâlâ taşıyıp taşımadığını sorar.
+Yukarıdaki chromadb bölümünün 1.x satırının mekanik tetikleyicisi budur.
+
+**Tasarım değişti — kullanıcı kararları, 2026-10-07.** 6D-4b'nin tarifi
+(10-02'de iki ek hücreyle kabul edilmişti) tek tarama, üç durum ve "sonuçsuz
+kırmızı değil" idi; kırmızı için 45829'un yokluğu **ve öteki üç kaydın
+varlığı** gerekiyordu. 4d-3'ün keşfi bunu ölçtü ve iki kararla değişti:
+
+- **K6 — "öteki üçü" şartı kalktı, yerine pozitif kontrol.** Dört advisory'nin
+  dördü de kapalı aralıklı: OSV kayıtlarında 45829 `introduced 1.0.0`,
+  45830 ve 45833 `introduced 0.4.17`, 45831 `introduced 0.5.0`, hepsi
+  `last_affected: 1.5.9` (OSV'nin `vulns` uç noktası, GET, 2026-10-07). PyPI'de son
+  sürüm hâlâ 1.5.9 (2026-05-05). Yeni bir 1.x sürümü — 45829'u düzeltse de
+  düzeltmese de — advisory'ler güncellenene kadar dördünün de aralığı
+  dışında kalır. Eski şart tam o olayı, yani bu ertelemenin beklediği şeyi,
+  sessizce "sonuçsuz"a çevirirdi. Yerine her koşuda iki tarama: **kontrol**
+  `chromadb==1.5.9` (45829'un kesin raporlandığı sürüm) tarayıcının ve
+  verisinin sağlam olduğunu kanıtlar; **hedef** `chromadb>=1.0.0` asıl
+  soruyu sorar. Öteki üç kayıt yalnız dağılım notice'inde yazılır.
+- **K1 — "izleyici bozuk" kırmızı, kendi başlığıyla.** "Sonuçsuz kırmızı
+  değil" kararının yerine geçer. GitHub yalnız başarısız zamanlanmış koşuyu
+  bildirir; yeşil bir haftalık işe kimse bakmaz, yani sessiz bir bozukluk
+  alarmın yokluğudur.
+
+**Durumlar — yalnız biri yeşil.**
+
+| durum | koşul | sonuç ve çıkış | annotation başlığı |
+|---|---|---|---|
+| erteleme haklı | kontrol geçerli, chromadb `1.5.9`, 45829 var; hedef geçerli, chromadb ≥1.0.0, 45829 var | yeşil, 0 | `chromadb 1x izleyici - erteleme hakli` (notice) |
+| iş var | kontrol sağlam; hedef ≥1.0.0 ve 45829 yok (öteki üçünün durumu önemsiz) | kırmızı, 1 | `chromadb 1x izleyici - is var` |
+| izleyici bozuk | raporlardan biri yok, boş, JSON değil ya da eksik tarama (kapının `ReportError`'ı); bir raporda chromadb yok ya da atlanmış; kontrolün sürümü yanlış ya da 45829'u taşımıyor; hedefin sürümü ayrıştırılamıyor ya da <1.0.0; beklenmedik istisna | kırmızı, 2 | `chromadb 1x izleyici - izleyici bozuk` |
+
+45829 her yerde kimlik ∪ alias üzerinden ve yalnız chromadb'nin bulgularında
+aranır. Hedefin <1.0.0 çözülmesi "bozuk" sayılıyor, çünkü pip `>=1.0.0`'ı 0.x'e
+çözemez; rapor bunu diyorsa okuma ya da çözümleme bozuktur. Ayrıca 0.6.3'ün
+verisi (45829 yok, üçü var) aksi hâlde "iş var" diye okunurdu. Bozukluk
+nedenleri iki rapor için ayrı ayrı toplanır ve hepsi tek mesajda yazılır.
+`main` beklenmedik bir istisnayı da yakalar; yakalanmasa Python 1 ile çıkardı,
+bu da "iş var"ın kodu.
+
+**Yapı.** Kontrol sürümü yalnız betikte (`CONTROL_VERSION`); iş akışı iki
+requirements dosyasını betiğe `$RUNNER_TEMP`'te yazdırır, çünkü Dependabot
+depodaki her requirements dosyasını toplar
+(`test_no_requirements_file_names_chromadb_1x` bunu tutuyor). pip-audit'in
+sürümü `requirements-dev.txt`'teki satırdan okunur, yani tek pin iki iş
+akışını birlikte taşır. Rapor doğrulaması, mükerrer kayıtların katlanması ve
+annotation biçimi `pip_audit_gate.py`'den **değiştirilmeden** import edilir
+(kullanıcı kararı K3 A); aynı `ReportError` kapıda kırmızı bir kapı, burada
+"izleyici bozuk" demek. `parse_report` açığı olmayan paketleri döndürmediği
+için chromadb'nin sürümü JSON'dan ayrıca okunur. Tetikleyiciler: haftalık
+`schedule` (Çarşamba 06:00 UTC, Dependabot'un Pazartesi koşusundan ayrı),
+`workflow_dispatch`, ve `pull_request` yalnız dört yol için — iş akışı,
+izleyici betiği, import ettiği kapı ve pip-audit sürümünü taşıyan
+`requirements-dev.txt` (`test_watch_workflow_triggers` dördünü de istiyor).
+Runner: `ubuntu-24.04`; `test_workflow_runners.py` her workflow'u tarıyordu,
+yeni dosya kod değişikliği olmadan kapsama girdi ve `KNOWN_WORKFLOWS`'a
+eklendi.
+
+**İlk gerçek ölçüm — yerel, Windows, 2026-10-07.** Depo dışında taze bir venv
+(`py -3.11`, Python 3.11.9), `pip-audit==2.10.1`, iki `pip-audit -r` raporu:
+
+| tarama | süre | çıkış | paket | chromadb | açık taşıyan paket | chromadb kayıtları |
+|---|---|---|---|---|---|---|
+| kontrol `chromadb==1.5.9` | 67 s | 1 | 80 | 1.5.9 | yalnız chromadb | 5 kayıt / 4 tekil |
+| hedef `chromadb>=1.0.0` | 30 s | 1 | 80 | 1.5.9 | yalnız chromadb | 5 kayıt / 4 tekil |
+
+İki raporun paket kümesi ad ve sürüm olarak aynı (80); fark yalnız bir
+alias listesinin sırası. 45829 **iki özdeş kayıt** olarak geliyor
+(`PYSEC-2026-311`, alias'lar CVE-2026-45829 ve GHSA-f4j7-r4q5-qw2c); öteki
+üçü PYSEC-2026-3813/3814/3815, hiçbirinin `fix_versions`'ı yok. GHSA kimlikli
+kayıt görülmedi. İzleyicinin bu iki rapora kararı: **erteleme haklı, çıkış
+0**. Windows ile Linux farkı: Windows çözümlemesinde `colorama` var, yani
+CI'ın ağacı birebir aynı değil; chromadb 1.5.9'un Linux wheel'i
+`cp39-abi3-manylinux_2_17_x86_64`. 1.5.9'un ağacında `fastapi` yok (1.x onu
+runtime'dan çıkarıyor, 6D-4b'nin ölçümüyle tutarlı). CI'daki ilk ölçüm bu
+PR'ın kendi `pull_request` koşusu olacak.
+
+**Mutasyonlar.** Rapor mutasyonları bu iki gerçek rapordan türetildi ve
+betiğin komut satırıyla koştu. Kod mutasyonları dosya kopyasıyla yapıldı ve
+kopyadan geri alındı; her geri alma `cmp` ile hem kopyaya hem
+`git cat-file --filters` çıktısına karşı doğrulandı, `__pycache__` her
+seferinde temizlendi.
+
+| Mutasyon | Gözlenen |
+|---|---|
+| R0 gerçek iki rapor | **yeşil**, erteleme haklı, 0 |
+| R1 kontrolden 45829'un iki kaydı silindi | **kırmızı**, izleyici bozuk, 2: "kontrol: chromadb==1.5.9 CVE-2026-45829 raporlamiyor (pozitif kontrol dustu - tarayici ya da verisi bozuk)" |
+| R2 hedeften 45829'un iki kaydı silindi | **kırmızı**, iş var, 1 |
+| R3 hedeften bütün chromadb kayıtları silindi | **kırmızı**, iş var, 1 (K6'nın hücresi; eski tasarımda sonuçsuz) |
+| R4a hedef sürümü 0.6.3, 45829 duruyor | **kırmızı**, izleyici bozuk, 2: "hedef: chromadb>=1.0.0 0.6.3 olarak cozulmus …" |
+| R4b hedef 0.6.3, 45829 silindi, üçü kaldı | **kırmızı**, izleyici bozuk, 2 (iş var DEĞİL) |
+| R5 her rapor için ayrı: yok / 0 bayt / JSON değil / `{}` / `dependencies: []` / chromadb `skip_reason` (12) | **12'si de kırmızı**, izleyici bozuk, 2; mesajlar kapınınki ("rapor yok", "rapor bos", "rapor JSON degil …", "raporda `dependencies` listesi yok", "hic paket taranmamis", "tarama eksik: projeden baska atlanan paket(ler): chromadb"), önlerinde rapor adı |
+| R6 kontrol sürümü 1.5.8 | **kırmızı**, izleyici bozuk, 2: "kontrol: chromadb 1.5.8 cozulmus, beklenen 1.5.9" |
+| R7a hedefte 45829'un iki özdeş kaydından biri silindi | **yeşil**, 0 |
+| R7b kalan kayıt GHSA kimlikli biçime çevrildi | **yeşil**, 0 |
+| K-M1a pozitif kontrol (45829 şartı) kaldırıldı | `test_control_without_45829_is_broken` **kırmızı** |
+| K-M1b kontrol raporu tümüyle yok sayılıyor | **10 test kırmızı**: 8'in altı kontrol parametresi, 9'un kontrol parametresi, kontrol sürümü, kontrolde 45829 yok, bütün nedenler |
+| K-M2 alias'lar kimliğe katılmıyor (kapının `_fold`'unda, geçici) | **9 test kırmızı** — iş var testleri de, çünkü kontrol 45829'u bulamayıp bozuk diyor |
+| K-M3 ≥1.0.0 koşulu kaldırıldı | `test_target_below_1_0_is_broken` iki parametresi **kırmızı** |
+| K-M4 kontrol sürümü eşitliği kaldırıldı | `test_control_on_another_version_is_broken` **kırmızı** |
+| K-M5 bozukta çıkış 0 | `test_main_exit_code_and_title[dosyalar-yok]` **kırmızı** |
+| K-M6 `main`'in istisna yakalaması kaldırıldı | `test_main_unexpected_error_is_broken` **kırmızı** |
+| K-M7 yeni workflow `runs-on: ubuntu-latest` | `test_every_workflow_job_runs_on_the_pinned_runner` **kırmızı** |
+| K-M8 yeni workflow dosyası silindi | `test_runner_scan_is_not_vacuous` ve `test_watch_workflow_triggers` **kırmızı** |
+| K-M9 `paths:`'ten `pip_audit_gate.py` silindi | `test_watch_workflow_triggers` **kırmızı** |
+| K-M11 `paths:`'ten `requirements-dev.txt` silindi | `test_watch_workflow_triggers` **kırmızı** |
+| K-M10 köke `chromadb>=1.0.0` içeren bir `requirements-x.txt` | `test_no_requirements_file_names_chromadb_1x` **kırmızı**: "chromadb 1.x satiri depodaki bir requirements dosyasinda: ['requirements-x.txt']" |
+
+Planla iki ayrışma. R7, planda "yalnız PYSEC-311 girdisi silinir, GHSA kalır"
+diye tanımlanmıştı; gerçek raporda GHSA kimlikli kayıt yok, 45829'un iki
+kaydı da PYSEC-311. Aynı iddia (mükerrer ve alias) R7a/R7b olarak sınandı.
+K-M2, alias birleştirmesi kapıda olduğu için kapı dosyası üzerinde yapıldı;
+geri alındıktan sonra `HEAD` ile bayt bayt aynı.
+
+**Testler: 608 → 643.** `test_chromadb_1x_watch.py`'de 18 fonksiyon, 35 öğe:
+haklı 1, iş var 2 (üçü varken, hiç kayıt yokken), yalnız 45829 → haklı 1,
+alias biçimleri 3, kontrolde 45829 yok 1, kontrol sürümü 1, bozuk rapor
+{kontrol, hedef} × 6 = 12, chromadb eksik 2, ayrıştırılamayan sürüm 1,
+<1.0.0 2, bütün nedenler 1, `main` çıkış kodu ve başlık 3, beklenmedik
+istisna 1, `write-requirements` 1, başlık biçimi 1, Dependabot toplama
+bekçisi 1, iş akışı tetikleyicileri 1. `test_workflow_runners.py`'ye yalnız
+`KNOWN_WORKFLOWS` eklendi (+0).
+
+**#48 sonrası Dependabot gözlemi (6D-4d-2'nin açık kalan sorusu).** #48
+`dependabot.yml`'i değiştirmişti (`==` sayısı 13 → 14), yani tam bir
+`pip in /.` taraması bekleniyordu. Koşu 37647269455 (Dependabot işi
+1615530511, 15:50:48Z) `failure` ile bitti; GitHub'ın 2026-10-07
+15:06–15:16Z kesintisinin artçısında hiç runner alamadı ("Job is waiting for
+a hosted runner to come online") ve "Dependabot encountered an unknown error"
+ile kapandı — yapılandırma hiç okunmadı. Ardından koşu 37649949058 (iş
+1615562569, 16:10:19Z, `8b21c79` üstünde) `success`, "No PRs affected":
+yapılandırma #48'den sonra sağlam. Kaynak: koşu adları ve sonuçları API'den
+(GET); günlük metinleri oturum istediği için kullanıcı tarafından okundu.
+
+**Gözlenmedi — CI'da:** kırmızı durumlar yalnız yerelde, mutasyonla gözlendi.
+CI'da gözlenecek olan bu PR'ın `pull_request` koşusu (beklenen: erteleme
+haklı) ve merge sonrası main'de bir `workflow_dispatch` koşusu. C2'nin
+(`dependabot.yml` yorumu) tetikleyeceği tam `pip in /.` taraması da merge
+sonrası gözlenir; tahmin yazılmadı.
+
+| Borç | İşaret |
+|---|---|
+| Kontrol sürümü (1.5.9) PyPI'den silinirse ya da 45829'un advisory'si 1.5.9'u dışlayacak biçimde değişirse kontrol düşer. Yank yetmez: `==` ile sabitlenmiş yanked sürüm yine kurulur (PEP 592; pip-audit'in çözücüsünde ölçülmedi) | Tetikleyici: **izleyicinin "kontrol" nedenli ilk kırmızısı** — `CONTROL_VERSION`, 45829'u taşıyan başka bir sürüme ([1.0.0, 1.5.9]) taşınır |
+| İzleyici ağa bağlı: PyPI ya da pip-audit'in veri kaynağına ulaşılamazsa rapor çıkmaz ve zamanlanmış koşu "izleyici bozuk" ile kırmızı olur. Bilinçli (K1); kapının aynı borcu yukarıda, 6D-4d-2 ekinde | Tetikleyici: **ağ kaynaklı ilk "izleyici bozuk" kırmızısı** — yeniden deneme kararı o gün, kapının satırıyla birlikte verilir |
+| `pull_request.paths` `requirements-dev.txt`'i içeriyor: o dosyaya dokunan her PR — Dependabot'un grup ve tekil bump'ları dahil — iki tam chromadb 1.x çözümlemesi koşturur (yerelde 67 s + 30 s). Bedeli bilerek kabul edildi (kullanıcı kararı): pip-audit sürüm değişikliği izleyiciyi PR'da sınasın | Tetikleyici: **bir Dependabot PR'ında izleyicinin ilgisiz bir kırmızısı** — o zaman yol daraltılır ya da bot için koşul eklenir |
+| İzleyici kapının alt çizgili yardımcılarını (`_fold`, `_annotate`, `_normalize`) import ediyor; kapıdaki bir değişiklik izleyiciyi de değiştirir. `paths:` kapıyı içerdiği için böyle bir PR izleyiciyi de koşturur, ama kapının testleri izleyiciyi sınamaz | Tetikleyici: **kapının imzasını değiştiren ilk PR** — ortak kısım o zaman ayrı bir modüle çıkarılır |
+| Zamanlanmış koşunun hiç olmaması hiçbir durumda görünmez. Public bir depoda 60 gün etkinlik olmazsa zamanlanmış iş akışları kapatılıyor (GitHub belgesi; bu depoda doğrulanmadı) | Tetikleyici: **beklenen bir Çarşamba koşusunun Actions'ta görünmemesi** |
+| Başarısız zamanlanmış koşunun bildiriminin kime gittiği ölçülmedi (belgeye göre cron satırını en son değiştiren kullanıcıya) | Tetikleyici: **ilk zamanlanmış kırmızı** — e-postayı kimin aldığı o gün yazılır |
+
+`tests.yml:56–57` satırının tetikleyicisi ("`tests.yml`'e dokunan bir sonraki
+PR") bu PR'da ateşlenmedi: `tests.yml` değişmedi.
