@@ -67,7 +67,10 @@ Import satırları burada bir kez değişsin, sonraki fazlarda tekrar dokunulmas
 - [ ] Tek `__version__` kaynağı; `api.py` ve CLI oradan okusun
 - [ ] `pyproject.toml` (PEP 621): `requires-python = ">=3.11"`, bağımlılıklar requirements.txt'ten
 - [ ] `[project.scripts]` ile `dra` konsol giriş noktası
-- [ ] `requirements-dev.txt`: pytest, pytest-cov, ruff, pip-audit
+- [ ] `requirements-dev.txt`: pytest, pytest-cov, ruff, pip-audit — *pip-audit
+      6D-4d-2'de eklendi (`pip-audit==2.10.1`). Kutu işaretlenmedi: bu Faz 1
+      listesinin yapılmış öteki maddeleri de işaretsiz, tek başına işaretlemek
+      listeyi tutarsız bırakırdı.*
 - [ ] `BASLAT.bat` ve Dockerfile'ın hâlâ çalıştığını doğrula
 
 ### Faz 2 — Servis katmanı (1-2 gün)
@@ -134,7 +137,11 @@ sahiplendirildi** (gerekçeleri `KNOWN-DEBT.md`'de):
       `git log --all --diff-filter=D -- 'tests/*'` boş (hiçbir test dosyası
       silinmemiş), üç terim de `tests/` altına ekleme commit'leriyle girmiş ve
       `baseline/` hiç commit'lenmemiş. Ayrıntı: `KNOWN-DEBT.md`.
-- [ ] CI'a `pip-audit` adımı → **Faz 6D** (Dependabot ile aynı çalışma)
+- [x] CI'a `pip-audit` adımı → **Faz 6D-4d-2**. pip-audit ignore'suz koşar,
+      kararı `.github/scripts/pip_audit_gate.py` verir: yeni bulgu ya da bayat
+      ignore kırmızı, boş ya da kısmi tarama da. Ignore listesinde üç chromadb
+      CVE'si (düzeltmesiz); her birinin gerekçesi `KNOWN-DEBT.md`'de ve bir
+      bekçi bunu tutuyor. Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-4d-2 eki".
 
 Reddedildi (ertelenmedi):
 - ~~Kapsam rozeti~~ — yüzde hedefi, kapsamı yükseltmek için zayıf test yazma
@@ -521,6 +528,11 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > gereği kırmızı) ve **chromadb 1.x**. İkisinin de tetikleyicisi
       > `KNOWN-DEBT.md`'de. Yapısal yarı — fastapi'nin `dev` extra'sına geçmesi,
       > `tests.yml`'in webhook dosyasını kurması, −8 paket — **6D-5**.
+      >
+      > *6D-4d notu (2026-10-07):* `anyio` artık ertelenmiyor. Pin #44'te
+      > kalktı (tetikleyicisi starlette 1.7.0 ile ateşlendi), #25'i Dependabot
+      > kendisi kapattı, `dependabot.yml`'deki dışlaması #45'te silindi.
+      > Ertelenen tek şey chromadb 1.x.
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 7 — Vitrin (yarım gün)
