@@ -1,0 +1,207 @@
+# =============================================================================
+# GEÇİCİ ÖLÇÜM — MERGE EDİLMEYECEK (Faz 6D-4d-2, M-a)
+# =============================================================================
+# 6D-4d-2'nin ignore listesi yazılmadan önce pip-audit'in CI'da gerçekte ne
+# raporladığını ölçer (koşul d). Zemin: main 58c2c39 (#46 sonrası).
+# İki job, matris ile: setuptools yükseltmesiz / `--upgrade pip setuptools`.
+# Kurulum, 4d-2 sonrası tests.yml'in sırasını aynen izler; pip-audit bu dalda
+# requirements-dev.txt'e eklendi, yani son tasarımdaki gibi ortak çözülür.
+# Sonuçlar check-run annotation'ı olarak basılır (job logu oturum istiyor).
+# Sınırlar (actions/toolkit docs/problem-matchers.md): adım başına 10 notice,
+# job başına 50. Kayıtlar bu yüzden 10'luk dilimlerle ayrı adımlarda basılır;
+# toplam ayrı bir annotation'dadır.
+# =============================================================================
+
+name: "Ölçüm (merge edilmeyecek) — 6D-4d-2 pip-audit"
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  measure:
+    name: "pip-audit olcumu (${{ matrix.state }})"
+    # tests/test_workflow_runners.py her workflow'da bunu bekliyor.
+    runs-on: ubuntu-24.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - state: yukseltmesiz
+            upgrade: "pip"
+          - state: setuptools-yukseltmeli
+            upgrade: "pip setuptools"
+
+    env:
+      STATE: ${{ matrix.state }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # tests.yml'in kurulum adımı satır satır. Tek fark ilk satırdaki liste:
+      # yukseltmesiz = bugünkü :46, setuptools-yukseltmeli = C1'in satırı.
+      - name: Install dependencies (tests.yml order)
+        run: |
+          python -m pip install --upgrade ${{ matrix.upgrade }}
+          pip install -r requirements-dev.txt
+          pip install -e . --no-deps
+
+      - name: pip freeze (tests.yml's step)
+        run: pip freeze | tee "$RUNNER_TEMP/freeze.txt"
+
+      - name: pip list (pip/setuptools are hidden by freeze)
+        run: python -m pip list --format json > "$RUNNER_TEMP/list.json"
+
+      - name: pip-audit, no ignores, step does not fail
+        run: |
+          for src in pypi osv; do
+            rc=0
+            pip-audit -s "$src" --format json -o "$RUNNER_TEMP/audit_$src.json" || rc=$?
+            echo "$rc" > "$RUNNER_TEMP/exit_$src.txt"
+            echo "::group::audit_$src.json (exit $rc)"
+            cat "$RUNNER_TEMP/audit_$src.json" 2>/dev/null || echo "(missing)"
+            echo; echo "::endgroup::"
+          done
+
+      # pip-audit olmadan aynı çözüm, ortama dokunmadan: freeze'deki fazla
+      # paketlerin adları 6D-3b kaydı için. Ayrı bir çözüm olduğundan o
+      # dakikanın sürüklenmesini taşıyabilir.
+      - name: Resolution without pip-audit (dry run, env untouched)
+        run: |
+          grep -v -E '^(-r |pip-audit==)' requirements-dev.txt > "$RUNNER_TEMP/dev-only.txt"
+          pip install --dry-run --ignore-installed --quiet \
+            --report "$RUNNER_TEMP/without.json" \
+            -r requirements.txt -r "$RUNNER_TEMP/dev-only.txt"
+
+      - name: Summary (3 notices) and records.json
+        run: |
+          cat > "$RUNNER_TEMP/emit.py" <<'EOF'
+          import json, os, sys
+          S, T = os.environ["STATE"], os.environ["RUNNER_TEMP"]
+          src, start = sys.argv[1], int(sys.argv[2])
+          recs = json.load(open(f"{T}/records.json"))[src]
+          def esc(s):
+              return s.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+          n = len(recs)
+          for i in range(start, min(start + 10, n)):
+              r = recs[i]
+              title = f"[{S}] {src} kayit {i + 1}/{n}"
+              msg = (f"paket={r['pkg']} surum={r['ver']} id={r['id']} "
+                     f"aliases={','.join(r['aliases']) or '-'} "
+                     f"fix_versions={','.join(r['fix']) or '(yok)'}")
+              print(f"::notice title={esc(title)}::{esc(msg)}")
+          if start == 10 and n > 20:
+              print(f"::error title={esc(f'[{S}] {src} KAPASITE')}::"
+                    f"{n} kayit > 20; olcum gecersiz, kaynaklari ayri job'lara bol")
+          EOF
+          python - <<'EOF'
+          import json, os, platform
+          S, T = os.environ["STATE"], os.environ["RUNNER_TEMP"]
+
+          def esc(s):
+              return s.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+
+          def notice(title, lines):
+              print(f"::notice title={esc(title)}::{esc(chr(10).join(lines))}")
+
+          def norm(n):
+              return n.lower().replace("_", "-")
+
+          rows = [l for l in open(f"{T}/freeze.txt").read().splitlines() if l.strip()]
+          editable = [l for l in rows if l.startswith("-e")]
+          pinned = [l for l in rows if "==" in l and l not in editable]
+          other = [l for l in rows if l not in editable and l not in pinned]
+          fz = {norm(l.split("==", 1)[0]): l.split("==", 1)[1] for l in pinned}
+          pl = {norm(d["name"]): d["version"] for d in json.load(open(f"{T}/list.json"))}
+
+          def groups(vulns):
+              parent = {}
+              def find(x):
+                  parent.setdefault(x, x)
+                  while parent[x] != x:
+                      parent[x] = parent[parent[x]]
+                      x = parent[x]
+                  return x
+              for r in vulns:
+                  for al in r.get("aliases", []):
+                      parent[find(al)] = find(r["id"])
+              return {find(r["id"]) for r in vulns}
+
+          records, summary = {}, []
+          for src in ("pypi", "osv"):
+              rc = open(f"{T}/exit_{src}.txt").read().strip()
+              try:
+                  deps = json.load(open(f"{T}/audit_{src}.json"))["dependencies"]
+              except Exception as e:
+                  records[src] = []
+                  summary.append(f"{src}: exit {rc} | RAPOR OKUNAMADI "
+                                 f"({type(e).__name__}: {e}) -> olcum gecersiz")
+                  continue
+              scanned = [d for d in deps if "skip_reason" not in d]
+              skipped = [d["name"] for d in deps if "skip_reason" in d]
+              recs, per = [], []
+              for d in scanned:
+                  vs = d.get("vulns", [])
+                  if vs:
+                      per.append(f"  {d['name']}=={d['version']}: {len(vs)} kayit / "
+                                 f"{len(groups(vs))} tekil id")
+                  for v in vs:
+                      recs.append({"pkg": d["name"], "ver": d["version"], "id": v["id"],
+                                   "aliases": sorted(v.get("aliases", [])),
+                                   "fix": v.get("fix_versions", [])})
+              records[src] = recs
+              summary.append(f"{src}: exit {rc} | taranan {len(scanned)} paket | "
+                             f"atlanan {len(skipped)}: {', '.join(skipped) or '-'}")
+              summary.append(f"{src}: TOPLAM {len(recs)} kayit, {len(per)} pakette; "
+                             f"kayit annotation'lari '{src} kayit 1/{len(recs)}'.."
+                             f"'{len(recs)}/{len(recs)}'")
+              summary.extend(per)
+
+          json.dump(records, open(f"{T}/records.json", "w"))
+          expected = 3 + sum(len(r) for r in records.values())
+          notice(f"[{S}] 0 TOPLAM", [
+              "birim: kayit = JSON'daki dependencies[].vulns[] girdisi (mukerrer dahil); "
+              "tekil id = bir paket icinde id+aliases bagli bileseni",
+              *summary,
+              f"bu job'un beklenen onekli annotation sayisi: {expected} (3 ozet + kayitlar)",
+          ])
+
+          try:
+              without = {norm(i["metadata"]["name"])
+                         for i in json.load(open(f"{T}/without.json"))["install"]}
+              added = sorted(set(fz) - without - {"defect-risk-analyzer"})
+              extra = (f"pip-audit'siz cozum {len(without)} paket; freeze'de fazla "
+                       f"{len(added)}: {' '.join(added)}")
+          except Exception as e:
+              extra = f"pip-audit'siz cozum okunamadi ({type(e).__name__})"
+          notice(f"[{S}] 1 ortam", [
+              f"python {platform.python_version()}",
+              " | ".join(f"{k} {pl.get(k, 'YOK')}" for k in
+                         ("pip", "setuptools", "wheel", "websockets", "streamlit",
+                          "openai", "pip-audit")),
+              f"pip freeze: {len(rows)} satir = {len(pinned)} '==' satiri + "
+              f"{len(editable)} '-e' satiri + {len(other)} diger",
+              f"pip list: {len(pl)} girdi",
+              extra,
+          ])
+          notice(f"[{S}] 2 freeze", [" ".join(sorted(pinned, key=str.lower))])
+          EOF
+
+      - name: Records pypi 1-10
+        run: python "$RUNNER_TEMP/emit.py" pypi 0
+      - name: Records pypi 11-20
+        run: python "$RUNNER_TEMP/emit.py" pypi 10
+      - name: Records osv 1-10
+        run: python "$RUNNER_TEMP/emit.py" osv 0
+      - name: Records osv 11-20
+        run: python "$RUNNER_TEMP/emit.py" osv 10
