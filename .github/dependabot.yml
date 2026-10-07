@@ -130,11 +130,19 @@ updates:
     # The structural half — fastapi to the dev extra, tests.yml installing
     # requirements-webhook.txt, -8 packages — is phase 6D-5.
     #
-    # REMOVAL TRIGGER, MECHANICAL, as designed for phase 6D-4d-3's weekly
-    # scheduled workflow: audit `chromadb>=1.0.0` in pip-audit's requirements
-    # mode; red when GHSA-f4j7-r4q5-qw2c stops being reported for it **while the
-    # other three still are** — two conditions together, because an empty
-    # result is a broken scan rather than good news.
+    # REMOVAL TRIGGER, MECHANICAL: .github/workflows/chromadb-1x-watch.yml
+    # (phase 6D-4d-3) runs pip-audit in requirements mode twice. A control
+    # scan pins one version known to carry GHSA-f4j7-r4q5-qw2c (the version is
+    # defined once, in the watcher script) and must report it; a target scan
+    # of `chromadb>=1.0.0` asks whether the newest 1.x still does. Red "is var"
+    # (work to do) = the control is sound and the target, at >=1.0.0, no
+    # longer reports the advisory: delete this entry and start phase 6D-5.
+    # The other three advisories are not a condition. All four end at
+    # last_affected 1.5.9 (OSV, measured 2026-10-07), so a new 1.x release
+    # may show none of them, and requiring them would turn the event this
+    # entry waits for into silence. A broken scan is red under its own title
+    # ("izleyici bozuk"), never green: GitHub notifies only on failed
+    # scheduled runs. States and measurements: docs/KNOWN-DEBT.md.
     #
     # VERSION RANGE, NOT BARE NAME: `versions: [">=1.0.0"]` keeps 0.6.x patch
     # updates flowing while the 1.x line stays deferred. A bare name would have
