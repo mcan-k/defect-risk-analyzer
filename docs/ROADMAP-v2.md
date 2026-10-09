@@ -533,6 +533,12 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > kalktı (tetikleyicisi starlette 1.7.0 ile ateşlendi), #25'i Dependabot
       > kendisi kapattı, `dependabot.yml`'deki dışlaması #45'te silindi.
       > Ertelenen tek şey chromadb 1.x.
+      >
+      > *6D-4d-3 notu (2026-10-07):* chromadb 1.x ertelemesinin gerekçesini
+      > artık haftalık bir iş akışı tutuyor (`chromadb-1x-watch.yml`):
+      > pozitif kontrollü iki tarama; tek yeşil durum "erteleme haklı", 45829
+      > hedefte raporlanmayı bıraktığında kırmızı "iş var", bozuk bir tarama
+      > kendi başlığıyla kırmızı. Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-4d-3 eki".
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 7 — Vitrin (yarım gün)

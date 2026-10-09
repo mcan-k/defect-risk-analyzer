@@ -19,7 +19,8 @@ Yorum bunu söyler ama tutmaz. Bu dosya tutar.
   * `test_every_workflow_job_runs_on_the_pinned_runner` — iddianın kendisi:
     `.github/workflows/` altındaki her `runs-on:` değeri `EXPECTED_RUNNER`.
     Yalnız iki dosyaya değil her workflow'a bakar; sonradan eklenen bir
-    workflow (6D-4d-3'ün haftalık işi gibi) da kapsamda.
+    workflow da kapsamda — 6D-4d-3'ün haftalık işi `chromadb-1x-watch.yml`
+    kod değişikliği olmadan kapsama girdi.
   * `test_runner_scan_is_not_vacuous` — birinci testin boşuna geçmediğini
     tutar. Desen hiçbir satırı yakalamazsa birinci test "her değer doğru"
     der, çünkü hiç değer yoktur. 6D-4c'nin imza kontrat testi aynı sebeple
@@ -47,7 +48,8 @@ WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
 EXPECTED_RUNNER = "ubuntu-24.04"
 
 # Varlığı bilinen iş akışları. Taramanın boş dönmediğinin kanıtı bunlar.
-KNOWN_WORKFLOWS = ("tests.yml", "pr-risk-analysis.yml")
+# chromadb-1x-watch.yml: Faz 6D-4d-3, haftalık chromadb 1.x izleyicisi.
+KNOWN_WORKFLOWS = ("tests.yml", "pr-risk-analysis.yml", "chromadb-1x-watch.yml")
 
 # `runs-on:` değerini satır içi yorumu ve tırnakları atarak yakalar.
 _RUNS_ON = re.compile(r"^\s*runs-on:\s*['\"]?([^'\"\s#]+)", re.MULTILINE)
