@@ -673,6 +673,12 @@ uygulanması. Faz 6, `keyring` ve `SECURITY.md` işiyle birlikte —
 `llm_provider.py`'nin sağlayıcıya göre değişen hata eşleşmesi
 (`per-file-ignores` girdisinde kayıtlı) zaten aynı kodu açıyor.
 
+*6D-4e notu (2026-10-10):* o eşleşme artık yok. İki sağlayıcı da 429'u
+SDK'nın `RateLimitError` tipinden tanıyor; Groq'un "rate_limit" ile
+OpenAI'nin "rate limit" asimetrisi metin eşleşmesiyle birlikte kalktı (bkz.
+"Faz 6D-4e eki"). Bu bölümün asıl borcu — istisna metinlerinin
+çevrilmemesi — değişmedi.
+
 ---
 
 ## Aktif dil bir modül global'i — çok oturumlu kullanımda yarışıyor
@@ -979,9 +985,11 @@ alınmış kuralın **yeni** bir ihlali de gözden kaçar. Girdiler bunu sınır
 için olabildiğince dar tutuldu.
 
 **Planned fix:** girdiler dosya bazında ve fazı yazılı olarak konuldu;
-`pyproject.toml`'daki her satırın üstünde hangi fazda kalkacağı yazıyor
-(api.py → Faz 6, llm_provider.py → Faz 6, kalanlar sahipsiz). Silinmek için
-konuldular, büyütülmek için değil.
+`pyproject.toml`'daki her satırın üstünde hangi fazda kalkacağı yazıyor.
+Faz 3'te api.py → Faz 6, llm_provider.py → Faz 6, kalanlar sahipsizdi; Faz
+6D-4e'den beri hepsinin sahibi **Faz 7'nin temizlik kuyruğu**, tetikleyici
+**Faz 7 başladığında** (aşağıdaki bakiye cümlesi). Silinmek için konuldular,
+büyütülmek için değil.
 
 **Kapanan:** `dashboard.py` → Faz 5B'de temizlendi (37 E501 + 1 F841).
 Taşımadan **önce** yapıldı: 37 uzun satırın yalnız biri yeniden yazımla ölüyordu
@@ -1002,8 +1010,9 @@ Girdinin üstündeki yorum da yanlış teşhisi tekrar ediyordu ("Faz 4 aligns t
 module's component names with component_classifier"); bkz. `ROADMAP-v2.md` Faz 4.
 
 Yukarıdaki 70 / 54 / 5 sayıları Faz 3 anındaki ölçümdür ve geriye dönük
-düzeltilmiyor — tarihsel kayıt. Bugünkü bakiye ayrı bir sayıdır: **24 açık**
-(9 E501 + 15 B904).
+düzeltilmiyor — tarihsel kayıt. Bugünkü bakiye ayrı bir sayıdır: **22 açık**
+(9 E501 + 13 B904). Sahibi **Faz 7'nin temizlik kuyruğu** (kullanıcı kararı,
+2026-10-10), tetikleyici: **Faz 7 başladığında**.
 
 Ölçüm karantinasız alınır — bakiye, karantinada *duran* ihlallerin sayısıdır,
 CI'ın gördüğü değil (`ruff check .` bugün temiz):
@@ -1012,9 +1021,10 @@ CI'ın gördüğü değil (`ruff check .` bugün temiz):
 ruff check . --config "lint.per-file-ignores={}" --statistics
 ```
 
-Döküm: `api.py` 9 + `llm_provider.py` 6 → 15 `B904`; `api_models.py` 4,
-`prompt_templates.py` 3, `pattern_detector.py` 2 → 9 `E501`. B904'ün iki
-dosyası Faz 6'yı işaret ediyor; E501'in üçü sahipsiz.
+Döküm: `api.py` 9 + `llm_provider.py` 4 → 13 `B904`; `api_models.py` 4,
+`prompt_templates.py` 3, `pattern_detector.py` 2 → 9 `E501`.
+`llm_provider.py`'nin iki 429 dalı Faz 6D-4e'de `raise … from e` ile
+zincirlendi (6 → 4); kalan 22'nin hepsi yukarıdaki sahibe, Faz 7'ye bağlı.
 
 `anonymizer.py` bu dökümden düştü: dosya Faz 6B'de yeniden yazıldığında uzun
 satır ortadan kalktı ve arkasında hiçbir şey kalmayan karantina girdisi aynı
@@ -2468,3 +2478,102 @@ sonrası gözlenir; tahmin yazılmadı.
 
 `tests.yml:56–57` satırının tetikleyicisi ("`tests.yml`'e dokunan bir sonraki
 PR") bu PR'da ateşlenmedi: `tests.yml` değişmedi.
+
+---
+
+## Faz 6D-4e eki — 429, hata metninden değil SDK'nın tipinden
+
+**Where:** [`src/defect_risk_analyzer/llm_provider.py`](../src/defect_risk_analyzer/llm_provider.py),
+[`tests/test_llm_provider.py`](../tests/test_llm_provider.py),
+[`tests/test_llm_sdk_contract.py`](../tests/test_llm_sdk_contract.py),
+`pyproject.toml` (`per-file-ignores` yorumları)
+
+**Ne değişti.** İki sağlayıcı da SDK çağrısını tek bir `except Exception` ile
+sarıyor ve `RateLimitError` ile `LLMError` arasında hata metnine bakarak
+seçiyordu: `"429"`, Groq'ta `"rate_limit"`, OpenAI'de `"rate limit"`. Artık
+`analyze`, SDK'nın kendi sınıfını (`groq.RateLimitError`,
+`openai.RateLimitError`) `try`'dan önce import edip tipine göre yakalıyor ve
+`raise … from e` ile zincirliyor. İki sınıf da `APIStatusError` alt sınıfı,
+`status_code: Literal[429]`; SDK'lar onu yalnız HTTP 429 için kuruyor
+(`openai/_client.py:877`, `groq/_client.py:254`; openai 3.24.0, groq 1.7.0).
+İkisinin `Exception`'ın altında ortak bir tabanı yok, ve istisnalarını farklı
+HTTP kütüphanelerinin yanıtıyla kuruyorlar: openai `httpx2`, groq `httpx`.
+
+Import `__init__`'te değil (kullanıcı kararı): dört yapıcı testi
+`sys.modules`'a yalnız `Groq` / `OpenAI` taşıyan bir sahte koyuyor, ve
+`__init__`'te bir `RateLimitError` importu onları `LLMError`'a düşürürdü.
+Bedeli: `test_llm_provider.py` artık kurulu SDK'lara ve onların HTTP
+kütüphanelerine bağlı; docstring'i bunu yazıyor. Groq'un bekleme süresi hâlâ
+metinden okunuyor — değişen yalnız tespit.
+
+**Ölçüm — P1–P4, değişiklikten önce ve sonra.** Çevrimdışı bir prob; sahte
+istemci `object.__new__` ile kurulan sağlayıcıya veriliyor, P3'te ise gerçek
+SDK istemcisi `MockTransport` ve `max_retries=0` ile koşuyor. Yerel `.venv`
+(2026-10-10, groq 1.7.0, openai 3.24.0).
+
+| | girdi | önce | sonra |
+|---|---|---|---|
+| P1 | içerik 429. karakterde bozuk JSON — `Expecting value: line 1 column 430 (char 429)` | `RateLimitError`, iki sağlayıcıda (yanlış pozitif) | `LLMError` |
+| P2 | gerçek SDK `RateLimitError("quota gone")` | `LLMError` (yanlış negatif) | `RateLimitError`, `__cause__` SDK hatası |
+| P3 | SDK'nın kendi 429 eşlemesi; `str(e)` = `Error code: 429 - {...}` | `RateLimitError`, Groq bekleme 90.5 s | `RateLimitError`, `__cause__` SDK hatası, 90.5 s |
+| P4 | `groq.InternalServerError` (500), metninde "429" | `RateLimitError` (yanlış pozitif) | `LLMError` |
+
+Dürüst çerçeve: SDK'nın ürettiği gerçek 429'lar önce de yakalanıyordu (P3),
+çünkü SDK'nın mesajı "Error code: 429" ile başlıyor. Değişikliğin kazancı
+yanlış pozitiflerin (P1, P4) ve sağlayıcılar arası metin asimetrisinin
+kalkması; P2 yalnız elle kurulmuş bir durum.
+
+**Beklenen değerler koddan önce yazıldı** (2026-10-10T09:35:06Z, depo dışı
+bir dosyada), ölçülenle:
+
+| | beklenen | ölçülen |
+|---|---|---|
+| `test_llm_provider.py` | 21 → 31 | 31 |
+| `test_llm_sdk_contract.py` | 9 → 11 | 11 |
+| C1 / C2 / C3 ağacı, toplanan | 653 / 655 / 655 | 653 / 655 / 655 |
+| yerel passed + skipped | 652+1 / 654+1 / 654+1 | 652+1 / 654+1 / 654+1 |
+| izole bakiye | 22 (13 B904 + 9 E501) | 22 |
+
+Bir sapma ölçümden önce beyan edildi: plan M1'i "M0 ile aynı küme" diye
+tahmin etmişti; koddan önceki dosya bunu 15'e (M0'ın 14'ü + bakiye bekçisi)
+düzeltti. Bir sapma da ölçümde çıktı: C1'in ilk ölçümünde `ruff check .`
+kırmızıydı — kontrat docstring'ini düzenlerken bir satır birleşmiş, 102
+karakter olmuştu (E501; bakiye 23, bekçi kırmızı). Düzeltilmeden durduruldu;
+satır sarması kullanıcı onayıyla yapıldı, C1 baştan ölçüldü (653, 652 + 1,
+ruff temiz, 22).
+
+**Mutasyonlar** — her biri dosya kopyasıyla; geri yükleme `cmp` ile doğrulandı,
+`__pycache__` temizlendi. Koşulan: `test_llm_provider.py` +
+`test_llm_sdk_contract.py` + `test_known_debt_tally.py` (43 öğe).
+
+| | mutasyon | beklenen | gözlenen | mesaj |
+|---|---|---|---|---|
+| M0 | yeni testler eski kodda (doğal kırmızı) | 14 | 14 / 31 | `LLMError: Groq API error: quota gone`; `RateLimitError: … (char 429)`; `RateLimitError: … upstream said 429` |
+| M1 | `llm_provider.py` 67d5dd0'daki metin eşleşmesine geri | 15 | 15 | M0'ınkiler + bekçi: `belge: 9 E501 + 13 B904. olculen: 9 E501 + 15 B904`; kontrat testi yeşil |
+| M2 | iki `except <SDK>RateLimitError` dalı silindi | 8 | 8 | `LLMError: … Error code: 429 - {...}` (kontrat ×2), `quota gone` ×5, `Please try again in 1m 30s.`; ruff ayrıca 2 F401 |
+| M3 | `RateLimitError` yerine `APIStatusError` import edildi | 2 | 2 | `RateLimitError: … upstream said 429`; düz `Exception("500 …")` testi yeşil |
+| M4 | iki `from e` silindi | 3 | 3 | `assert None is RateLimitError('quota gone')` ×2 + bekçi (`15 B904`); **`ruff check .` yeşil** — karantina |
+| M5 | Groq dalı `openai.RateLimitError` yakaladı | 4 | 4 | yalnız Groq öğeleri, kontrat `[groq]` dahil |
+| M6 | `QUIET_MESSAGE`'e "Error code: 429" eklendi | 2 | 2 | `assert '429' not in 'error code: 429 quota gone'` (fabrika bekçisi) |
+| M7 | kontrat testinde `max_retries=0` kaldırıldı | 2 | 2 | `groq: 6 istek gitti, 2 bekleniyordu` (openai aynı); 7.35 s |
+| M8 | kod değişti, belge 24'te | 1 | 1 | `belge: 9 E501 + 15 B904. olculen: 9 E501 + 13 B904` |
+
+M4 bu turun asıl dersi: `from e`'nin silinmesini `ruff check .` göremez,
+çünkü `llm_provider.py` B904 için karantinada. Onu `__cause__` testi ve
+bakiye bekçisi görüyor.
+
+**Kapsam genişlemesi (kullanıcı kararı, 2026-10-10).** Kalan 22 lint
+bulgusunun sahibi Faz 7'nin temizlik kuyruğu oldu; bu, `pyproject.toml`'un
+`api.py` ve E501 yorumlarındaki "no phase of its own yet" / "No phase owns
+these" ile bu dosyanın lint bölümündeki "kalanlar sahipsiz" ifadesini
+bayatlattı. Üçü de bu PR'da (C1) düzeltildi.
+
+**Gözlenmedi — CI'da:** 655 passed ve boş uyarı özeti bu PR'ın koşusunda
+gözlenecek. Sağlayıcıların gerçek bir API'ye karşı 429 alması hiç ölçülmedi;
+kontrat testi SDK'nın eşlemesini sahte taşımayla ölçüyor, ağla değil.
+
+| Borç | İşaret |
+|---|---|
+| İki SDK da 429'u varsayılan olarak iki kez kendisi, bekleyerek yeniden deniyor (`DEFAULT_MAX_RETRIES = 2`; `_base_client.py` "Retry on rate limits", openai :916, groq :797). Sağlayıcılar `max_retries` vermiyor, yani devre kesici 429'u ancak üç istekten sonra görüyor. Bu PR'da değiştirilmedi: tespit değişti, çağrı davranışı değil | **Faz 7'nin v1.1 değerlendirmesi** (Faz 7'deki KNOWN-DEBT v1.1 gözden geçirmesi; v1.0'da mı v1.1'de mi ele alınacağı orada kararlaştırılır — davranış değişikliği, temizlik değil; kullanıcı kararı, 2026-10-10), tetikleyici: **Faz 7 başladığında** — `max_retries` kararı orada verilir |
+| Groq'un bekleme süresi hâlâ hata metninden regex'le okunuyor (`_parse_retry_after`); SDK'nın kendisi `retry-after-ms` / `retry-after` başlıklarını okuyabiliyor (`groq/_base_client.py:717`). Metin biçimi değişirse süre sessizce 60 s'ye düşer | **Faz 7'nin v1.1 değerlendirmesi** (yukarıdaki satırla aynı gerekçe: davranış değişikliği, temizlik değil; kullanıcı kararı, 2026-10-10), tetikleyici: **Faz 7 başladığında** |
+| `test_llm_provider.py` ve kontrat testi `httpx` / `httpx2`'yi doğrudan import ediyor; ikisi de transitif. Bir SDK HTTP kütüphanesini değiştirirse (openai 3.x'in httpx'ten httpx2'ye geçtiği gibi) testler import ya da kurulum hatasıyla kırmızı olur — görünür, sessiz değil | Tetikleyici: **groq ya da openai'nin `_exceptions.py`'sindeki HTTP importu değiştiğinde** — `SDKS` ve `HTTP_LIBRARY` güncellenir |

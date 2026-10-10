@@ -539,6 +539,14 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > pozitif kontrollü iki tarama; tek yeşil durum "erteleme haklı", 45829
       > hedefte raporlanmayı bıraktığında kırmızı "iş var", bozuk bir tarama
       > kendi başlığıyla kırmızı. Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-4d-3 eki".
+      >
+      > *6D-4e notu (2026-10-10):* `llm_provider.py` 429'u artık hata metninden
+      > değil SDK'nın `RateLimitError` tipinden tanıyor; ölçülen iki yanlış
+      > pozitif (429. karakterde bozuk JSON, metninde 429 geçen bir 500) ve
+      > Groq/OpenAI metin asimetrisi kalktı. 6D-4c'nin kontrat testi bir uçtan
+      > uca 429 testi kazandı (gerçek istemci, sahte taşıma). Lint bakiyesi
+      > 24 → 22; kalan 22'nin sahibi Faz 7'nin temizlik kuyruğu. Ayrıntı:
+      > `KNOWN-DEBT.md`, "Faz 6D-4e eki".
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 7 — Vitrin (yarım gün)

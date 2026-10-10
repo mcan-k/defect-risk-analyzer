@@ -98,6 +98,11 @@ class GroqProvider(LLMProvider):
 
     def analyze(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Send analysis request to Groq with JSON mode enforced."""
+        # The SDK raises this for HTTP 429 and nothing else, so the type decides
+        # rather than the text. Imported here, not in __init__, and before the
+        # try so a failed import is not reported as an API error.
+        from groq import RateLimitError as GroqRateLimitError
+
         try:
             response = self._client.chat.completions.create(
                 model=self._model,
@@ -112,20 +117,19 @@ class GroqProvider(LLMProvider):
             content = response.choices[0].message.content
             return json.loads(content)
 
+        except GroqRateLimitError as e:
+            error_msg = str(e)
+            retry_seconds = self._parse_retry_after(error_msg)
+            logger.warning(
+                "Groq rate limit hit. Retry after %.1f seconds.", retry_seconds
+            )
+            raise RateLimitError(
+                f"Groq rate limit exceeded: {error_msg}",
+                retry_after_seconds=retry_seconds,
+            ) from e
+
         except Exception as e:
             error_msg = str(e)
-
-            # Detect 429 rate limit and extract retry duration
-            if "429" in error_msg or "rate_limit" in error_msg.lower():
-                retry_seconds = self._parse_retry_after(error_msg)
-                logger.warning(
-                    "Groq rate limit hit. Retry after %.1f seconds.", retry_seconds
-                )
-                raise RateLimitError(
-                    f"Groq rate limit exceeded: {error_msg}",
-                    retry_after_seconds=retry_seconds,
-                )
-
             logger.error("Groq API error: %s", error_msg)
             raise LLMError(f"Groq API error: {error_msg}")
 
@@ -187,6 +191,9 @@ class OpenAIProvider(LLMProvider):
 
     def analyze(self, system_prompt: str, user_prompt: str) -> dict[str, Any]:
         """Send analysis request to OpenAI with JSON mode enforced."""
+        # See GroqProvider.analyze for why the import sits here.
+        from openai import RateLimitError as OpenAIRateLimitError
+
         try:
             response = self._client.chat.completions.create(
                 model=self._model,
@@ -201,16 +208,15 @@ class OpenAIProvider(LLMProvider):
             content = response.choices[0].message.content
             return json.loads(content)
 
+        except OpenAIRateLimitError as e:
+            logger.warning("OpenAI rate limit hit.")
+            raise RateLimitError(
+                f"OpenAI rate limit exceeded: {e}",
+                retry_after_seconds=60.0,
+            ) from e
+
         except Exception as e:
             error_msg = str(e)
-
-            if "429" in error_msg or "rate limit" in error_msg.lower():
-                logger.warning("OpenAI rate limit hit.")
-                raise RateLimitError(
-                    f"OpenAI rate limit exceeded: {error_msg}",
-                    retry_after_seconds=60.0,
-                )
-
             logger.error("OpenAI API error: %s", error_msg)
             raise LLMError(f"OpenAI API error: {error_msg}")
 

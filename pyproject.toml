@@ -113,16 +113,20 @@ select = ["E", "F", "I", "UP", "B"]
 # 9 raise-without-from in the FastAPI handlers. Faz 6 — the contract rework this
 # entry was waiting for happened in Faz 5A (blind_spot_detector returns
 # structured data, BlindSpotReport pins the response) without touching the
-# chaining, so the fix has no phase of its own yet.
+# chaining. Owner since 6D-4e: phase 7's cleanup queue, trigger "when phase 7
+# starts" (docs/KNOWN-DEBT.md).
 "src/defect_risk_analyzer/api.py" = ["B904"]
 
-# 6 raise-without-from in the provider error mapping. Faz 6 revisits this code
-# anyway — Groq matches "rate_limit" while OpenAI matches "rate limit", so a
-# message worded for one provider misses the other's branch. Fix together.
+# 4 raise-without-from in the provider error mapping: the two ImportError ->
+# LLMError raises in __init__ and the two generic LLMError raises in analyze.
+# Phase 6D-4e moved 429 detection from the error text to the SDK's
+# RateLimitError type and chained those two raises with `from e` (6 -> 4).
+# The rest belong to phase 7's cleanup queue (docs/KNOWN-DEBT.md).
 "src/defect_risk_analyzer/llm_provider.py" = ["B904"]
 
-# Long lines in files with no scheduled rewrite. No phase owns these; clear
-# them opportunistically the next time each file is edited.
+# Long lines in files with no scheduled rewrite. Owner since 6D-4e: phase 7's
+# cleanup queue, trigger "when phase 7 starts" (docs/KNOWN-DEBT.md). Until
+# then, clear them opportunistically the next time each file is edited.
 "src/defect_risk_analyzer/api_models.py" = ["E501"]          # 4
 "src/defect_risk_analyzer/prompt_templates.py" = ["E501"]    # 3
 "src/defect_risk_analyzer/pattern_detector.py" = ["E501"]    # 2
