@@ -374,7 +374,10 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       açık çözülen kullanıcı beyaz üstüne beyaz görüyordu.
 
       Kalan iş: kuralların gerçekten temaya çevrilmesi bir tasarım işi, sürüm
-      yükseltmesi de gerektirebilir. Sahipli bir faza bağlanmadı.
+      yükseltmesi de gerektirebilir. ~~Sahipli bir faza bağlanmadı.~~
+      **Sahibi (2026-10-10, 6D-6b): Faz 7'nin temizlik kuyruğu**, tetikleyici
+      "Faz 7 başladığında" — `KNOWN-DEBT.md`, "Faz 6D-6 eki", 6D-6b borç
+      tablosundaki gömülü CSS satırı.
 - [x] **Faz 5C** — `locales/{tr,en}.json`, `t()`, sidebar'da dil seçici
 
       Ölçüm 5B öncesine aitti ve yenilendi: `ui/` altındaki sekiz dosyada
