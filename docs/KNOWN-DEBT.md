@@ -542,7 +542,7 @@ da karşılaştırma `t(...)` çağrısının kendisiyle yapılmalı. 5C ikincis
 
 ---
 
-## `common_keywords` sırası her süreçte değişiyor — kullanıcı iki farklı kök neden görüyor
+## ~~`common_keywords` sırası her süreçte değişiyor — kullanıcı iki farklı kök neden görüyor~~ — 6D-6b'de kapatıldı
 
 **Where:** [`src/defect_risk_analyzer/pattern_detector.py`](../src/defect_risk_analyzer/pattern_detector.py)
 
@@ -582,6 +582,29 @@ alfabetik olarak çözer ve süreçler arası kararlı hâle getirir. `pattern_d
 testleriyle birlikte, Faz 6. Testler bunu gizlemiyor: birebir cümle pin'i tek
 ortak anahtar kelimesi olan bir kümede kurulu, anahtar kelime listesi ise küme
 karşılaştırmasıyla doğrulanıyor.
+
+**Kapandı (6D-6b, 2026-10-10) — planlanandan geniş.** Bu kayıt yalnız anahtar
+kelimeleri anıyordu. 6D-6b'nin tarayıcı kontrolünde kullanıcı aynı mekanizmanın
+**modülü** de değiştirdiğini gördü: TR örnek verisinde bir pattern'in modülü
+yeniden başlatmalarda Frontend → Inventory → Reporting → Inventory oldu, bug
+listesi aynı kaldı. Kaynakta üç yer vardı: küme bir `set` olarak yineleniyordu
+(`cluster_bugs`), kelimeler `set(words)` üzerinden sayılıyordu, ve
+`Counter.most_common` beraberliği ekleme sırasıyla çözüyordu — modülde,
+öncelikte ve kelimelerde. Şimdi:
+- küme anahtar sırasıyla yineleniyor (`sorted(cluster_keys)`);
+- modül ve kelime beraberliği kod noktası sırasıyla çözülüyor. ç ğ ı ö ş ü
+  z'den sonra gelir; yerele duyarlı sıralama cevabı makineye bağlardı
+  (kullanıcı kararı);
+- öncelik beraberliği `core/scoring.py`'nin `PRIORITY_WEIGHTS` sırasıyla, ağır
+  olan önce; tablonun bilmediği öncelikler bilinenlerden sonra ve kendi
+  aralarında ada göre (kullanıcı kararı). `DEFAULT_PRIORITY_WEIGHT` bilerek
+  kullanılmıyor, bilinmeyeni Medium ile Low arasına koyardı.
+
+Testler `tests/test_pattern_detector.py`'nin sonunda. Biri aynı beraberlikli
+girdiyi sabit sekiz `PYTHONHASHSEED` ile sekiz alt süreçte koşuyor; eski kodda
+sekiz seed'in sekizi de farklı cevap veriyor, yani kırmızısı şansa bağlı değil.
+Mutasyonlar ve mock verideki yeni çıktı: "Faz 6D-6 eki", 6D-6b bölümü. Bir
+plotly bump PR'ına kullanıcı kararıyla, ayrı bir commit olarak girdi.
 
 ---
 
