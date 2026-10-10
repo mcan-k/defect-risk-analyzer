@@ -2660,10 +2660,15 @@ testi + 5 bekçi öğesi).
   kullanıcıya görünen bir değişiklik değil.
 - Gerçek servisin çıktı ŞEKLİ. O tarafı `test_dashboard_pages.py` (gerçek
   servis) ve skor snapshot'ları tutuyor.
-- Tarayıcıda çizim. streamlit 1.65.0'ın paketlediği plotly.js'in 3.8.2 olduğu
-  paketteki bir dizgiden çıkarım; plotly.py 7.1 plotly.js 4.1.1'i hedefliyor.
-  AppTest JavaScript çalıştırmıyor; bu yalnız 6D-6b'deki gözle kontrolde
-  görülebilir.
+- Tarayıcıda çizim. ~~streamlit 1.65.0'ın paketlediği plotly.js'in 3.8.2 olduğu
+  paketteki bir dizgiden çıkarım; plotly.py 7.1 plotly.js 4.1.1'i hedefliyor.~~
+  **Düzeltme (6D-6b, 2026-10-10): yanlıştı.** O dizgi aynı paketteki
+  `node_modules/@plotly/d3/d3.js`'in sürümü (`version:\`3.8.2\``). plotly.js'in
+  kendi sürümü `"src/version.js"(e){e.version=\`4.1.1\`}` — streamlit 1.65.0
+  plotly.js **4.1.1** paketliyor (`streamlit/static/static/js/PlotlyChart.Dv4dc5oY.js`;
+  repo `.venv` ile venv-6d6b'deki dosya bayt bayt aynı), yani plotly.py 7.1'in
+  hedeflediğiyle aynı sürüm. AppTest JavaScript çalıştırmıyor; çizim 6D-6b'nin
+  gözle kontrolünde görüldü (aşağıda).
 - Pastanın ekrandaki dilim sırası (plotly.js sıralıyor; JSON veri sırasında).
 - Uyarı denetimi streamlit'in log tabanlı kullanımdan kaldırma uyarılarını ve
   import anında atılmış uyarıları göremez.
@@ -2746,3 +2751,147 @@ gözlenecek; Linux'taki 134 de 6D-6c'nin CI freeze'inde.
 | Borç | İşaret |
 |---|---|
 | streamlit'in `use_container_width` kullanımdan kaldırma uyarısı her render'da düşüyor; mesaj aynen *"`use_container_width` will be removed after 2025-12-31"* diyor ve **o tarih geçti** — parametre streamlit 1.65.0'da hâlâ çalışıyor. Uyarı Python `warnings` değil, bir log kaydı (`streamlit.deprecation_util`), bu yüzden pytest'in uyarı özetinde hiç görünmüyor; 6D-6a'nın denetimi sırasında görüldü. Depoda 19 çağrı yeri, 5 dosyada (`ui/app.py` 8, `ui/pages/ayarlar.py` 6, `ui/pages/buglar.py` 2, `ui/setup_wizard.py` 2, `ui/shell.py` 1); yerine `width="stretch"` | **Faz 7'nin temizlik kuyruğu**, tetikleyici: **streamlit parametreyi kaldırdığında (sayfa testlerinin kırmızısı) ya da Faz 7 başladığında** |
+
+### 6D-6b: Plotly 5.24.1 → 7.1.0 (2026-10-10)
+
+Kendi bump PR'ımız; ölçü 6D-6a'nın değer testi. Dört commit: C1
+`chore(deps)` yalnız `requirements.txt:13`; C2 `test(dashboard)` yığılmış
+çubuk testi; C3 `fix(patterns)` — **kapsam genişletmesi**, aşağıda; C4 bu
+kayıt. Beklentiler her turda koddan önce, depo dışı zaman damgalı dosyalara
+yazıldı (13:23:52Z, 14:34:28Z, 14:42:33Z).
+
+**Ölçüm ortamı.** Depo dışında taze `venv-6d6b` (py 3.11.9, CI sırası, dal
+checkout'undan; plotly 7.1.0, narwhals 2.27.1). Her commit ağacı orada
+ölçüldü. Repo `.venv` plotly 5.24.1'de kaldı; C2'den itibaren orada tam iki
+kırmızı **doğal**, sapma değil.
+
+| | venv-6d6b | repo `.venv` (plotly 5) |
+|---|---|---|
+| C1 | 679 / 678 + 1, uyarı özeti yok | 679 / 678 + 1 |
+| C2 | 681 / 680 + 1 | 2 kırmızı: yığılmış çubuk testi `[risk_map]`, `[open_closed]` |
+| C3, C4 | 684 / 683 + 1 | 2 kırmızı, aynı iki test |
+
+Ruff her ağaçta temiz, bakiye 22. venv-6d6b: freeze 136 (Windows), main
+ortamına göre tek fark `plotly==5.24.1` → `7.1.0`; `pip check` temiz; kapı rc
+0, 138 taranan, 3 kayıt / 3 tekil (chromadb 0.6.3). Bdata bekçisi `>= 6`
+dalında: `app.py`'de grafik başına `[8, 1, 3, 2, 1]` = 15 kodlu dizi (Plotly
+5'te 0); dosya genelinde 17 dizi gerçekten çözüldü (15 + birim testlerdeki 2
+literal).
+
+**Tarayıcı kontrolü (kullanıcı).** İki venv aynı depo `src`'sini çalıştırıyor
+(editable); dal main'den yalnız `requirements.txt` ile ayrılıyor ve o dosya
+çalışma anında okunmuyor. ÖNCE = repo `.venv` (8501), SONRA = venv-6d6b
+(8502); her biri kendi geçici `DRA_BASE_DIR`'ında (örnek bug'lar,
+`.streamlit/config.toml`, yalnız `USE_MOCK_DATA=True` içeren bir `.env`),
+çalışma dizini o klasör (chromadb ayarları `.env`'i çalışma dizininden
+okuyor), `--server.address localhost` (yoksa streamlit dış IP'yi öğrenmek için
+dışarı istek atıyor). Kullanıcının gözlemi, madde madde:
+- Değerler, tablolar, fareyle üzerine gelme, Kör Nokta sekmesi, dil (TR/EN):
+  ÖNCE = SONRA.
+- Konsol: SONRA 0 kırmızı hata. ÖNCE 2 kırmızı: `buglar/_stcore/health` ve
+  `buglar/_stcore/host-config` 404 — sayfa `/buglar` adresinden doğrudan
+  yenilenince; plotly'den bağımsız. İki sekmede yüzlerce sarı
+  "Invalid color passed for primaryColor/textColor in theme.sidebar" uyarısı
+  (streamlit teması). Plotly ya da trace geçen satır yok. Issues panelinde
+  "autocomplete" ve "No label associated with a form field" (streamlit form
+  alanları).
+- **Görsel fark 1:** "Açık vs Kapalı" ÖNCE yan yana (gruplu), SONRA yığılmış —
+  kodun istediği `barmode="stack"`.
+- **Görsel fark 2:** "Modül Risk Haritası" ÖNCE ince ve satırın üst kısmına
+  kaymış çubuklar, SONRA satırı dolduruyor.
+- **Plotly'den bağımsız:** Pattern Tespiti kararsız — aynı ortamda yeniden
+  başlatmalarda bir pattern'in modülü Frontend → Inventory → Reporting →
+  Inventory; anahtar kelime sırası ve "Olası Ortak Neden" de değişiyor; bug
+  listesi aynı.
+
+**İki görsel farkın nedeni — main'deki bir kusur, bump düzeltiyor.** Sahte
+servisle her iki ortamda JSON okundu:
+
+| Grafik | Alan | Plotly 5.24.1 | Plotly 7.1.0 |
+|---|---|---|---|
+| Açık/Kapalı | `barmode` | `stack` | `stack` |
+| | `offsetgroup` | `Açık`, `Kapalı` | yok, yok |
+| Risk haritası | `barmode` | `relative` | `relative` |
+| | `offsetgroup` | `DÜŞÜK`, `ORTA`, `YÜKSEK`, `KRİTİK` | dördü de yok |
+
+Kaynaklar: Plotly 5.24.1'in px'i her bar izine `offsetgroup=trace_name`
+koyuyor, barmode ne olursa olsun (`plotly/express/_core.py:2197-2198`); Plotly
+7.1.0 yalnız barmode `group` ya da boşken (`_core.py:2616-2621`, yorumu: "Set
+'offsetgroup' only in group barmode"). plotly.js 3.0.0'ın #7009'u offsetgroup'u
+stack/relative modunda da uyguluyor (plotly.py 6.0.0 CHANGELOG'u aktarıyor);
+streamlit 1.65.0 plotly.js 4.1.1 paketliyor (yukarıdaki düzeltme). Yani main'de
+plotly.py 5'in JSON'u plotly.js 4'te gruplu çiziliyor; risk haritasında dört
+seviye her satırda dört yuva açıyor, biri dolu. Tarayıcıdaki kısım sürüm notu ve
+gözlemle tutarlı bir **çıkarım** — plotly.js kodunda izi sürülmedi. plotly.py
+CHANGELOG'unda px tarafındaki değişiklik için ayrı bir madde **bulunamadı**.
+main'in bu görünüme ne zaman geçtiği **ölçülmedi** (büyük olasılıkla
+streamlit'in paketlediği plotly.js 3'e geçtiğinde).
+
+C2'nin testi (`test_bars_in_a_stack_share_one_offset_group`, iki öğe): barmode
+stack ya da relative, ve bütün izler tek offset grubunda. Plotly 5'te kırmızı,
+7'de yeşil — **bump'ın doğal kırmızısı**. Bu yüzden C1 ile C2 çift olarak
+revert edilir, önce C2.
+
+**Kapsam genişletmesi — Pattern beraberlikleri (kullanıcı kararı,
+2026-10-10).** Plotly'den bağımsız; bu PR'a ayrı bir commit (C3) olarak girdi,
+tek başına geri alınabilir. Kayıt: yukarıdaki `common_keywords` girdisi,
+**Kapandı** paragrafı. Ölçüm, gerçek `detect_patterns` ve ChromaDB ile, TR
+örnek verisi, `PYTHONHASHSEED` 0–5: kümeler altısında da aynı; eski kodda
+Pattern #2'nin modülü 0–3'te Frontend, 4–5'te Reporting (Frontend, Inventory,
+Reporting 2'şer — beraberlik), Pattern #1'in kelime **kümesi** değişiyor
+(`ödeme`, `sms`, `posta`, `ürün`, `şifre` girip çıkıyor). EN setinde de
+Pattern #2 ve #3'ün modülü değişiyordu. Yeni kodda altı seed'in çıktısı TR'de
+de EN'de de tek:
+
+| | Modül | Öncelik | Anahtar kelimeler | Olası Ortak Neden |
+|---|---|---|---|---|
+| TR #1 (8 bug, critical) | Authentication | High | eksik, yanlış, aktif, dönüyor, etkiliyor, posta, sms, ödeme | `eksik` ve `yanlış` |
+| TR #2 (8, critical) | Frontend | Medium | görünüyor, işlemi, miktarı, sorunu, stok | `görünüyor` ve `işlemi` |
+| TR #3 (3, high) | Authentication | Highest | — | — |
+| EN #1 (8, critical) | Authentication | Highest | sign, but, never, active, back, cannot, email, every | `sign` ve `but` |
+| EN #2 (8, critical) | Frontend | Medium | and, product, quantity, cart, customer, database, incorrectly, never | `and` ve `product` |
+| EN #3 (4, medium) | Frontend | Low | and, cannot, notification, notifications | `and` ve `cannot` |
+
+**Mutasyonlar** — venv-6d6b, dosya kopyası, `cmp` ile geri dönüş,
+`__pycache__` temizliği; tahminler koddan önce yazıldı. T1 = sekiz seed'li
+alt süreç testi, T2 = modül/öncelik beraberliği, T3 = kelime beraberliği.
+
+| # | Mutasyon | Tahmin | Gözlenen |
+|---|---|---|---|
+| M1 | ortam: repo `.venv` (plotly 5) | C2'nin 2 öğesi | aynı: `4 offset groups ['DÜŞÜK', 'KRİTİK', 'ORTA', 'YÜKSEK']`, `2 offset groups ['Açık', 'Kapalı']` |
+| M2 | Açık/Kapalı izlerine `offsetgroup=ad` | `[open_closed]` | aynı (1/26) |
+| M3 | risk haritası izlerine `offsetgroup=ad` | `[risk_map]` | aynı (1/26) |
+| M4 | `barmode="stack"` → `"group"` | 3 test | aynı: `expected one open_closed chart, found 0` ×2 + kümeler bekçisi `[app.py]` |
+| M5 | `pattern_detector.py` eski hali | T1 deterministik, T2 (gövdede ImportError), T3 rastgele | aynı, üç koşu: T1 hep aynı cevaplar, T2 `cannot import name '_most_common_priority'`, T3 üçünde de kırmızı ama her seferinde başka kelime sırası |
+| M6 | kelimelerde `most_common()` | T1, T3 | aynı |
+| M7 | modülde `most_common(1)` | T1, T2 | aynı: `Reporting`; `('Rapor', 'Medium')` |
+| M8 | öncelikte `most_common(1)` | T1, T2 | aynı: `Low`; `('Arama', 'Low')` |
+| M9 | `sorted(cluster_keys)` yok | T1 | aynı: bug sırası `['T-3', 'T-2', 'T-6', …]` |
+| M10 | ikincil ölçüt ad azalan | T1, T2, T3 | aynı: `juliet, india, …`; `('Ödeme', 'Medium')` |
+| M11 | öncelikte ağırlık yerine ad | T1, T2 | aynı: `Low`; `('Arama', 'Blocker')` |
+| M12 | bilinmeyen öncelik önce | T2 | aynı: `('Arama', 'Blocker')` |
+
+**Bir sapma, testin kendisinde.** M5'in ilk koşusunda T1'in kırmızısı hiç
+görülmedi: T2 yeni yardımcıyı modül düzeyinde import ediyordu, eski kodda o ad
+olmadığı için **bütün dosya toplanamadı** (`ImportError` toplama sırasında, 9
+testin hiçbiri koşmadı). Durduruldu; T1'in çocuk betiği eski koda doğrudan
+verildi: sekiz seed'in sekizi farklı, iki koşu satır satır aynı. Kullanıcı
+kararıyla import T2'nin gövdesine taşındı ve ilke dosyaya yazıldı: modül
+düzeyinde yalnız eski kodda da var olan adlar; eksik bir ad tek testi
+düşürmeli, bütün dosyayı değil. M5 ve M6–M12 son dosyayla yeniden koşuldu.
+
+**Yan gözlemler.**
+- `%TEMP%`'teki `dra-*` klasörleri bu oturumdaki birçok tam koşudan sonra 7'de
+  kaldı (6D-6a'da sayılan sayı); normal bitişte conftest temizliği sağlıklı
+  görünüyor — çıkarım.
+- Tarayıcı kontrolünde her iki sunucunun stderr'i aynı iki gürültüyü taşıyor:
+  chromadb 0.6.3'ün posthog telemetrisi ("capture() takes 1 positional argument
+  but 3 were given", 6D-5'in konusu) ve yukarıdaki `use_container_width` log
+  satırları.
+- `analysis_service.py`'deki `most_common(1)` (sorgu için modül tahmini) bu
+  sınıftan **değil**: girdi sırası ChromaDB'nin benzerlik sırası, hash sırası
+  değil.
+
+| Borç | İşaret |
+|---|---|
+| EN `STOP_WORDS`'te `and` ve `but` yok (`pattern_detector.py:25–53`; liste "the", "a", "of" gibi edatları içeriyor, bağlaçları içermiyor). EN örnek verisinde "Olası Ortak Neden" `and` ve `product`, `and` ve `cannot`, `sign` ve `but` diyor — anlamsız bir kök neden önerisi. 6D-6b'nin deterministik sıralaması bunu görünür kıldı (artık her seferinde aynı anlamsız kelime); düzeltme bir davranış değişikliği ve bu PR'ın kapsamında değil | **Faz 7'nin v1.1 değerlendirmesi** (kullanıcı kararı, 2026-10-10), tetikleyici: **Faz 7 başladığında** |

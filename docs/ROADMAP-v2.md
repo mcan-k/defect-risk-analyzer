@@ -556,6 +556,16 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > `bdata` dizilerini standart kütüphaneyle çözen bir okuyucu. 655 → 679.
       > Dört ortamda (main, yalnız pandas 3, yalnız plotly 7, ikisi) yeşil.
       > Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-6 eki".
+      >
+      > *6D-6b notu (2026-10-10):* plotly 5.24.1 → 7.1.0. Tarayıcı kontrolü
+      > main'de iki çizim kusuru gösterdi (açık/kapalı çubuklar yığılmak yerine
+      > yan yana, risk haritası çubukları satırın dörtte biri); nedeni Plotly
+      > 5'in her bar izine koyduğu `offsetgroup` ve streamlit'in paketlediği
+      > plotly.js 4.1.1 — bump düzeltiyor, yeni test Plotly 5'te kırmızı.
+      > Kapsam genişletmesi (kullanıcı kararı): Pattern Tespiti'nin modül,
+      > öncelik ve anahtar kelime beraberlikleri artık bir kurala göre
+      > çözülüyor, süreç başına hash sırasına göre değil. 679 → 684. Ayrıntı:
+      > `KNOWN-DEBT.md`, "Faz 6D-6 eki", 6D-6b bölümü.
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 7 — Vitrin (yarım gün)
