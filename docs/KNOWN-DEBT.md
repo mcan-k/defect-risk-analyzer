@@ -2084,7 +2084,7 @@ pin, 123 transitif. `tests.yml`'in yorumu bu yüzden artık tarihli: sayı bir
 
 | Borç | İşaret |
 |---|---|
-| 123 transitif paket (2026-10-07, #47) dondurulmamış; çözünürlük manifest değişmeden değişebiliyor (09-25'te otlp-common, 10-07'de aiohttp-retry). pip-audit'in 16 transitifi de bu kümede | **6D-6 tamamlandıktan sonra, Faz 7'den önce.** Gerekçe: 6D-6 de tabanı oynatıyor (pandas, plotly majorları); kısıt dosyası ondan önce üretilirse dondurulan küme hemen yeniden açılır — "önce taban güncellensin, sonra dondurulsun" ilkesinin aynısı |
+| 123 transitif paket (2026-10-07, #47) dondurulmamış; çözünürlük manifest değişmeden değişebiliyor (09-25'te otlp-common, 10-07'de aiohttp-retry). pip-audit'in 16 transitifi de bu kümede | **6D-6 tamamlandıktan sonra, Faz 7'den önce.** Gerekçe: 6D-6 de tabanı oynatıyor (pandas, plotly majorları); kısıt dosyası ondan önce üretilirse dondurulan küme hemen yeniden açılır — "önce taban güncellensin, sonra dondurulsun" ilkesinin aynısı. **Bu tetikleyici 6D-6c'nin merge'üyle ateşlenir:** 6D-6 o PR'la tamamlanıyor ("Faz 6D-6 eki", 6D-6c bölümü). Satır açık kalır; kapatmak 6D-3b'nin işi |
 
 ---
 
@@ -2899,3 +2899,91 @@ düşürmeli, bütün dosyayı değil. M5 ve M6–M12 son dosyayla yeniden koşu
 | `/buglar` adresinden doğrudan yenilemede `buglar/_stcore/health` ve `buglar/_stcore/host-config` 404 (ÖNCE sekmesinde iki kırmızı konsol hatası; plotly'den bağımsız; 6D-6b tarayıcı kontrolü) — **çıkarım:** streamlit'in çok sayfalı yönlendirmesi alt yoldan yenilemede bu uç noktaları göreli çözüyor | **Faz 7'nin v1.1 değerlendirmesi** ("bizim mi, upstream mı" kararı orada; kullanıcı kararı, 2026-10-10), tetikleyici: **Faz 7 başladığında** |
 | Tarayıcının Issues panelinde form alanı erişilebilirlik uyarıları: "autocomplete" ve "No label associated with a form field" (6D-6b tarayıcı kontrolü) — **çıkarım:** alanları streamlit'in kendi bileşenleri üretiyor | **Faz 7'nin v1.1 değerlendirmesi** ("bizim mi, upstream mı" kararı orada; kullanıcı kararı, 2026-10-10), tetikleyici: **Faz 7 başladığında** |
 | `ui/theme.py`'deki gömülü CSS kurallarının `.streamlit/config.toml` temasına taşınması sahipsizdi. `ROADMAP-v2.md` Faz 5'teki "[~] 110 satırlık gömülü CSS → `.streamlit/config.toml` teması" maddesi "Sahipli bir faza bağlanmadı" diyordu; `config.toml`'un kendi yorumu da işaretsiz bir tetikleyici taşıyor ("Trigger: go through ui/theme.py's 21 rules against the 1.63.0 option list"). streamlit 1.63.0'da `[theme]` seçenek sayısı 6'dan 277'ye çıktı (`config.toml`'daki 6D-4a ölçümü); hangi kuralın taşınabileceği ölçülmedi. Yorum bir yapılandırma dosyasında; bu satır onu anıyor, ona dokunmuyor. Faz 7 kuyruğunda bu konuda önceden bir kayıt bulunamadı — 6D-4a'nın "config.toml yorumu" iş maddesi yorumu ölçümle güncellemekti ve kapandı | **Faz 7'nin temizlik kuyruğu** (kullanıcı kararı, 2026-10-10), tetikleyici: **Faz 7 başladığında** |
+
+### 6D-6c: pandas 2.2.3 → 3.0.6 (2026-10-10)
+
+Kendi bump PR'ımız; ölçü 6D-6a'nın değer testi. İki commit: C1 `chore(deps)`
+yalnız `requirements.txt:30`; C2 bu kayıt. Kod değişmiyor, yeni test yok,
+doğal kırmızı yok. Beklentiler her turda koddan önce, depo dışı zaman damgalı
+bir dosyaya yazıldı (16:50:39Z, 19:00:17Z); hepsi tuttu.
+
+**Ölçüm ortamları.** Depo dışında iki taze venv, aynı anda, CI sırasıyla (py
+3.11.9, pip 26.2.1): `venv-6d6c` dal ağacından (pandas 3.0.6, plotly 7.1.0)
+ve taban olarak `venv-6d6c-once` main'in `requirements*.txt`'inden (pandas
+2.2.3, plotly 7.1.0). Taban repo `.venv` olamazdı: plotly 5.24.1'de kaldı, gün
+içi kayma da farka karışırdı.
+
+| | `venv-6d6c-once` (main) | `venv-6d6c` (C1) |
+|---|---|---|
+| toplanan | 684 | 684 |
+| düz pytest | 683 + 1, uyarı özeti yok | 683 + 1, uyarı özeti yok |
+| değer testi | 26/26 | 26/26 |
+| freeze (Windows, `==` satırı) | 136 | 135 |
+| `pip check` | rc 1 (aşağıda) | temiz |
+| kapı | rc 0; 138 taranan, 3 kayıt / 3 tekil | rc 0; 137 taranan, 3 kayıt / 3 tekil |
+
+Atlanan tek test `test_env_writer.py:333` (Windows). Ruff temiz, bakiye 22.
+Uyarı özeti yok — FutureWarning ve DeprecationWarning dahil hiçbir uyarı.
+Freeze farkı ad=sürüm olarak tam iki satır: `pandas==2.2.3` → `3.0.6` ve
+`pytz==2026.5` gidiyor; `tzdata==2026.5` kalıyor (pandas 3.0.6 `pytz`
+istemiyor, `tzdata`'yı yalnız `sys_platform == "win32"` ve `"emscripten"`
+işaretiyle istiyor). Kapının kayıtları değişmedi: chromadb 0.6.3,
+45830/45831/45833.
+
+**Linux — çıkarım, CI'da gözlenecek.** freeze 134 (`−pytz`, `−tzdata`), kapı
+136 / 3. Dayanak 6D-6 keşfindeki kurulu metadata işaret taraması (main için
+CI'ın 136'sını yeniden üretmişti). Yerelde ölçülmedi.
+
+**Yöntemden iki iz.**
+- Tabanın `pip check`'i rc 1: "defect-risk-analyzer 1.0.0 has requirement
+  pandas==3.0.6, but you have pandas 2.2.3". İki venv'in editable kurulumu da
+  C1 checkout'undan yapıldı ve paket metadata'sı `requirements.txt`'i okuyor.
+  `src` iki ortamda aynı; bu tabanın yöntem izi, ortamın kusuru değil. 6D-6a
+  bunu kopyanın kendi `requirements.txt`'ini değiştirerek önlemişti.
+- Ölçüm aracının kendi gürültüsü: ilk koşu `pytest -q` ile yapıldı.
+  `pyproject.toml`'un `addopts`'u zaten `-q` taşıdığı için bu `-qq` oldu ve
+  özet satırı düştü. Düz `pytest` ile yeniden koşuldu; tablodaki sayılar o
+  koşudan.
+
+**Tarayıcı kontrolü (kullanıcı).** 6D-6b'nin tarifi; ÖNCE = `venv-6d6c-once`
+(8501), SONRA = `venv-6d6c` (8502), her biri kendi geçici `DRA_BASE_DIR`'ında.
+On üç maddenin hepsi ÖNCE = SONRA:
+1. Kenar çubuğu ("Mock Data Modu Aktif", 20 bug).
+2. Modül Risk Haritası: değerler, sıra, çubuk kalınlığı, fareyle üzerine gelme.
+3. Bug Dağılımı (pasta).
+4. Haftalık trend: hafta tarihleri eksende ve üzerine gelmede. pandas 3'te bu
+   tarih sütunu saniye çözünürlüğünde (pandas 2'de nanosaniye).
+5. Açık/Kapalı: iki sekmede de yığılmış (6D-6b'den beri beklenen görünüm).
+6. Kümülatif (alan): tarih ekseni ve üzerine gelmedeki biçim.
+7. Risk sıralaması tablosu.
+8. Kör Nokta tabloları.
+9. Buglar listesi ve tarih sütununun biçimi (`created[:10]`, metin sütunu).
+10. Buglar filtreleri.
+11. Pattern Tespiti.
+12. TR/EN geçişi.
+13. Konsol: iki sekmede 0 kırmızı hata. Sarı uyarılar yalnız bilinen
+    `theme.sidebar` uyarıları (6D-6b borç satırı). 8502'de tarayıcının bir
+    bilgi notu ("[Intervention] Slow network is detected", yedek yazı tipi,
+    `SourceCodeVF-Upright.ttf`) — pandas'tan bağımsız.
+
+Sunucu günlükleri iki ortamda aynı: chromadb posthog `capture()` ve
+`use_container_width` satırları; traceback yok.
+
+**Duman testinde ayrıştırılamayan bir gözlem.** Talimatı doğrulamak için iki
+sunucu ajanın kendi gömülü tarayıcısında açıldı (dizinleri sonra silindi).
+İlk sekmede 9× `Error: <text> attribute y: Expected length, "-Infinity".`
+göründü. O sekme 800×450'lik bir bölmede açılmıştı ve konsol arabelleği iki
+adres arasındaki gezinmede taşındı; hatanın ÖNCE'ye mi SONRA'ya mı ait olduğu
+ayrıştırılamadı. Taze sekmelerde (1280×720) ikisinde de 0 hata ve 5 grafik.
+Kullanıcının tarayıcısında görülmedi. Borç satırı açılmadı: yeniden
+üretilemedi.
+
+**Revert.** C1'in tek başına revert'i (C2'den önce, atılan bir dalda): ağaç
+main ağacına eşit. C2 eklendikten sonraki revert ölçümleri PR gövdesinde.
+
+**6D-6 bu PR'la tamamlanıyor** — 6D-6a (#51), 6D-6b (#52), 6D-6c. Bu yüzden
+"Transitif sürüklenme — 6D-3b'nin kısıt dosyası ertelendi" bölümündeki
+tetikleyici ("6D-6 tamamlandıktan sonra, Faz 7'den önce") bu PR'ın merge'üyle
+ateşlenir; o hücre buraya bağlandı. Satır açık kalır, kapatmak 6D-3b'nin işi.
+#40'ın (Dependabot, pandas 3.0.6) nasıl kapanacağı gözlenecek; tahmin
+yazılmadı.
