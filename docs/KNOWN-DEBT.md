@@ -979,9 +979,11 @@ alınmış kuralın **yeni** bir ihlali de gözden kaçar. Girdiler bunu sınır
 için olabildiğince dar tutuldu.
 
 **Planned fix:** girdiler dosya bazında ve fazı yazılı olarak konuldu;
-`pyproject.toml`'daki her satırın üstünde hangi fazda kalkacağı yazıyor
-(api.py → Faz 6, llm_provider.py → Faz 6, kalanlar sahipsiz). Silinmek için
-konuldular, büyütülmek için değil.
+`pyproject.toml`'daki her satırın üstünde hangi fazda kalkacağı yazıyor.
+Faz 3'te api.py → Faz 6, llm_provider.py → Faz 6, kalanlar sahipsizdi; Faz
+6D-4e'den beri hepsinin sahibi **Faz 7'nin temizlik kuyruğu**, tetikleyici
+**Faz 7 başladığında** (aşağıdaki bakiye cümlesi). Silinmek için konuldular,
+büyütülmek için değil.
 
 **Kapanan:** `dashboard.py` → Faz 5B'de temizlendi (37 E501 + 1 F841).
 Taşımadan **önce** yapıldı: 37 uzun satırın yalnız biri yeniden yazımla ölüyordu
@@ -1002,8 +1004,9 @@ Girdinin üstündeki yorum da yanlış teşhisi tekrar ediyordu ("Faz 4 aligns t
 module's component names with component_classifier"); bkz. `ROADMAP-v2.md` Faz 4.
 
 Yukarıdaki 70 / 54 / 5 sayıları Faz 3 anındaki ölçümdür ve geriye dönük
-düzeltilmiyor — tarihsel kayıt. Bugünkü bakiye ayrı bir sayıdır: **24 açık**
-(9 E501 + 15 B904).
+düzeltilmiyor — tarihsel kayıt. Bugünkü bakiye ayrı bir sayıdır: **22 açık**
+(9 E501 + 13 B904). Sahibi **Faz 7'nin temizlik kuyruğu** (kullanıcı kararı,
+2026-10-10), tetikleyici: **Faz 7 başladığında**.
 
 Ölçüm karantinasız alınır — bakiye, karantinada *duran* ihlallerin sayısıdır,
 CI'ın gördüğü değil (`ruff check .` bugün temiz):
@@ -1012,9 +1015,10 @@ CI'ın gördüğü değil (`ruff check .` bugün temiz):
 ruff check . --config "lint.per-file-ignores={}" --statistics
 ```
 
-Döküm: `api.py` 9 + `llm_provider.py` 6 → 15 `B904`; `api_models.py` 4,
-`prompt_templates.py` 3, `pattern_detector.py` 2 → 9 `E501`. B904'ün iki
-dosyası Faz 6'yı işaret ediyor; E501'in üçü sahipsiz.
+Döküm: `api.py` 9 + `llm_provider.py` 4 → 13 `B904`; `api_models.py` 4,
+`prompt_templates.py` 3, `pattern_detector.py` 2 → 9 `E501`.
+`llm_provider.py`'nin iki 429 dalı Faz 6D-4e'de `raise … from e` ile
+zincirlendi (6 → 4); kalan 22'nin hepsi yukarıdaki sahibe, Faz 7'ye bağlı.
 
 `anonymizer.py` bu dökümden düştü: dosya Faz 6B'de yeniden yazıldığında uzun
 satır ortadan kalktı ve arkasında hiçbir şey kalmayan karantina girdisi aynı

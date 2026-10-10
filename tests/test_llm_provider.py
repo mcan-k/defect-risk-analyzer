@@ -1,19 +1,27 @@
 """
 Tests for llm_provider error mapping.
 
-Both providers wrap their SDK call in a single `except Exception` and decide
-between RateLimitError and LLMError by matching the error text. That branch
-order is what these tests pin: a 429 must become RateLimitError, everything
-else LLMError.
+Both providers decide between RateLimitError and LLMError by the SDK's
+exception TYPE: the SDK's own RateLimitError becomes ours, everything else
+LLMError. Until phase 6D-4e they matched the error text instead ("429",
+"rate_limit", "rate limit"), so any error that merely mentioned 429 tripped the
+circuit breaker — a JSON decode error at "char 429" included. The tests below
+pin both directions: a quiet SDK RateLimitError is a rate limit, and a loud
+message is not.
 
 No network. The SDK is never contacted — providers are built with
-object.__new__ to bypass __init__ (which would import the SDK and demand an
-API key) and given a fake client that raises.
+object.__new__ to bypass __init__ (which would demand an API key) and given a
+fake client that raises. The exceptions it raises are real SDK instances, so
+these tests do need the installed SDKs and their HTTP libraries.
 """
 
 import json
 from types import SimpleNamespace
 
+import groq
+import httpx
+import httpx2
+import openai
 import pytest
 
 from defect_risk_analyzer.llm_provider import (
@@ -40,9 +48,10 @@ def _client(error: Exception | None = None, content: str = "{}"):
 def make_provider(cls, error: Exception | None = None, content: str = "{}"):
     """Build a provider without running __init__.
 
-    __init__ imports the vendor SDK and reads config.<PROVIDER>_API_KEY. Neither
-    is relevant to error mapping, and bypassing it keeps these tests independent
-    of installed packages and configuration entirely.
+    __init__ imports the vendor client and reads config.<PROVIDER>_API_KEY.
+    Neither is relevant to error mapping, and bypassing it keeps these tests
+    independent of configuration. Not of the installed SDK: `analyze` imports
+    the SDK's RateLimitError itself.
     """
     provider = object.__new__(cls)
     provider._client = _client(error, content)
@@ -51,6 +60,22 @@ def make_provider(cls, error: Exception | None = None, content: str = "{}"):
 
 
 PROVIDERS = [GroqProvider, OpenAIProvider]
+
+# Each SDK with the HTTP library its exceptions are built on: openai 3.x moved
+# to httpx2, groq is still on httpx.
+SDKS = {GroqProvider: (groq, httpx), OpenAIProvider: (openai, httpx2)}
+
+# Carries none of the words the old text matching looked for, so a test using
+# it can only pass by the exception's type.
+QUIET_MESSAGE = "quota gone"
+
+
+def sdk_error(cls, name: str, message: str, status: int) -> Exception:
+    """A real SDK exception of class `name`, built the way the SDK builds it."""
+    sdk, http = SDKS[cls]
+    request = http.Request("POST", "https://example.invalid/chat/completions")
+    response = http.Response(status, request=request)
+    return getattr(sdk, name)(message, response=response, body=None)
 
 
 # ===========================================================================
@@ -88,15 +113,46 @@ def test_successful_call_returns_parsed_json(cls):
 
 
 # ===========================================================================
-# Rate limit detection
+# The fixture the type tests rest on
 # ===========================================================================
 
 @pytest.mark.parametrize("cls", PROVIDERS)
-def test_http_429_maps_to_rate_limit_error(cls):
-    """Both providers key off the literal "429" in the message."""
-    provider = make_provider(cls, error=Exception("Error code: 429 - quota exceeded"))
+def test_the_sdk_error_factory_builds_the_real_class(cls):
+    """Guards the rate limit tests below against a false pass.
+
+    They prove "the type decides, not the text" only if the error really is
+    the SDK's class with a 429 and its text carries none of the old trigger
+    words. If either slipped, text matching would pass them too.
+    """
+    sdk, _http = SDKS[cls]
+    error = sdk_error(cls, "RateLimitError", QUIET_MESSAGE, 429)
+
+    assert type(error) is sdk.RateLimitError
+    assert error.status_code == 429
+    for word in ("429", "rate_limit", "rate limit"):
+        assert word not in str(error).lower()
+
+
+# ===========================================================================
+# Rate limit detection — by the SDK's exception type
+# ===========================================================================
+
+@pytest.mark.parametrize("cls", PROVIDERS)
+def test_sdk_rate_limit_error_maps_to_rate_limit_error(cls):
+    error = sdk_error(cls, "RateLimitError", QUIET_MESSAGE, 429)
+    provider = make_provider(cls, error=error)
     with pytest.raises(RateLimitError):
         provider.analyze("system", "user")
+
+
+@pytest.mark.parametrize("cls", PROVIDERS)
+def test_rate_limit_error_chains_the_sdk_error(cls):
+    """`raise ... from e`: the SDK's error stays reachable as __cause__."""
+    error = sdk_error(cls, "RateLimitError", QUIET_MESSAGE, 429)
+    provider = make_provider(cls, error=error)
+    with pytest.raises(RateLimitError) as excinfo:
+        provider.analyze("system", "user")
+    assert excinfo.value.__cause__ is error
 
 
 @pytest.mark.parametrize("cls", PROVIDERS)
@@ -106,38 +162,45 @@ def test_server_error_maps_to_llm_error(cls):
         provider.analyze("system", "user")
 
 
-def test_groq_matches_underscore_rate_limit_form():
-    """Groq checks for "rate_limit" (underscore), as in rate_limit_exceeded."""
-    provider = make_provider(GroqProvider, error=Exception("rate_limit_exceeded"))
-    with pytest.raises(RateLimitError):
-        provider.analyze("system", "user")
+@pytest.mark.parametrize("cls", PROVIDERS)
+def test_sdk_server_error_mentioning_429_maps_to_llm_error(cls):
+    """A 500 whose text says 429 is still a 500.
 
-
-def test_openai_matches_spaced_rate_limit_form():
-    """OpenAI checks for "rate limit" (space)."""
-    provider = make_provider(OpenAIProvider, error=Exception("Rate limit reached"))
-    with pytest.raises(RateLimitError):
+    Also the case that fails if the type check widens to APIStatusError,
+    which every 4xx/5xx shares; the plain-Exception test above cannot see that.
+    """
+    error = sdk_error(cls, "InternalServerError", "upstream said 429", 500)
+    provider = make_provider(cls, error=error)
+    with pytest.raises(LLMError):
         provider.analyze("system", "user")
 
 
 @pytest.mark.parametrize(
-    ("cls", "message"),
-    [
-        # Groq looks for "rate_limit"; a spaced message without a 429 misses.
-        (GroqProvider, "Rate limit reached"),
-        # OpenAI looks for "rate limit"; an underscored message without a 429 misses.
-        (OpenAIProvider, "rate_limit_exceeded"),
-    ],
+    "message", ["Error code: 429", "rate_limit_exceeded", "Rate limit reached"]
 )
-def test_providers_do_not_share_rate_limit_wording(cls, message: str):
-    """Documents a real asymmetry, deliberately not papered over.
+@pytest.mark.parametrize("cls", PROVIDERS)
+def test_error_text_alone_never_means_rate_limit(cls, message: str):
+    """The three wordings the old matching keyed on, for both providers.
 
-    Groq matches "rate_limit" and OpenAI matches "rate limit", so each misses
-    the other's wording when the message carries no "429". Both then degrade to
-    LLMError, which means no circuit breaker. Recorded as current behaviour;
-    a fix belongs with the provider code, not with this test.
+    Before 6D-4e, Groq matched "rate_limit" and OpenAI "rate limit", so each
+    missed the other's wording; that asymmetry is gone with the matching.
     """
     provider = make_provider(cls, error=Exception(message))
+    with pytest.raises(LLMError):
+        provider.analyze("system", "user")
+
+
+@pytest.mark.parametrize("cls", PROVIDERS)
+def test_json_decode_error_at_char_429_maps_to_llm_error(cls):
+    """Measured before 6D-4e: this became RateLimitError on both providers.
+
+    json.loads sits inside the same try, and its message names the position.
+    """
+    content = " " * 429 + "x"
+    with pytest.raises(json.JSONDecodeError, match=r"\(char 429\)"):
+        json.loads(content)
+
+    provider = make_provider(cls, content=content)
     with pytest.raises(LLMError):
         provider.analyze("system", "user")
 
@@ -160,9 +223,9 @@ def test_groq_parses_retry_after(message: str, expected: float):
 
 
 def test_groq_rate_limit_error_carries_retry_after():
-    provider = make_provider(
-        GroqProvider, error=Exception("Error code: 429 - try again in 1m 30s")
-    )
+    """The duration is still read from the text; only the detection moved."""
+    error = sdk_error(GroqProvider, "RateLimitError", "Please try again in 1m 30s.", 429)
+    provider = make_provider(GroqProvider, error=error)
     with pytest.raises(RateLimitError) as excinfo:
         provider.analyze("system", "user")
     assert excinfo.value.retry_after_seconds == 90.0
@@ -170,7 +233,8 @@ def test_groq_rate_limit_error_carries_retry_after():
 
 def test_openai_rate_limit_error_uses_fixed_retry_after():
     """OpenAI does not parse a duration; it always reports 60 seconds."""
-    provider = make_provider(OpenAIProvider, error=Exception("Error code: 429"))
+    error = sdk_error(OpenAIProvider, "RateLimitError", QUIET_MESSAGE, 429)
+    provider = make_provider(OpenAIProvider, error=error)
     with pytest.raises(RateLimitError) as excinfo:
         provider.analyze("system", "user")
     assert excinfo.value.retry_after_seconds == 60.0

@@ -1,11 +1,13 @@
 """`llm_provider.py`'nin çağırdığı SDK yüzeyi, KURULU SDK'da gerçekten var mı?
 
-NEDEN VAR. `tests/test_llm_provider.py` SDK'yı tamamen sahteliyor, ve bunu
-bilerek yapıyor — docstring'i "keeps these tests independent of installed
-packages ... entirely" diyor. Doğru bir karar, ama bedeli ölçüldü: o dosyadaki
-sahte istemci `def create(**kwargs)` (satır 30), yani **her kwarg'ı kabul
-eder**, SDK'dan kalkmış olanı dahil. Yapıcıyı test eden dördü ise
-`monkeypatch.setitem(sys.modules, "groq", ...)` ile paketi baştan değiştiriyor.
+NEDEN VAR. `tests/test_llm_provider.py` SDK istemcisini tamamen sahteliyor,
+ve bunu bilerek yapıyor — 6D-4c'de docstring'i "keeps these tests independent
+of installed packages ... entirely" diyordu (6D-4e'den beri yalnız
+yapılandırmadan bağımsız; fırlattığı istisnalar gerçek SDK sınıfları). Doğru
+bir karar, ama bedeli ölçüldü: o dosyadaki sahte istemci `def create(**kwargs)`
+(satır 38), yani **her kwarg'ı kabul eder**, SDK'dan kalkmış olanı dahil.
+Yapıcıyı test eden dördü ise `monkeypatch.setitem(sys.modules, "groq", ...)`
+ile paketi baştan değiştiriyor.
 
 Sonuç: 6D-4c'den önce `llm_provider.py` ile kurulu SDK arasındaki sözleşmeyi
 ölçen **hiçbir şey yoktu**. İki major bump (groq 0.13 → 1.7, openai 1.58 → 3.13)
