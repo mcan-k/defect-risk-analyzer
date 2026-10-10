@@ -569,6 +569,14 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > öncelik ve anahtar kelime beraberlikleri artık bir kurala göre
       > çözülüyor, süreç başına hash sırasına göre değil. 679 → 684. Ayrıntı:
       > `KNOWN-DEBT.md`, "Faz 6D-6 eki", 6D-6b bölümü.
+      >
+      > *6D-6c notu (2026-10-10):* pandas 2.2.3 → 3.0.6; kod değişmedi, test
+      > sayısı 684'te kaldı. Ölçü 6D-6a'nın değer testi: iki taze ortamda
+      > (main ve dal) 683 + 1, uyarı özeti yok, değer testi 26/26; Windows
+      > freeze 136 → 135 (`−pytz`), kapı 138 → 137 taranan, 3 kayıt. Tarayıcı
+      > kontrolünde on üç maddenin hepsi aynı. 6D-6 bu PR'la tamamlanıyor;
+      > 6D-3b'nin tetikleyicisi ("6D-6 tamamlandıktan sonra") merge'le
+      > ateşlenir. Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-6 eki", 6D-6c bölümü.
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 7 — Vitrin (yarım gün)
