@@ -34,7 +34,10 @@ Bu, `tests/test_dependency_pins.py`'nin gerekçe bekçisiyle aynı sınıf
 
 AĞ YOK. İstemciler sahte anahtarla kuruluyor. Ölçüldü: `groq/_client.py` ve
 openai'nin karşılığı yapıcıda yalnız `api_key is None` kontrolü yapıyor, ağa
-çıkmıyor. Hiçbir istek gönderilmiyor — yalnızca `inspect.signature` okunuyor.
+çıkmıyor. İmza testleri yalnızca `inspect.signature` okuyor. 6D-4e'nin uçtan
+uca 429 testi gerçek istemciyle istek gönderiyor, ama isteği SDK'nın HTTP
+kütüphanesinin `MockTransport`'u karşılıyor (groq → httpx, openai → httpx2);
+soket açılmıyor.
 """
 
 import ast
@@ -316,3 +319,62 @@ def test_the_response_shape_survives(provider: Provider):
 def _installed_version(provider: Provider) -> str:
     """Hata mesajlarında hangi sürümün ölçüldüğünü söylemek için."""
     return getattr(importlib.import_module(provider.module), "__version__", "?")
+
+
+# ===========================================================================
+# Faz 6D-4e — SDK'nın 429 eşlemesi ve sağlayıcının yakaladığı tip
+# ===========================================================================
+# Her SDK'nın istisnalarını kurduğu HTTP kütüphanesi: openai 3.x httpx2'ye
+# geçti, groq hâlâ httpx'te. Ölçüldü: iki paketin `_exceptions.py` importları.
+HTTP_LIBRARY = {"groq": "httpx", "openai": "httpx2"}
+
+
+@pytest.mark.parametrize("provider", PROVIDERS, ids=_ids)
+def test_an_http_429_reaches_the_caller_as_rate_limit_error(provider: Provider):
+    """Gerçek SDK istemcisi, sahte taşıma: HTTP 429 → SDK tipi → bizim tipimiz.
+
+    `llm_provider.py` 429'u SDK'nın `RateLimitError` tipinden tanıyor. Bu test
+    o tipin kurulu SDK'da gerçekten HTTP 429 için fırlatıldığını ve
+    sağlayıcının tam o tipi yakaladığını ölçüyor. `test_llm_provider.py`
+    istisnayı elle kurduğu için ikisini de göremez.
+
+    DOĞAL KIRMIZISI YOK, bu dosyanın geri kalanı gibi: bugünkü SDK'larda yeşil,
+    6D-4e'den önceki metin eşleşmesinde de yeşildi (SDK'nın mesajı
+    "Error code: 429" ile başlıyor). Kırmızısı yalnız mutasyonla gözlendi: tip
+    yakalaması silinince, Groq dalı openai'nin tipini yakalayınca, ve
+    `max_retries=0` kaldırılınca.
+
+    `max_retries=0` şart: SDK 429'u varsayılan olarak iki kez kendisi, bekleyerek
+    yeniden dener. İstek sayacı bunun bekçisi — iki çağrı, iki istek.
+    """
+    sdk = importlib.import_module(provider.module)
+    http = importlib.import_module(HTTP_LIBRARY[provider.module])
+    sent = []
+
+    def handler(request):
+        sent.append(request)
+        body = {"error": {"message": "slow down", "code": "rate_limit_exceeded"}}
+        return http.Response(429, json=body)
+
+    llm_provider = importlib.import_module("defect_risk_analyzer.llm_provider")
+
+    with http.Client(transport=http.MockTransport(handler)) as http_client:
+        client = getattr(sdk, provider.client)(
+            api_key="not-a-real-key", max_retries=0, http_client=http_client
+        )
+
+        with pytest.raises(sdk.RateLimitError):
+            client.chat.completions.create(
+                model="test-model", messages=[{"role": "user", "content": "x"}]
+            )
+
+        instance = object.__new__(getattr(llm_provider, provider.provider_class))
+        instance._client = client
+        instance._model = "test-model"
+        with pytest.raises(llm_provider.RateLimitError):
+            instance.analyze("system", "user")
+
+    assert len(sent) == 2, (
+        f"{provider.module}: {len(sent)} istek gitti, 2 bekleniyordu — SDK "
+        "yeniden denedi ya da istek hic gonderilmedi"
+    )
