@@ -58,9 +58,12 @@ its own deprecations through logging, not `warnings` (the
 `use_container_width` notice is one), and a warning raised at import time does
 not repeat once its module is imported.
 
-NO NATURAL RED. 6D-6a changes no behaviour, so this file is green on main by
-construction; its red was observed only under mutation (docs/KNOWN-DEBT.md,
-"Faz 6D-6 eki"). Its job starts with the bumps.
+NO NATURAL RED, WITH ONE EXCEPTION. 6D-6a changes no behaviour, so its tests
+are green on main by construction; their red was observed only under mutation
+(docs/KNOWN-DEBT.md, "Faz 6D-6 eki"). Their job starts with the bumps.
+`test_bars_in_a_stack_share_one_offset_group` (6D-6b) is the exception: it is
+red on Plotly 5 by design, so reverting the Plotly 7 bump on its own turns it
+red. That bump and this test are reverted as a pair.
 """
 
 import base64
@@ -496,6 +499,27 @@ def test_open_closed_stacked_bars(rendered):
         ("Açık", ["Arama", "Auth", "Ödeme"], [1, 1, 2]),
         ("Kapalı", ["Auth", "Ödeme"], [1, 1]),
     ]
+
+
+@pytest.mark.slow
+@pytest.mark.parametrize("kind", ["risk_map", "open_closed"])
+def test_bars_in_a_stack_share_one_offset_group(rendered, kind):
+    """Every bar trace lands in one stack, not in a slot of its own.
+
+    plotly.js 3.0.0 (#7009) made `offsetgroup` work with barmode "stack" and
+    "relative": bars in different offset groups are drawn side by side. Plotly
+    5.24.1's px gives every bar trace `offsetgroup=<trace name>` whatever the
+    barmode (`plotly/express/_core.py`); Plotly 7 only in group mode. streamlit
+    1.65.0 bundles plotly.js 4.1.1, so on Plotly 5 the open/closed bars were
+    drawn side by side and each risk-map bar took a quarter of its row — seen
+    in the 6D-6b browser check. Red on Plotly 5 by design: the bump's natural
+    red.
+    """
+    spec = _chart(_page(rendered, "app.py"), kind)
+
+    assert spec["layout"].get("barmode") in ("stack", "relative")
+    groups = {trace.get("offsetgroup") for trace in spec["data"]}
+    assert len(groups) == 1, f"{kind}: {len(groups)} offset groups {sorted(map(str, groups))}"
 
 
 @pytest.mark.slow

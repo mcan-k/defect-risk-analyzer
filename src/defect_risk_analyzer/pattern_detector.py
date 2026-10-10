@@ -17,6 +17,8 @@ import re
 from collections import Counter
 from typing import Any
 
+from defect_risk_analyzer.core import scoring
+
 logger = logging.getLogger(__name__)
 
 # Words to ignore when extracting common themes (Turkish + English stop words)
@@ -180,7 +182,9 @@ def detect_patterns(
     # Build pattern results
     patterns = []
     for i, cluster_keys in enumerate(clusters, 1):
-        cluster_bugs = [bug_map[k] for k in cluster_keys if k in bug_map]
+        # Sorted, not the set's own order: iterating a set of strings follows
+        # the per-process hash seed, and everything below used to inherit it.
+        cluster_bugs = [bug_map[k] for k in sorted(cluster_keys) if k in bug_map]
 
         # Extract common keywords
         keywords = _extract_common_keywords(cluster_bugs)
@@ -189,8 +193,8 @@ def detect_patterns(
         components = Counter(b.get("component", "Genel") for b in cluster_bugs)
         priorities = Counter(b.get("priority", "Medium") for b in cluster_bugs)
 
-        common_component = components.most_common(1)[0][0]
-        common_priority = priorities.most_common(1)[0][0]
+        common_component = _by_count_then_name(components)[0]
+        common_priority = _most_common_priority(priorities)
 
         # Determine severity based on cluster size and priority
         severity = _calculate_pattern_severity(cluster_bugs)
@@ -302,11 +306,41 @@ def _extract_common_keywords(bugs: list[dict[str, Any]], top_n: int = 8) -> list
     # Only keep words that appear in 2+ bugs (truly common)
     min_occurrence = min(2, len(bugs))
     common = [
-        word for word, count in word_counter.most_common(top_n * 2)
-        if count >= min_occurrence
+        word for word in _by_count_then_name(word_counter)
+        if word_counter[word] >= min_occurrence
     ]
 
     return common[:top_n]
+
+
+def _by_count_then_name(counter: Counter) -> list[str]:
+    """Keys by count, highest first; a tie goes to code point order.
+
+    Not `Counter.most_common`: it breaks ties by insertion order, and the
+    insertion order here came from iterating sets of strings, i.e. from the
+    per-process hash seed. The same bugs then named a different module and a
+    different "Olası Ortak Neden" after every restart. Code point order puts
+    the Turkish letters ç ğ ı ö ş ü after z; a locale-aware collation would
+    make the answer depend on the machine instead.
+    """
+    return [key for key, _ in sorted(counter.items(), key=lambda kv: (-kv[1], kv[0]))]
+
+
+def _most_common_priority(priorities: Counter) -> str:
+    """The modal priority; a tie goes to the more severe one.
+
+    Severity is `scoring.PRIORITY_WEIGHTS`, the order the risk score already
+    uses. A priority it does not know comes after every known one (not at
+    DEFAULT_PRIORITY_WEIGHT, which places it between Medium and Low for
+    scoring), and unknown ones among themselves by code point.
+    """
+
+    def rank(item: tuple[str, int]) -> tuple:
+        name, count = item
+        weight = scoring.PRIORITY_WEIGHTS.get(name)
+        return (-count, weight is None, -(weight or 0.0), name)
+
+    return min(priorities.items(), key=rank)[0]
 
 
 def _calculate_pattern_severity(bugs: list[dict[str, Any]]) -> str:
