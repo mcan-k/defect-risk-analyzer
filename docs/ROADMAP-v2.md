@@ -547,6 +547,15 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > uca 429 testi kazandı (gerçek istemci, sahte taşıma). Lint bakiyesi
       > 24 → 22; kalan 22'nin sahibi Faz 7'nin temizlik kuyruğu. Ayrıntı:
       > `KNOWN-DEBT.md`, "Faz 6D-4e eki".
+      >
+      > *6D-6 notu (2026-10-10):* pandas 3.0.6 (#40) ve plotly 7.1.0 (#41)
+      > kendi PR'larımızla gelecek, sırayla 6D-6b plotly, 6D-6c pandas. Önce
+      > 6D-6a: `tests/test_dashboard_values.py` beş grafiğin ve beş tablonun
+      > içindeki değerleri sabitliyor — bugüne kadar hiçbir test bir değer
+      > okumuyordu. Sahte servis, elle türetilmiş beklentiler, Plotly ≥ 6'nın
+      > `bdata` dizilerini standart kütüphaneyle çözen bir okuyucu. 655 → 679.
+      > Dört ortamda (main, yalnız pandas 3, yalnız plotly 7, ikisi) yeşil.
+      > Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-6 eki".
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 7 — Vitrin (yarım gün)

@@ -2577,3 +2577,149 @@ kontrat testi SDK'nın eşlemesini sahte taşımayla ölçüyor, ağla değil.
 | İki SDK da 429'u varsayılan olarak iki kez kendisi, bekleyerek yeniden deniyor (`DEFAULT_MAX_RETRIES = 2`; `_base_client.py` "Retry on rate limits", openai :916, groq :797). Sağlayıcılar `max_retries` vermiyor, yani devre kesici 429'u ancak üç istekten sonra görüyor. Bu PR'da değiştirilmedi: tespit değişti, çağrı davranışı değil | **Faz 7'nin v1.1 değerlendirmesi** (Faz 7'deki KNOWN-DEBT v1.1 gözden geçirmesi; v1.0'da mı v1.1'de mi ele alınacağı orada kararlaştırılır — davranış değişikliği, temizlik değil; kullanıcı kararı, 2026-10-10), tetikleyici: **Faz 7 başladığında** — `max_retries` kararı orada verilir |
 | Groq'un bekleme süresi hâlâ hata metninden regex'le okunuyor (`_parse_retry_after`); SDK'nın kendisi `retry-after-ms` / `retry-after` başlıklarını okuyabiliyor (`groq/_base_client.py:717`). Metin biçimi değişirse süre sessizce 60 s'ye düşer | **Faz 7'nin v1.1 değerlendirmesi** (yukarıdaki satırla aynı gerekçe: davranış değişikliği, temizlik değil; kullanıcı kararı, 2026-10-10), tetikleyici: **Faz 7 başladığında** |
 | `test_llm_provider.py` ve kontrat testi `httpx` / `httpx2`'yi doğrudan import ediyor; ikisi de transitif. Bir SDK HTTP kütüphanesini değiştirirse (openai 3.x'in httpx'ten httpx2'ye geçtiği gibi) testler import ya da kurulum hatasıyla kırmızı olur — görünür, sessiz değil | Tetikleyici: **groq ya da openai'nin `_exceptions.py`'sindeki HTTP importu değiştiğinde** — `SDKS` ve `HTTP_LIBRARY` güncellenir |
+
+---
+
+## Faz 6D-6 eki — pandas 3 / Plotly 7 öncesi değer testi (6D-6a)
+
+**Where:** [`tests/test_dashboard_values.py`](../tests/test_dashboard_values.py)
+(yeni), [`ui/app.py`](../src/defect_risk_analyzer/ui/app.py) ve
+[`ui/pages/buglar.py`](../src/defect_risk_analyzer/ui/pages/buglar.py) (sınanan,
+değişmedi)
+
+6D-6 iki Dependabot majörünü kapsıyor: **#40** pandas 2.2.3 → 3.0.6 ve **#41**
+plotly 5.24.1 → 7.1.0. Kullanıcı kararı (2026-10-10): önce kalıcı bir değer
+testi (6D-6a), sonra kendi bump PR'larımız, sırayla 6D-6b plotly, 6D-6c pandas.
+#40 ve #41'in bizim PR'larımızdan sonra kendiliğinden kapanması bekleniyor;
+gözlenecek, tahmin yazılmadı.
+
+**Keşif (2026-10-10, depo dışı taze venv'ler, CI kurulum sırası, py 3.11.9).**
+İki PR'ın da tabanı bayat: #40 `dc53431` (main'in 31 commit gerisinde), #41
+`58c2c39` (15). İkisinin CI'ı da pip-audit kapısından önce koşmuştu. Her biri
+`requirements.txt`'te tek satır.
+
+| | toplanan | pytest | uyarı özeti | freeze (Windows) | kapı |
+|---|---|---|---|---|---|
+| main | 655 | 654 + 1 | yok | 136 | 138 taranan, 3 tekil |
+| yalnız pandas 3.0.6 | 655 | 654 + 1 | yok | 135 (−pytz) | 137, 3 |
+| yalnız plotly 7.1.0 | 655 | 654 + 1 | yok | 136 | 138, 3 |
+
+plotly 7 yeni paket getirmiyor: `narwhals` altair üzerinden, `tenacity`
+chromadb üzerinden zaten kümede. pandas 3 `pytz`'yi bırakıyor, `tzdata`'yı
+yalnız win32/emscripten'de istiyor. **Linux için 134 (çıkarım):** kurulu
+metadata üzerinde Linux işaretleriyle yürüyüş, main için CI'ın 136'sını
+yeniden üretiyor; pandas 3 ile −pytz −tzdata → 134, kapının taradığı 138 →
+136. CI'da gözlenecek. **Ölçüm aracının kendi gürültüsü:** `pip install
+--dry-run --platform manylinux…` bir Linux ölçümü DEĞİL — işaretleri hâlâ
+çalışan yorumlayıcıya göre değerlendiriyor (Linux kümesinde `colorama` kaldı,
+`uvloop` yoktu). O sonuç kullanılmadı.
+
+Keşfin asıl bulgusu: pandas ve plotly'yi kullanan tek yer `ui/app.py` (beş
+grafik, üç tablo) ve `ui/pages/buglar.py` (iki tablo), ve onları sınayan
+AppTest yürüyüşü hiçbir değer okumuyor. `buglar.py`'nin `render_patterns`'ı
+(:128–250) hiç çalışmıyordu. Yeşil bir bump bu yüzden "hata fırlatmadı"dan
+fazlasını söylemezdi.
+
+**Test tasarımı.** `tests/test_dashboard_values.py` streamlit'in tarayıcıya
+gönderdiği Plotly JSON'unu (`proto.spec`) ve `st.dataframe` satırlarını okuyor:
+iz sırası, iz adı, x/y/labels/values/text, satırlar. Veri sahte bir servis
+(`ui.service.AnalysisService` yerine); beklenen değerler fikstürden elle
+türetildi ve literal yazıldı. Saat yok (`days_open` fikstürden), VectorStore
+kurulmuyor. Plotly ≥ 6'nın `{"dtype", "bdata"}` dizileri yalnız standart
+kütüphaneyle çözülüyor (numpy bu depoda hiç import edilmiyor); gece yarısı
+damgası güne indiriliyor, gerçek bir saat reddediliyor. Bekçiler: sayfa başına
+grafik/tablo kümesi birebir; `bdata` varlığı kurulu Plotly majörüne bağlı;
+uyarı denetimi ayrı render'da. 655 → 679 (10 okuyucu birim testi + 9 değer
+testi + 5 bekçi öğesi).
+
+**Bilerek okunmayan ve kör noktalar:**
+- Renk, şablon, hovertemplate, kenar boşluğu, dtype. pandas 3'ün `str`'i
+  kullanıcıya görünen bir değişiklik değil.
+- Gerçek servisin çıktı ŞEKLİ. O tarafı `test_dashboard_pages.py` (gerçek
+  servis) ve skor snapshot'ları tutuyor.
+- Tarayıcıda çizim. streamlit 1.65.0'ın paketlediği plotly.js'in 3.8.2 olduğu
+  paketteki bir dizgiden çıkarım; plotly.py 7.1 plotly.js 4.1.1'i hedefliyor.
+  AppTest JavaScript çalıştırmıyor; bu yalnız 6D-6b'deki gözle kontrolde
+  görülebilir.
+- Pastanın ekrandaki dilim sırası (plotly.js sıralıyor; JSON veri sırasında).
+- Uyarı denetimi streamlit'in log tabanlı kullanımdan kaldırma uyarılarını ve
+  import anında atılmış uyarıları göremez.
+
+**Uyarılar — ölçüldü (2026-10-10, depo dışı deneme).** AppTest'in betik
+iş parçacığında atılan bir FutureWarning/DeprecationWarning pytest'in uyarı
+özetine ve `recwarn`'a ulaşıyor. `simplefilter("error")` altında testte
+fırlatılmıyor: betiği durduruyor ve AppTest onu `at.exception` olarak
+topluyor. Değer testleri bu yüzden ayrı render ediliyor — tek bir uyarı bütün
+değer kanıtını silmesin. Önceki turdaki "uyarı özeti boş" ölçümleri de böylece
+gerçekten "uyarı yok" anlamına geliyor.
+
+**Doğal kırmızı yok.** 6D-6a davranış değiştirmiyor; dosya main'de yapısı
+gereği yeşil. Kırmızısı yalnız mutasyonla gözlendi. Görevi bump'larla başlıyor.
+
+**Beklenen değerler koddan önce yazıldı** (2026-10-10T12:03:59Z, depo dışı bir
+dosyada; ikinci koşunun beklentisi 12:27:51Z'de eklendi), ölçülenle:
+
+| | beklenen | ölçülen |
+|---|---|---|
+| toplanan (repo `.venv`, C1 ağacı) | 679 | 679 |
+| düz pytest | 678 + 1, uyarı özeti yok | 678 + 1, uyarı özeti yok |
+| `ruff check .` / izole bakiye | temiz / 22 | temiz / 22 |
+| M1–M12 | aşağıdaki tablo | 14 koşunun 14'ü tahminle aynı |
+| bump ortamları, tam takım | 678 + 1 | ilk koşu **677 + 2**, ikinci koşu 678 + 1 (aşağıda) |
+
+**Mutasyonlar** — repo `.venv`'inde (pandas 2.2.3, plotly 5.24.1), her biri
+dosya kopyasıyla; geri yükleme `git cat-file --filters :<yol>` ile `cmp`,
+`__pycache__` temizlendi. Koşulan: `tests/test_dashboard_values.py` (24 öğe).
+
+| | mutasyon | beklenen | gözlenen | mesaj |
+|---|---|---|---|---|
+| M1 | `app.py:86` `sort_values` silindi | `test_risk_map_bars` | aynı (1/24) | `At index 1 diff: ('KRİTİK', ['Ödeme'], …) != ('ORTA', ['Rapor'], …)` |
+| M2 | `app.py:123` `reverse=False` | `test_risk_ranking_table` | aynı | `At index 0 diff: {'module': 'Auth', …} != {'module': 'Ödeme', …}` |
+| M3 | `app.py:181` hafta başı bir gün kaydı | `test_weekly_trend_lines` | aynı | `('Arama', ['2026-03-01'], [1]) != ('Arama', ['2026-03-02'], [1])` |
+| M4a | risk çubuğu verisinden ilk modül düştü | `test_risk_map_bars` | aynı | `('ORTA', ['Rapor'], …) != ('DÜŞÜK', ['Auth'], …)` |
+| M4b | pasta verisinden ilk modül düştü | `test_bug_distribution_pie` | aynı | `['Ödeme', 'Rapor', 'Arama'] != ['Auth', 'Ödeme', 'Rapor', 'Arama']` |
+| M5 | `app.py:212` açık/kapalı yer değiştirdi | `test_open_closed_stacked_bars` | aynı | `('Kapalı', …) != ('Açık', …)` |
+| M6 | `app.py:82` etiket yerine İngilizce seviye | `test_risk_map_bars` | aynı | `('LOW', ['Auth'], …) != ('DÜŞÜK', ['Auth'], …)` |
+| M7a | `buglar.py:196` `[:80]` → `[:70]` | `test_pattern_tab` | aynı | özet `…ve mü` ile bitiyor |
+| M7b | `buglar.py:197–198` priority/status yer değiştirdi | `test_pattern_tab` | aynı | `'priority': 'In Progress', 'status': 'Medium'` |
+| M8 | `_values` `bdata`'yı çözmeden döndürüyor | `test_bdata_is_decoded` ×2 | aynı (2/24) | `assert {'dtype': 'f8', …} == [20.5]` |
+| M9 | `_day` her saati kabul ediyor | `test_a_time_of_day_is_refused` | aynı | `DID NOT RAISE ValueError` |
+| M10 | `app.py:116` pasta çizilmiyor | pasta + kümeler bekçisi [app] | aynı (2/24) | `expected one pie chart, found 0` |
+| M11 | `app.py:172` `if False:` | haftalık, açık/kapalı, kümülatif + kümeler bekçisi [app] | aynı (4/24) | `expected one weekly chart, found 0` |
+| M12 | `render_risk_overview` başında `FutureWarning` | uyarı bekçisi [app] | aynı (1/24, değer testleri yeşil) | `AssertionError: ['M12']` |
+
+M8 main'de yalnız çözücünün kendi testlerini kırıyor, çünkü Plotly 5 hiç
+`bdata` yazmıyor — iki yardımcının neden ayrıca sınandığının gerekçesi bu.
+
+**Bump ölçümü** — C1'in `git archive` görüntüsünden ortam başına bir kopya,
+kopyanın kendi `requirements.txt`'i değiştirildi (editable metadata CI'daki
+gibi bump'ı taşıyor), taze venv, CI sırası.
+
+| | pandas / plotly | toplanan | tam takım, 1. koşu | tam takım, 2. koşu | yeni dosya | uyarı özeti | freeze | `pip check` | kapı |
+|---|---|---|---|---|---|---|---|---|---|
+| (a) | 2.2.3 / 5.24.1 | 679 | 677 + 2 | 678 + 1 | 24/24 | yok | 136 | temiz | rc 0; 138, 3 tekil |
+| (b) | 3.0.6 / 5.24.1 | 679 | 677 + 2 | 678 + 1 | 24/24 | yok | 135 (−pytz) | temiz | rc 0; 137, 3 |
+| (c) | 2.2.3 / 7.1.0 | 679 | 677 + 2 | 678 + 1 | 24/24 | yok | 136 | temiz | rc 0; 138, 3 |
+| (d) | 3.0.6 / 7.1.0 | 679 | 677 + 2 | 678 + 1 | 24/24 | yok | 135 (−pytz) | temiz | rc 0; 137, 3 |
+
+İlk koşunun fazladan atlaması `test_ci_analyzer_inference.py:508` ("git
+ls-files unavailable … exit status 128"): `git archive` görüntüsü bir git
+deposu değil. Dördünde de aynıydı, yani bump'tan değil yöntemden. Beklenti
+bunu öngörmediği için durduruldu; kullanıcı kararıyla görüntülerde depo
+dışında `git init` + `git add -A` yapıldı (commit yok; `ls-files` index'i
+okur, dosya kümesi C1 ağacıyla aynı, 122), beklenti koşmadan yazıldı ve tuttu.
+Tek gerçek belirsizlik — plotly 5.24.1'in pandas 3'ün s/us çözünürlüklü tarih
+sütunlarını serileştirmesi — (b)'de çözüldü: haftalık ve kümülatif testler
+yeşil.
+
+**Bir sapma daha, araçta:** depo dışındaki mutasyon uygulayıcısı M4a'da durdu
+— aradığı alt dizgi `app.py`'de 3 kez geçiyordu (:64 da eşleşiyor), 2
+bekliyordu. Assert dosyaya yazmadan önce çalıştı (`app.py` index ile `cmp`
+eşit); geçiş sırası araçta düzeltildi, M4a'dan devam edildi.
+
+**Gözlenmedi:** CI'da 679 passed ve boş uyarı özeti bu PR'ın koşusunda
+gözlenecek; Linux'taki 134 de 6D-6c'nin CI freeze'inde.
+
+| Borç | İşaret |
+|---|---|
+| streamlit'in `use_container_width` kullanımdan kaldırma uyarısı her render'da düşüyor; mesaj aynen *"`use_container_width` will be removed after 2025-12-31"* diyor ve **o tarih geçti** — parametre streamlit 1.65.0'da hâlâ çalışıyor. Uyarı Python `warnings` değil, bir log kaydı (`streamlit.deprecation_util`), bu yüzden pytest'in uyarı özetinde hiç görünmüyor; 6D-6a'nın denetimi sırasında görüldü. Depoda 19 çağrı yeri, 5 dosyada (`ui/app.py` 8, `ui/pages/ayarlar.py` 6, `ui/pages/buglar.py` 2, `ui/setup_wizard.py` 2, `ui/shell.py` 1); yerine `width="stretch"` | **Faz 7'nin temizlik kuyruğu**, tetikleyici: **streamlit parametreyi kaldırdığında (sayfa testlerinin kırmızısı) ya da Faz 7 başladığında** |
