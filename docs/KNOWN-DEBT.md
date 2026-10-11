@@ -183,7 +183,7 @@ bilinçli sınırlar.
 | `export KEY=v` ve `KEY = v` biçimleri yazıcı tarafından görülmüyor (dotenv okuyor). Yazma bunları eşleştiremez, sona yeni satır ekler; etkin değer doğru olur ama bayat satır kalır | Tetikleyici: **`.env`'e üçüncü parti bir araç yazmaya başladığında**; aksi hâlde **v1.1** |
 | Tırnaklama: boşluk ya da `#` içeren bir değer tırnaksız yazılıyor | Tetikleyici: **6B sonrası `.env`'de kalan bir ayar tırnak gerektiren değer aldığında**; aksi hâlde **v1.1** |
 | `save_multiple_env` her anahtar için ayrı atomik yazma yapıyor — tek tek atomik, bütün olarak değil; yarıda çökerse anahtarların bir kısmı kaydedilmiş olur | Tetikleyici: **Ayarlar kaydetme yolu bir daha değiştiğinde**; aksi hâlde **v1.1** |
-| `save_multiple_env` yolunda `OSError` UI'da ham traceback olarak yüzeye çıkıyor (`ui.service.call()` ile sarmalı değil) | **6E** |
+| `save_multiple_env` yolunda `OSError` UI'da ham traceback olarak yüzeye çıkıyor (`ui.service.call()` ile sarmalı değil) | **6E** ("Doğrulama ve test borcu", ROADMAP), tetikleyici: **6E başladığında** (2026-10-11'de eklendi) |
 | `BASLAT.bat` fallback'i (`.env.example` yokken) 19 anahtardan 1'ini üretiyor. İşlevsel kayıp yok — 19'unun da modül default'u var ve yazılan tek değer default'una eşit — ama `.env.example`'ın 49 satırlık dokümantasyonu kayboluyor | Tetikleyici: **`.env.example` olmadan dağıtılan bir paket üretildiğinde**; aksi hâlde **v1.1** |
 
 ---

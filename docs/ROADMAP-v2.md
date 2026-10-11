@@ -129,6 +129,14 @@ sahiplendirildi** (gerekçeleri `KNOWN-DEBT.md`'de):
       çalışma).
 - [ ] `pattern_detector` / `component_classifier` testleri
       (`blind_spot_detector` Faz 5A'da karşılandı) → **Faz 6E**
+
+      *Not (2026-10-11):* `pattern_detector` yarısı karşılandı —
+      `tests/test_pattern_detector.py` 2026-08-22'den beri var (`f7c33f7`)
+      ve 6D-6b'de (#52) eşitlik kuralının testleriyle genişledi. Kalan yarı
+      `component_classifier`: kendi test dosyası yok; sınıflandırmaya yalnız
+      `tests/test_analysis_service_indexing.py`'deki bir test, tek bir
+      girdiyle, dolaylı olarak dokunuyor. Sahibi **6E** (aşağıda, "Faz 6E —
+      Doğrulama ve test borcu").
 - [x] `compare_service.py` emekliye ayrılırken düşen üç **karşılaştırma
       bölümü**: `risk_for_query`, `defect_density`, `blind_spots` — karşılıkları
       **Faz 5A**'da sıfırdan yazıldı. İki ayrı özne, çelişki değil: düşen şey
@@ -588,6 +596,50 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > ateşlenir. Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-6 eki", 6D-6c bölümü.
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
+### Faz 6E — Doğrulama ve test borcu
+
+**Sıra: 6D-3b → 6E → Faz 7** (kullanıcı kararı, 2026-10-11). "6E" Faz 6A'dan
+beri yukarıdaki iki Faz 3 test maddesinin ve `KNOWN-DEBT.md`'deki birkaç
+satırın hedef etiketiydi, ama faz olarak hiç açılmamış, kapsamı yazılmamıştı.
+Bu bölüm onu tanımlıyor.
+
+**İlk iş — depo taraması**, kapsamın geri kalanından önce:
+- [ ] Bu dosyada işaretlenmemiş `[ ]` / `[~]` kutular — tamamlanmış fazlarda
+      kalanlar dahil (2026-10-11'de Faz 0, 1, 2, 3, 5 ve 6'da var).
+- [ ] `KNOWN-DEBT.md`'de sahibi ya da tetikleyicisi olmayan satırlar.
+- [ ] Depo genelinde "sahipsiz", "no phase owns" ve işaretsiz "Trigger:"
+      ifadeleri.
+- [ ] Kullanıcının devir belgesindeki Faz 7 kuyruğunun her maddesinin depoda
+      bir kaydı olması (belgenin kendisi depoda değil).
+
+**Kapsam:**
+- [ ] Aşağıdaki **Doğrulama soruları** — her biri ölçülerek cevaplanır.
+- [ ] `parse_adf_to_text` testi (`jira_client.py`; yukarıda, Faz 3 bölümü).
+- [ ] `component_classifier` testleri (yukarıda, Faz 3 maddesinin kalan
+      yarısı).
+- [ ] `save_multiple_env` yolunda `OSError`'ın UI'a ham traceback olarak
+      çıkması (`KNOWN-DEBT.md`, "`.env` yazıcısının 6A sonrası bıraktıkları").
+
+#### Doğrulama soruları
+
+Kalıcı bir liste: kullanıcı ekledikçe büyür. Cevaplanan soru silinmez;
+kutusu işaretlenir, cevabı ve ölçümü yanına yazılır. 2026-10-11'deki sorular:
+
+- [ ] **a. Anonimleştirici gerçekten çalışıyor mu, hangi veri tipleri
+      maskeleniyor?** Sağlayıcıya **giden** isteğin gövdesi yakalanarak
+      doğrulanır — 6D-4e'nin yöntemi: gerçek SDK istemcisi, sahte taşıma
+      (`MockTransport`), `tests/test_llm_sdk_contract.py`.
+- [ ] **b. Makineden hangi veriler çıkıyor?** LLM sağlayıcısı, chromadb
+      telemetrisi (bugün posthog'un `capture()` imza hatasıyla düşüyor, yani
+      kazara kapalı görünüyor — ölçülmedi; `KNOWN-DEBT.md`, "Faz 6D-6 eki"),
+      ve başka ne varsa. Çıktı bir envanter.
+- [ ] **c. Yapay zekâ analizi ne kadar tutarlı?** Aynı girdi, tekrarlanan
+      çağrılar. Gerçek API kotası harcanacağı için küçük, sabit bir örnekle
+      planlanır.
+- [ ] **d. Deterministik hesaplamanın kapsamı yeterli mi?** LLM
+      çağrılamadığında (anahtar yok, kota, 429) kullanıcı anlamlı bir sonuç
+      alıyor mu; LLM'in yorumu deterministik skorla çelişebiliyor mu.
+
 ### Faz 7 — Vitrin (yarım gün)
 - [ ] README sıfırdan: tek cümlelik tanım, GIF/ekran görüntüsü, tek satır kurulum, gerçek rozetler
 - [ ] `README.tr.md`
@@ -656,3 +708,26 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
 - [ ] Çalışma zamanı artıklarında sır tutulmuyor: `anon_map.json` yazılmıyor,
       loglar ve `analysis_results.json` ham kullanıcı metni saklamıyor.
 - [ ] `core/` içindeki hiçbir dosya dış dünyayı import etmiyor
+
+---
+
+## v1.1 — v1.0'dan sonraya bırakılanlar
+
+v1.0'ın kapsamından bilerek çıkarılan işler. Liste kullanıcı kararıyla büyür;
+her maddenin gerekçesi bağlandığı kayıtta.
+
+- [ ] **6D-5 — chromadb 1.x geçişi** (kullanıcı kararı, 2026-10-10). Yapısal
+      yarı: `fastapi`'nin `dev` extra'sına geçmesi, `tests.yml`'in webhook
+      dosyasını kurması, −8 paket. v1.0 chromadb 0.6.3 ile çıkıyor; ayrıntı
+      yukarıda, Faz 6 bölümündeki 6D-5 kararı notu ve `KNOWN-DEBT.md`,
+      chromadb bölümü.
+- [ ] **Claude'un LLM sağlayıcısı olarak eklenmesi** — yeni özellik
+      (kullanıcı kararı, 2026-10-11).
+- [ ] **Faz 7'nin v1.1 değerlendirmesinden çıkacaklar.** `KNOWN-DEBT.md`'de
+      sahibi "Faz 7'nin v1.1 değerlendirmesi" olan satırlar (2026-10-11'de
+      altı) Faz 7'de tek tek v1.0'a ya da v1.1'e ayrılır; v1.1'e düşenler
+      buraya eklenir.
+
+Sahibi doğrudan **v1.1** olan `KNOWN-DEBT.md` satırları (ör. dış kaynak
+isteklerini durduracak ikinci katman, tetikleyici "dağıtım yoluna bir ters
+proxy girdiğinde") orada kalır; bu liste onları kopyalamaz.
