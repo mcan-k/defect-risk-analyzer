@@ -612,6 +612,39 @@ Bu bölüm onu tanımlıyor.
 - [ ] Kullanıcının devir belgesindeki Faz 7 kuyruğunun her maddesinin depoda
       bir kaydı olması (belgenin kendisi depoda değil).
 
+      Kuyruk, aynen (kaynak: kullanıcının 2026-10-06 tarihli denetleyici devir
+      belgesi; denetleyici 2026-10-11'de aktardı). Tarama her maddenin depoda
+      kaydı olup olmadığını ve sahibini belirler.
+
+      - [ ] `.gitattributes`
+      - [ ] `requirements-dev.txt`'in UTF-8 / cp1254 sorunu
+      - [ ] README'deki yerinde yükseltme adımı (CVE düzeltmesi getirmiyor)
+      - [ ] TLS mekanizmasının ayrışması (openai/httpx2 → işletim sistemi güven
+            deposu; groq/httpx → certifi)
+      - [ ] chromadb telemetrisi ("kazara kapalı" — 6E'nin b sorusuyla
+            bağlantılı)
+      - [ ] `module-map.json`'un genişliği (PR risk raporlarının çoğu "NOT
+            ASSESSED")
+      - [ ] kullanılmayan doğrudan pinler (numpy, pytest-cov)
+      - [ ] `.streamlit/config.toml` yorumu (6D-6b'de: kapanmış 6D-4a işinin
+            izi olduğu bulundu — taramada "kapandı" diye işaretlenebilir)
+      - [ ] masaüstü özelliğinin (`requirements-desktop.txt`, keyring) gerçek
+            ortamda doğrulanması
+      - [ ] README, CHANGELOG, v1.0.0, demo, temiz makinede "5 dakikada
+            çalıştır", KNOWN-DEBT v1.1 gözden geçirmesi (ROADMAP Faz 7'de kaydı
+            var mı)
+
+      Denetleyici sohbetinde geçen sahipsiz küçük işler (2026-10-06 → 10-11):
+
+      - [ ] uzak `fix/secret-layer-i18n` dalı (#15'ten kalan, merge edilmiş)
+      - [ ] Actions listesinde `active` görünen iki silinmiş ölçüm workflow'u
+            (`olcum-pip-audit.yml`, `olcum-pip-audit-4d2.yml`) ve 6D-3b-1'in
+            ekleyeceği üçüncüsü
+      - [ ] `%TEMP%`'teki eski `dra-*` klasörleri (conftest kum havuzu
+            temizliği ölçülecek)
+      - [ ] 6D-6c duman testindeki ayrıştırılamayan "-Infinity" konsol hatası
+            (kullanıcıda görülmedi)
+
 **Kapsam:**
 - [ ] Aşağıdaki **Doğrulama soruları** — her biri ölçülerek cevaplanır.
 - [ ] `parse_adf_to_text` testi (`jira_client.py`; yukarıda, Faz 3 bölümü).
