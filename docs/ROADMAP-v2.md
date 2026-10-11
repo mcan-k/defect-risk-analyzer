@@ -543,6 +543,15 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > hedefte raporlanmayı bıraktığında kırmızı "iş var", bozuk bir tarama
       > kendi başlığıyla kırmızı. Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-4d-3 eki".
       >
+      > *6D-5 kararı (kullanıcı, 2026-10-10; depoya 2026-10-11):* chromadb
+      > 1.x geçişi — **6D-5** — **v1.1'e** taşındı. v1.0 chromadb 0.6.3 ile
+      > çıkar; düzeltmesiz üç açığı (CVE-2026-45830, CVE-2026-45833,
+      > CVE-2026-45831) v1.0 sürüm notlarında, bu depoda erişilemez oluşlarının
+      > gerekçesiyle açıkça yazılır — o iş Faz 7'nin (aşağıda). Haftalık
+      > izleyici 1.x için uyarmaya devam eder. Kod ve testlerdeki "6D-5" adları
+      > değişmez: 6D-5 bir faz olarak sürüyor, yalnız sürümü değişti. Ayrıntı:
+      > `KNOWN-DEBT.md`, chromadb bölümü.
+      >
       > *6D-4e notu (2026-10-10):* `llm_provider.py` 429'u artık hata metninden
       > değil SDK'nın `RateLimitError` tipinden tanıyor; ölçülen iki yanlış
       > pozitif (429. karakterde bozuk JSON, metninde 429 geçen bir 500) ve
@@ -583,6 +592,10 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
 - [ ] README sıfırdan: tek cümlelik tanım, GIF/ekran görüntüsü, tek satır kurulum, gerçek rozetler
 - [ ] `README.tr.md`
 - [ ] `CHANGELOG.md` + `v1.0.0` git tag + GitHub Release
+- [ ] v1.0 sürüm notlarında chromadb 0.6.3'ün düzeltmesiz üç açığı
+      (CVE-2026-45830, CVE-2026-45833, CVE-2026-45831) ve her birinin bu
+      depoda neden erişilemez olduğu — 6D-5 v1.1'e taşındığı için (karar
+      2026-10-10). Gerekçeler: `KNOWN-DEBT.md`, chromadb bölümü.
 - [ ] Streamlit Cloud demo — sadece mock data, kimlik bilgisi girişi kapalı
 - [ ] **`desktop` extra'sını bu makineye kur ve 6B'nin taşımasını canlıda
       doğrula.** PR #17 extra'nın beyan edildiğini ve geçici bir venv'de
