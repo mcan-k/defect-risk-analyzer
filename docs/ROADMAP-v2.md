@@ -594,6 +594,24 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > kontrolünde on üç maddenin hepsi aynı. 6D-6 bu PR'la tamamlanıyor;
       > 6D-3b'nin tetikleyicisi ("6D-6 tamamlandıktan sonra") merge'le
       > ateşlenir. Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-6 eki", 6D-6c bölümü.
+- [ ] **Faz 6D-7 — gizli bilgi ve e-posta taraması.** 6D-3b'den sonra,
+      6E'den önce, küçük bir PR (kullanıcı kararı, 2026-10-11/12): CI'a
+      kalıcı bir gizli bilgi taraması, ve yazar ya da committer e-postası
+      GitHub'ın noreply adresi olmayan bir commit'i kırmızı yapan bir
+      kontrol.
+
+      Bugünkü durum, kayıt için:
+      - GitHub'da depo düzeyinde Secret Protection ve Push protection
+        2026-10-11'de açıldı.
+      - Hesapta "Keep my email addresses private" ve "Block command line
+        pushes that expose my email" açık. Ama engelleme yalnız hesapta
+        kayıtlı adresi tanıyor, ve geçmişteki commit'lerin adresi ondan
+        farklı. Asıl koruma yerel ayar: depo düzeyinde `user.email` GitHub'ın
+        noreply adresi (2026-10-12). Noreply kontrolünün CI'a girmesinin
+        nedeni bu.
+      - **Karar (kullanıcı, 2026-10-12): geçmiş yeniden yazılmaz.**
+        Geçmişteki commit'lerin bir kısmı kişisel bir e-posta adresi
+        taşıyor; kontrol yalnız bundan sonraki commit'lere uygulanır.
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 6E — Doğrulama ve test borcu
@@ -602,6 +620,9 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
 beri yukarıdaki iki Faz 3 test maddesinin ve `KNOWN-DEBT.md`'deki birkaç
 satırın hedef etiketiydi, ama faz olarak hiç açılmamış, kapsamı yazılmamıştı.
 Bu bölüm onu tanımlıyor.
+
+*Not (2026-10-12):* Faz 6D-7 (gizli bilgi ve e-posta taraması) 6D-3b ile 6E
+arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
 
 **İlk iş — depo taraması**, kapsamın geri kalanından önce:
 - [ ] Bu dosyada işaretlenmemiş `[ ]` / `[~]` kutular — tamamlanmış fazlarda
@@ -673,9 +694,50 @@ kutusu işaretlenir, cevabı ve ölçümü yanına yazılır. 2026-10-11'deki so
       çağrılamadığında (anahtar yok, kota, 429) kullanıcı anlamlı bir sonuç
       alıyor mu; LLM'in yorumu deterministik skorla çelişebiliyor mu.
 
+2026-10-11 akşamı eklenenler:
+
+- [ ] **e. Deterministik hesaplama kararlı mı?** Her çalıştırmada, her
+      makinede, her açılışta aynı sonuç; tarihe bağlı hesaplar.
+- [ ] **f. Yapay zekâ halüsinasyon görüyor mu?** Çıktıdaki bug numarası,
+      modül ve sayılar girdide var mı.
+- [ ] **g. Yapay zekâ neyi referans alıyor?** Gönderilen bağlam, ve
+      iddiaların kaynağa bağlanabilirliği.
+- [ ] **h. Bağlam sağlam mı?** Kesilme, sıralama, dil; anonimleştirmenin
+      anlama etkisi — a ile birlikte ölçülür.
+
+Soruların toplandığı başlıklar (aynı gün):
+
+1. **Deterministik doğruluk** — formül ve eşik gerekçesi, sınır durumlar,
+   Jira durum eşlemesi, sessizce düşen veri.
+2. **Yapay zekâ güvenilirliği** — komut enjeksiyonu, sağlayıcılar arası
+   tutarlılık, model sürümü kayması, dil tutarlılığı, bozuk cevaplar.
+3. **Anonimleştirme ve veri güvenliği** — serbest metinde e-posta, IP,
+   sunucu adı, API anahtarı; tutarlı maskeleme; günlüklere sızma.
+4. **Pattern / benzerlik kalitesi** — kümelerin anlamı, 0.35 eşiği
+   (`services/analysis_service.py`, `similarity_threshold`), Türkçe metin,
+   kopya tespiti.
+
+Bekleyenler:
+
+- [ ] "5. Ölçek ve dayanıklılık" başlığı — önerildi, kullanıcı kararı
+      bekliyor.
+- [ ] Elle etiketlenmiş bir "altın veri seti" — kullanıcı: sonra
+      konuşulacak.
+
 ### Faz 7 — Vitrin (yarım gün)
 - [ ] README sıfırdan: tek cümlelik tanım, GIF/ekran görüntüsü, tek satır kurulum, gerçek rozetler
 - [ ] `README.tr.md`
+- [ ] Türkçe **dosya adları** İngilizceye — Faz 7'nin temizlik kuyruğu, düşük
+      öncelik, README'yle birlikte (kullanıcı kararı, 2026-10-11):
+      `BASLAT.bat` → `START.bat`, `DURDUR.bat` → `STOP.bat`. Yalnız dosya
+      adları; arayüz ve sayfa dosyaları DEĞİŞMEZ — `ui/pages/analiz.py`,
+      `ayarlar.py`, `buglar.py` tarayıcı adresini belirliyor (Streamlit
+      adresi `pages/` altındaki dosya adından türetiyor).
+      Envanter (2026-10-12, `git ls-files`): ASCII dışı karakterli yol yok;
+      Yeniden adlandırılacak Türkçe adlı dosya bu ikisi. Başvurular:
+      `.streamlit/config.toml`, `DURDUR.bat`, `README.md`,
+      `docs/KNOWN-DEBT.md`, bu dosya ve `tests/test_installer_script.py` —
+      yeniden adlandırma testi de değiştirir.
 - [ ] `CHANGELOG.md` + `v1.0.0` git tag + GitHub Release
 - [ ] v1.0 sürüm notlarında chromadb 0.6.3'ün düzeltmesiz üç açığı
       (CVE-2026-45830, CVE-2026-45833, CVE-2026-45831) ve her birinin bu
@@ -724,6 +786,23 @@ kutusu işaretlenir, cevabı ve ölçümü yanına yazılır. 2026-10-11'deki so
       taşıyan yorumlanmış bir `API_KEY` satırı değerini hâlâ tutuyor.
       Ertelemenin ikinci gerekçesi de bu: bu makinenin `.env` katmanında
       kalması 6D-3'ün bağımlılık pinleme ölçümlerine zemin sağlıyor.
+- [ ] **Proje sonu denetimi** — Faz 7'nin sonunda, v1.0'dan önce, bağımsız
+      bir Claude Desktop oturumunda (kullanıcı kararı, 2026-10-11). Kapsam:
+      - gizli anahtarlar, tüm git geçmişi dahil;
+      - commit yazar e-postaları;
+      - bilgisayar yolları (`C:\Users\…` gibi);
+      - gerçek ad, kurum, Jira adresi — `LICENSE:3` ve `pyproject.toml:23`'teki
+        ad (lisanslarda olağan; karar kullanıcının) ve Faz 0'ın ilk kutusundaki
+        eski GitHub kullanıcı adı (parola değil; 6E taramasında ele alınır);
+      - örnek verinin uydurma olduğu;
+      - PR gövdeleri, yorumları ve Actions günlükleri;
+      - `.gitignore` kapsamı.
+
+      2026-10-12'de basit `git grep` ile bakıldı — **kapsamlı bir tarama
+      değil**: izlenen dosyalarda ve tüm geçmişte bilgisayar yolu, yerel
+      kullanıcı adı ya da kişisel e-posta yok; birkaç yaygın anahtar deseni
+      yok; Jira adresleri yalnız yer tutucu ya da örnek. Commit kimliklerinin
+      bir kısmı kişisel bir e-posta adresi taşıyor — bkz. Faz 6D-7.
 
 ---
 
