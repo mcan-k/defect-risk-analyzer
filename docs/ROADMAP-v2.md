@@ -728,12 +728,12 @@ Bekleyenler:
       `BASLAT.bat` → `START.bat`, `DURDUR.bat` → `STOP.bat`. Yalnız dosya
       adları; arayüz ve sayfa dosyaları DEĞİŞMEZ — `ui/pages/analiz.py`,
       `ayarlar.py`, `buglar.py` tarayıcı adresini belirliyor (Streamlit
-      `pages/` adı adresten türetiyor).
+      adresi `pages/` altındaki dosya adından türetiyor).
       Envanter (2026-10-12, `git ls-files`): ASCII dışı karakterli yol yok;
-      Türkçe adlı dosya bu ikisi. Başvurular: `.streamlit/config.toml`,
-      `DURDUR.bat`, `README.md`, `docs/KNOWN-DEBT.md`, bu dosya ve
-      `tests/test_installer_script.py` — yeniden adlandırma testi de
-      değiştirir.
+      Yeniden adlandırılacak Türkçe adlı dosya bu ikisi. Başvurular:
+      `.streamlit/config.toml`, `DURDUR.bat`, `README.md`,
+      `docs/KNOWN-DEBT.md`, bu dosya ve `tests/test_installer_script.py` —
+      yeniden adlandırma testi de değiştirir.
 - [ ] `CHANGELOG.md` + `v1.0.0` git tag + GitHub Release
 - [ ] v1.0 sürüm notlarında chromadb 0.6.3'ün düzeltmesiz üç açığı
       (CVE-2026-45830, CVE-2026-45833, CVE-2026-45831) ve her birinin bu
