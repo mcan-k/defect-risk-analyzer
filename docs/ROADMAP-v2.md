@@ -673,6 +673,36 @@ kutusu işaretlenir, cevabı ve ölçümü yanına yazılır. 2026-10-11'deki so
       çağrılamadığında (anahtar yok, kota, 429) kullanıcı anlamlı bir sonuç
       alıyor mu; LLM'in yorumu deterministik skorla çelişebiliyor mu.
 
+2026-10-11 akşamı eklenenler:
+
+- [ ] **e. Deterministik hesaplama kararlı mı?** Her çalıştırmada, her
+      makinede, her açılışta aynı sonuç; tarihe bağlı hesaplar.
+- [ ] **f. Yapay zekâ halüsinasyon görüyor mu?** Çıktıdaki bug numarası,
+      modül ve sayılar girdide var mı.
+- [ ] **g. Yapay zekâ neyi referans alıyor?** Gönderilen bağlam, ve
+      iddiaların kaynağa bağlanabilirliği.
+- [ ] **h. Bağlam sağlam mı?** Kesilme, sıralama, dil; anonimleştirmenin
+      anlama etkisi — a ile birlikte ölçülür.
+
+Soruların toplandığı başlıklar (aynı gün):
+
+1. **Deterministik doğruluk** — formül ve eşik gerekçesi, sınır durumlar,
+   Jira durum eşlemesi, sessizce düşen veri.
+2. **Yapay zekâ güvenilirliği** — komut enjeksiyonu, sağlayıcılar arası
+   tutarlılık, model sürümü kayması, dil tutarlılığı, bozuk cevaplar.
+3. **Anonimleştirme ve veri güvenliği** — serbest metinde e-posta, IP,
+   sunucu adı, API anahtarı; tutarlı maskeleme; günlüklere sızma.
+4. **Pattern / benzerlik kalitesi** — kümelerin anlamı, 0.35 eşiği
+   (`services/analysis_service.py`, `similarity_threshold`), Türkçe metin,
+   kopya tespiti.
+
+Bekleyenler:
+
+- [ ] "5. Ölçek ve dayanıklılık" başlığı — önerildi, kullanıcı kararı
+      bekliyor.
+- [ ] Elle etiketlenmiş bir "altın veri seti" — kullanıcı: sonra
+      konuşulacak.
+
 ### Faz 7 — Vitrin (yarım gün)
 - [ ] README sıfırdan: tek cümlelik tanım, GIF/ekran görüntüsü, tek satır kurulum, gerçek rozetler
 - [ ] `README.tr.md`
