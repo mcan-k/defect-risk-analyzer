@@ -1,0 +1,283 @@
+# =============================================================================
+# GEÇİCİ ÖLÇÜM — MERGE EDİLMEYECEK (Faz 6D-3b-1)
+# =============================================================================
+# 6D-3b'nin kısıt dosyası üretilmeden önce CI'ın gerçek paket kümesini ölçer:
+#   * ubuntu-24.04 ve ubuntu-26.04'te, tests.yml'in kurulumuyla, pip freeze;
+#   * aday üretici uv: `uv pip compile --python-platform` çıktısı, aynı
+#     dakikada, freeze'e karşı ad + sürüm bazında;
+#   * aynı uv komutu Windows'tan (çapraz üretim; freeze yok).
+# Kurulum satırları tests.yml'den OKUNUP koşulur; aynılık kurgudan gelir ve
+# "2 kurulum" annotation'ında görünür.
+# Sonuçlar check-run annotation'ı (job logu oturum istiyor). Sınırlar
+# (actions/toolkit docs/problem-matchers.md, 6D-4d-2'deki gibi): adım başına
+# 10 notice, job başına 50.
+# tests/test_workflow_runners.py bu dosya yüzünden bu dalda KIRMIZI olur:
+# beklenen, PR gövdesinde önceden yazılı. Dal merge edilmez.
+# =============================================================================
+
+name: "Olcum (merge edilmeyecek) - 6D-3b-1 freeze + uv"
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  # PyPI'de 2026-09-25'te yayımlandı; koşu günü >= 2 hafta. Sabit.
+  UV_VERSION: "0.12.19"
+  # ubuntu-24.04'ün glibc'si 2.39 ("1 ortam" doğrular). Windows'tan
+  # üretilecek dosya bu hedefle üretilir; bu ölçüm o kullanımı sınar.
+  UV_TARGET: "x86_64-manylinux_2_39"
+  UV_PYTHON_VERSION: "3.11"
+
+jobs:
+  linux:
+    name: "freeze + uv (${{ matrix.os }})"
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-26.04]
+    env:
+      TAG: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # tests.yml'in "Install dependencies" run bloğu dosyadan okunur ve
+      # aynen koşulur. Blok bulunamazsa ya da pip satırı çıkmazsa adım düşer:
+      # boş bir blok "aynı kurulum" sayılmaz.
+      - name: Install dependencies (run block read from tests.yml)
+        run: |
+          python - <<'EOF' > "$RUNNER_TEMP/install.sh"
+          import sys
+          lines = open(".github/workflows/tests.yml", encoding="utf-8").read().splitlines()
+          i = lines.index("      - name: Install dependencies")  # yoksa ValueError
+          if lines[i + 1].strip() != "run: |":
+              sys.exit("tests.yml: 'run: |' beklenen yerde degil")
+          cmds = []
+          for line in lines[i + 2:]:
+              if not line.startswith(" " * 10):
+                  break
+              body = line[10:]
+              if body.strip() and not body.lstrip().startswith("#"):
+                  cmds.append(body)
+          if not any(c.startswith(("pip ", "python -m pip ")) for c in cmds):
+              sys.exit("tests.yml'den pip satiri okunamadi")
+          print("set -euxo pipefail")
+          print("\n".join(cmds))
+          EOF
+          bash "$RUNNER_TEMP/install.sh"
+
+      - name: pip freeze (tests.yml's step)
+        run: pip freeze | tee "$RUNNER_TEMP/freeze.txt"
+
+      - name: Environment facts
+        run: |
+          python -m pip list --format json > "$RUNNER_TEMP/list.json"
+          ldd --version | head -n 1 > "$RUNNER_TEMP/glibc.txt"
+          python -VV > "$RUNNER_TEMP/python.txt"
+
+      # Freeze'den SONRA ve ayrı bir venv'de: uv ölçülen ortama girmez.
+      # "native" = bu runner'ın kendi glibc'sinden türetilen hedef; 24.04'te
+      # "fixed" ile aynıdır (iki koşu aynı zamanda tekrarlanabilirliği sınar).
+      - name: Candidate generator - uv pip compile
+        run: |
+          python -m venv "$RUNNER_TEMP/uvenv"
+          "$RUNNER_TEMP/uvenv/bin/python" -m pip install --quiet --only-binary ":all:" "uv==$UV_VERSION"
+          UV="$RUNNER_TEMP/uvenv/bin/uv"
+          "$UV" --version > "$RUNNER_TEMP/uv_version.txt"
+          minor=$(ldd --version | head -n 1 | grep -oE '[0-9]+\.[0-9]+$' | cut -d. -f2)
+          echo "x86_64-manylinux_2_${minor}" > "$RUNNER_TEMP/uv_native_target.txt"
+          for v in fixed native; do
+            t="$UV_TARGET"
+            [ "$v" = native ] && t="$(cat "$RUNNER_TEMP/uv_native_target.txt")"
+            rc=0
+            UV_CACHE_DIR="$RUNNER_TEMP/uvcache" "$UV" pip compile requirements-dev.txt \
+              --no-config --python-platform "$t" --python-version "$UV_PYTHON_VERSION" \
+              --no-header --no-annotate --quiet -o "$RUNNER_TEMP/uv_$v.txt" || rc=$?
+            echo "$rc" > "$RUNNER_TEMP/uv_rc_$v.txt"
+          done
+
+      - name: Report helper
+        if: ${{ !cancelled() }}
+        run: |
+          cat > "$RUNNER_TEMP/report.py" <<'EOF'
+          import hashlib, json, os, re, sys
+          T, TAG = os.environ["RUNNER_TEMP"], os.environ["TAG"]
+          CHUNK, SKIP = 40, {"pip", "setuptools", "wheel", "distribute"}
+
+          def esc(s):
+              return s.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+
+          def notice(title, lines):
+              print(f"::notice title={esc(f'[{TAG}] {title}')}::{esc(chr(10).join(lines))}")
+
+          def norm(n):
+              return re.sub(r"[-_.]+", "-", n).lower()
+
+          def pins(path):
+              out = {}
+              for raw in open(path, encoding="utf-8").read().splitlines():
+                  line = raw.strip()
+                  if not line or line.startswith(("#", "-")):
+                      continue
+                  name, sep, ver = line.partition("==")
+                  if not sep:  # '@ file://' gibi tanımsız satır: sessiz geçme
+                      raise SystemExit(f"tanimsiz satir {path}: {raw!r}")
+                  out[norm(name.split("[")[0].strip())] = ver.split(";")[0].strip()
+              return out
+
+          def summary():
+              rows = [l for l in open(f"{T}/freeze.txt").read().splitlines() if l.strip()]
+              editable = [l for l in rows if l.startswith("-e")]
+              fz = pins(f"{T}/freeze.txt")
+              direct = {**pins("requirements.txt"), **pins("requirements-dev.txt")}
+              off = sorted(n for n in direct if fz.get(n) != direct[n])
+              transitive = sorted(set(fz) - set(direct))
+              pl = {norm(d["name"]): d["version"] for d in json.load(open(f"{T}/list.json"))}
+              uvn = []
+              for v in ("fixed", "native"):
+                  if not os.path.exists(f"{T}/uv_rc_{v}.txt"):
+                      uvn.append((v, ["uv KOSMADI (kurulum adimi dustu)"]))
+                      continue
+                  tgt = (os.environ["UV_TARGET"] if v == "fixed"
+                         else open(f"{T}/uv_native_target.txt").read().strip())
+                  head = (f"{open(f'{T}/uv_version.txt').read().strip()} | hedef {tgt} | "
+                          f"python-version {os.environ['UV_PYTHON_VERSION']} | "
+                          f"rc {open(f'{T}/uv_rc_{v}.txt').read().strip()}")
+                  try:
+                      uv = pins(f"{T}/uv_{v}.txt")
+                  except (OSError, SystemExit) as e:
+                      uvn.append((v, [head, f"CIKTI OKUNAMADI ({e})"]))
+                      continue
+                  a = {k: x for k, x in fz.items() if k not in SKIP}
+                  b = {k: x for k, x in uv.items() if k not in SKIP}
+                  of, ou = sorted(set(a) - set(b)), sorted(set(b) - set(a))
+                  vd = sorted(f"{k} {a[k]}->{b[k]}" for k in set(a) & set(b) if a[k] != b[k])
+                  uvn.append((v, [head,
+                      f"uv {len(b)} / freeze {len(a)} (pip/setuptools/wheel haric): "
+                      + ("ESIT" if not (of or ou or vd) else "FARKLI"),
+                      f"yalniz freeze'de {len(of)}: {' '.join(of) or '-'}",
+                      f"yalniz uv'de {len(ou)}: {' '.join(ou) or '-'}",
+                      f"surum farki {len(vd)}: {' | '.join(vd) or '-'}",
+                      f"uv'nin cikardigi pip/setuptools/wheel: {' '.join(sorted(set(uv) & SKIP)) or '-'}"]))
+              n = -(-len(fz) // CHUNK)
+              notice("0 TOPLAM", [
+                  f"beklenen onekli annotation: {3 + len(uvn) + n} "
+                  f"(0/1/2 + {len(uvn)} uv + {n} freeze dilimi)",
+                  f"dilimler '3 freeze 1/{n}'..'{n}/{n}', dilim basina {CHUNK} paket",
+                  "birim: paket = pip freeze '==' satiri; '-e' sayilmaz"])
+              notice("1 ortam", [
+                  open(f"{T}/python.txt").read().strip(),
+                  open(f"{T}/glibc.txt").read().strip(),
+                  f"ImageOS {os.environ.get('ImageOS', '?')} ImageVersion {os.environ.get('ImageVersion', '?')}",
+                  " | ".join(f"{k} {pl.get(k, 'YOK')}" for k in ("pip", "setuptools", "wheel")),
+                  f"pip freeze {len(rows)} satir = {len(fz)} '==' + {len(editable)} '-e'",
+                  f"pip list {len(pl)} girdi",
+                  f"dogrudan pin {len(direct)}; freeze'de ayni surumle olmayan: {' '.join(off) or '-'}",
+                  f"dolayli (freeze - dogrudan) {len(transitive)}",
+                  "platform: " + " ".join(f"{k}={fz.get(k, 'YOK')}"
+                                         for k in ("colorama", "uvloop", "tzdata", "pytz"))])
+              cmds = open(f"{T}/install.sh").read().splitlines()[1:]
+              notice("2 kurulum", ["tests.yml'den okunup kosulan:", *cmds,
+                  "tests.yml sha256 " + hashlib.sha256(
+                      open(".github/workflows/tests.yml", "rb").read()).hexdigest()[:16]])
+              for v, lines in uvn:
+                  notice(f"4 uv {v}", lines)
+              json.dump(sorted(f"{k}=={x}" for k, x in fz.items()),
+                        open(f"{T}/freeze_sorted.json", "w"))
+
+          def chunks(path):
+              rows = json.load(open(path))
+              n = -(-len(rows) // CHUNK)
+              if n > 10:
+                  print(f"::error title={esc(f'[{TAG}] KAPASITE')}::{n} dilim > 10; olcum gecersiz")
+              for i in range(min(n, 10)):
+                  notice(f"3 freeze {i + 1}/{n}", [" ".join(rows[i * CHUNK:(i + 1) * CHUNK])])
+
+          if sys.argv[1] == "summary":
+              summary()
+          else:
+              chunks(f"{T}/freeze_sorted.json")
+          EOF
+
+      - name: Report - summary (0 TOPLAM, 1 ortam, 2 kurulum, 4 uv)
+        if: ${{ !cancelled() }}
+        run: python "$RUNNER_TEMP/report.py" summary
+
+      - name: Report - freeze chunks
+        if: ${{ !cancelled() }}
+        run: python "$RUNNER_TEMP/report.py" chunks
+
+  # Windows'tan çapraz üretim: 6D-3b-2'de dosyanın üretileceği makinenin
+  # platformu. Freeze yok; uv çıktısı dilimlenir ve okumada 24.04 freeze'iyle
+  # ve 24.04'ün "fixed" çıktısıyla karşılaştırılır.
+  uv-windows:
+    name: "uv capraz uretim (windows-2025)"
+    runs-on: windows-2025
+    timeout-minutes: 30
+    env:
+      TAG: windows-2025
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Candidate generator - uv pip compile (cross)
+        run: |
+          T="$(cygpath -u "$RUNNER_TEMP")"
+          python -m venv "$T/uvenv"
+          "$T/uvenv/Scripts/python.exe" -m pip install --quiet --only-binary ":all:" "uv==$UV_VERSION"
+          UV="$T/uvenv/Scripts/uv.exe"
+          "$UV" --version > "$T/uv_version.txt"
+          rc=0
+          UV_CACHE_DIR="$T/uvcache" "$UV" pip compile requirements-dev.txt \
+            --no-config --python-platform "$UV_TARGET" --python-version "$UV_PYTHON_VERSION" \
+            --no-header --no-annotate --quiet -o "$T/uv_fixed.txt" || rc=$?
+          echo "$rc" > "$T/uv_rc.txt"
+
+      - name: Report
+        if: ${{ !cancelled() }}
+        run: |
+          python - <<'EOF'
+          import os, platform, re
+          T, TAG, CHUNK = os.environ["RUNNER_TEMP"], os.environ["TAG"], 40
+          def esc(s):
+              return s.replace("%", "%25").replace("\r", "").replace("\n", "%0A")
+          def notice(title, lines):
+              print(f"::notice title={esc(f'[{TAG}] {title}')}::{esc(chr(10).join(lines))}")
+          def read(name, default="YOK"):
+              p = os.path.join(T, name)
+              return open(p, encoding="utf-8").read().strip() if os.path.exists(p) else default
+          rows = sorted(
+              re.sub(r"[-_.]+", "-", l.split("==")[0].split("[")[0]).lower() + "==" + l.split("==")[1].split(";")[0].strip()
+              for l in read("uv_fixed.txt", "").splitlines()
+              if l.strip() and not l.lstrip().startswith(("#", "-")))
+          n = -(-len(rows) // CHUNK)
+          notice("0 TOPLAM", [f"beklenen onekli annotation: {2 + min(n, 10)}",
+                              f"dilimler '3 uv 1/{n}'..'{n}/{n}'"])
+          notice("1 ortam", [platform.platform(), platform.python_version(),
+                             read("uv_version.txt"), f"rc {read('uv_rc.txt')}",
+                             f"hedef {os.environ['UV_TARGET']} | uv paket {len(rows)}"])
+          if n > 10:
+              print(f"::error title={esc(f'[{TAG}] KAPASITE')}::{n} dilim > 10")
+          for i in range(min(n, 10)):
+              notice(f"3 uv {i + 1}/{n}", [" ".join(rows[i * CHUNK:(i + 1) * CHUNK])])
+          EOF
