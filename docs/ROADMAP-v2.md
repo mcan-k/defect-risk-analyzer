@@ -594,6 +594,23 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > kontrolünde on üç maddenin hepsi aynı. 6D-6 bu PR'la tamamlanıyor;
       > 6D-3b'nin tetikleyicisi ("6D-6 tamamlandıktan sonra") merge'le
       > ateşlenir. Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-6 eki", 6D-6c bölümü.
+- [ ] **Faz 6D-7 — gizli bilgi ve e-posta taraması.** 6D-3b'den sonra,
+      küçük bir PR (kullanıcı kararı, 2026-10-11/12): CI'a kalıcı bir gizli
+      bilgi taraması, ve yazar ya da committer e-postası GitHub'ın noreply
+      adresi olmayan bir commit'i kırmızı yapan bir kontrol.
+
+      Bugünkü durum, kayıt için:
+      - GitHub'da depo düzeyinde Secret Protection ve Push protection
+        2026-10-11'de açıldı.
+      - Hesapta "Keep my email addresses private" ve "Block command line
+        pushes that expose my email" açık. Ama engelleme yalnız hesapta
+        kayıtlı adresi tanıyor, ve geçmişteki commit'lerin adresi ondan
+        farklı. Asıl koruma yerel ayar: depo düzeyinde `user.email` GitHub'ın
+        noreply adresi (2026-10-12). Noreply kontrolünün CI'a girmesinin
+        nedeni bu.
+      - **Karar (kullanıcı, 2026-10-12): geçmiş yeniden yazılmaz.**
+        Geçmişteki commit'lerin bir kısmı kişisel bir e-posta adresi
+        taşıyor; kontrol yalnız bundan sonraki commit'lere uygulanır.
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 6E — Doğrulama ve test borcu
@@ -754,6 +771,23 @@ Bekleyenler:
       taşıyan yorumlanmış bir `API_KEY` satırı değerini hâlâ tutuyor.
       Ertelemenin ikinci gerekçesi de bu: bu makinenin `.env` katmanında
       kalması 6D-3'ün bağımlılık pinleme ölçümlerine zemin sağlıyor.
+- [ ] **Proje sonu denetimi** — Faz 7'nin sonunda, v1.0'dan önce, bağımsız
+      bir Claude Desktop oturumunda (kullanıcı kararı, 2026-10-11). Kapsam:
+      - gizli anahtarlar, tüm git geçmişi dahil;
+      - commit yazar e-postaları;
+      - bilgisayar yolları (`C:\Users\…` gibi);
+      - gerçek ad, kurum, Jira adresi — `LICENSE:3` ve `pyproject.toml:23`'teki
+        ad (lisanslarda olağan; karar kullanıcının) ve Faz 0'ın ilk kutusundaki
+        eski GitHub kullanıcı adı (parola değil; 6E taramasında ele alınır);
+      - örnek verinin uydurma olduğu;
+      - PR gövdeleri, yorumları ve Actions günlükleri;
+      - `.gitignore` kapsamı.
+
+      2026-10-12'de basit `git grep` ile bakıldı — **kapsamlı bir tarama
+      değil**: izlenen dosyalarda ve tüm geçmişte bilgisayar yolu, yerel
+      kullanıcı adı ya da kişisel e-posta yok; birkaç yaygın anahtar deseni
+      yok; Jira adresleri yalnız yer tutucu ya da örnek. Commit kimliklerinin
+      bir kısmı kişisel bir e-posta adresi taşıyor — bkz. Faz 6D-7.
 
 ---
 
