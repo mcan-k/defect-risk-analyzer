@@ -595,9 +595,10 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > 6D-3b'nin tetikleyicisi ("6D-6 tamamlandıktan sonra") merge'le
       > ateşlenir. Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-6 eki", 6D-6c bölümü.
 - [ ] **Faz 6D-7 — gizli bilgi ve e-posta taraması.** 6D-3b'den sonra,
-      küçük bir PR (kullanıcı kararı, 2026-10-11/12): CI'a kalıcı bir gizli
-      bilgi taraması, ve yazar ya da committer e-postası GitHub'ın noreply
-      adresi olmayan bir commit'i kırmızı yapan bir kontrol.
+      6E'den önce, küçük bir PR (kullanıcı kararı, 2026-10-11/12): CI'a
+      kalıcı bir gizli bilgi taraması, ve yazar ya da committer e-postası
+      GitHub'ın noreply adresi olmayan bir commit'i kırmızı yapan bir
+      kontrol.
 
       Bugünkü durum, kayıt için:
       - GitHub'da depo düzeyinde Secret Protection ve Push protection
@@ -619,6 +620,9 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
 beri yukarıdaki iki Faz 3 test maddesinin ve `KNOWN-DEBT.md`'deki birkaç
 satırın hedef etiketiydi, ama faz olarak hiç açılmamış, kapsamı yazılmamıştı.
 Bu bölüm onu tanımlıyor.
+
+*Not (2026-10-12):* Faz 6D-7 (gizli bilgi ve e-posta taraması) 6D-3b ile 6E
+arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
 
 **İlk iş — depo taraması**, kapsamın geri kalanından önce:
 - [ ] Bu dosyada işaretlenmemiş `[ ]` / `[~]` kutular — tamamlanmış fazlarda
