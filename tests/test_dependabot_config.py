@@ -140,3 +140,41 @@ def test_every_ignored_dependency_still_carries_its_recorded_pin():
             "Erteleme Faz 6D-3c'nin karari ve 6D-4'te kalkmak uzere konuldu; "
             "gerekcesi docs/KNOWN-DEBT.md'de."
         )
+
+
+# Faz 6D-3b-2a: CI kısıt dosyası. Üretilen bir dosya, manifest değil.
+CONSTRAINTS_PATH = ".github/constraints/ci-linux-py311.txt"
+
+# `exclude-paths:` başlığından sonraki `- "yol"` satırları.
+_EXCLUDE_PATHS = re.compile(
+    r"^[ \t]*exclude-paths:[ \t]*$(?P<items>(?:\n[ \t]+-[ \t]*.+)+)", re.MULTILINE
+)
+
+
+def test_constraints_file_is_excluded_from_the_pip_scan():
+    """Kısıt dosyası pip girdisinin `exclude-paths` listesinde olmalı, ve var olmalı.
+
+    Dependabot kökün bir alt dizinindeki `.txt` dosyalarını da topluyor; liste
+    olmasa dosyadaki ~120 dolaylı pini doğrudan bağımlılık sayıp onlar için PR
+    açardı. Dosyanın diskte var olduğu da tutuluyor: yeniden adlandırılan bir
+    dosya dışlamayı sessizce boşa düşürür — liste eski adı göstermeye devam
+    eder, yeni ad taranır.
+
+    Dışlamanın Dependabot'ta gerçekten çalıştığını bu test göremez; ilk tam
+    taramada gözlenir.
+    """
+    body = _ecosystem_blocks().get("pip", "")
+    match = _EXCLUDE_PATHS.search(body)
+    assert match, (
+        ".github/dependabot.yml'nin pip girdisinde `exclude-paths:` yok. Faz 6D-3b-2a "
+        f"onu {CONSTRAINTS_PATH} icin ekledi; silinirse Dependabot dosyadaki dolayli "
+        "pinler icin PR acmaya baslar."
+    )
+    paths = [
+        line.split("-", 1)[1].strip().strip("\"'")
+        for line in match.group("items").strip().splitlines()
+    ]
+    assert CONSTRAINTS_PATH in paths, f"exclude-paths {paths}; {CONSTRAINTS_PATH} yok"
+    assert (REPO_ROOT / CONSTRAINTS_PATH).is_file(), (
+        f"{CONSTRAINTS_PATH} diskte yok: exclude-paths var olmayan bir yolu dislar."
+    )
