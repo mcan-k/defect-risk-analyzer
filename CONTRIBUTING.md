@@ -97,6 +97,67 @@ birlikte durur — kaynaksız yazılan doğrulanamaz bir iddiadır.
 
 ---
 
+## Bağımlılık kısıtları
+
+CI paketleri `-c .github/constraints/ci-linux-py311.txt` ile kuruyor (Faz
+6D-3b). Dosyada yalnız **dolaylı** paketler var; doğrudan `==` pinlerin tek
+yeri `requirements*.txt`. pip, setuptools ve wheel dışarıda: CI onları bilerek
+yükseltiyor. Dosya yalnız CI içindir (ubuntu-24.04, Python 3.11); yerel kurulum
+onu kullanmaz. `tests.yml` Pytest'ten sonra kurulan kümenin dosyaya iki yönde
+eşit olduğunu denetliyor ("Constraints equality check").
+
+**Dosya elle düzenlenmez, üretilir** — uv 0.12.19 ile, depo dışında atılacak
+bir venv'de:
+
+```bash
+python -m venv <gecici>/uvenv
+<gecici>/uvenv/Scripts/python -m pip install uv==0.12.19
+python .github/scripts/constraints_generate.py --uv <gecici>/uvenv/Scripts/uv
+```
+
+Linux ve macOS'ta `Scripts/` yerine `bin/`. Betik başka bir uv sürümüyle
+çalışmayı reddeder: 6D-3b-1'de bu sürümün çıktısı CI'ın kendi `pip freeze`'ine
+ad ve sürümce eşit ölçüldü. Bayraksız çalıştırma mevcut dosyayı tercih olarak
+kullanır ve bir sürümü yalnız gerektiğinde değiştirir. `--upgrade` bütün
+dolaylıları tazeler; `--upgrade-package <paket>` yalnız o paketi.
+
+**Ne zaman yeniden üretilir** (kullanıcı kararı, 2026-10-12):
+
+- **Her sürümden önce, tam tazeleme** (`--upgrade`). İlki Faz 7'de, v1.0'dan
+  önce.
+- **İhtiyaçta:** pip-audit kapısı dolaylı bir pakette bulgu verirse ve
+  düzeltilmiş sürüm varsa, kendi PR'ımızda `--upgrade-package <paket>`.
+  Düzeltme bir doğrudan paketin yükselmesini gerektiriyorsa iş bir doğrudan
+  bump'a döner. Düzeltme yoksa 6D-4d-2'nin yolu: kimlik ignore listesine,
+  gerekçesi `docs/KNOWN-DEBT.md`'ye.
+- **Bir Dependabot PR'ı kırmızı geldiğinde** — aşağıda.
+
+**Bir Dependabot PR'ı kırmızı gelirse.**
+
+| Durum | CI'da ne görünür | Hangi adımda |
+|---|---|---|
+| Doğrudan bump, dolaylı küme değişmiyor | yeşil | — |
+| Bump, kısıtlı bir dolaylının daha yeni sürümünü istiyor | pip `ResolutionImpossible`, çakışan paketin adıyla | Install dependencies; sonraki adımlar atlanır |
+| Bump yeni bir dolaylı paket getiriyor | `kisitsiz kurulan: X` | Constraints equality check |
+| Bump bir dolaylı paketi düşürüyor | `kurulmayan kisit: X` | Constraints equality check |
+
+Varsayılan yol **kendi PR'ımız** (kullanıcı kararı, 2026-10-12): aynı bump
+`requirements*.txt`'te yapılır ve kısıt dosyası aynı PR'da yeniden üretilir.
+Dependabot PR'ı merge'den sonra kendini kapatır — tek paketlik PR'larda üç kez
+gözlendi (#31, #40, #41: "Looks like … is up-to-date now"). **Gözlenmedi:** bir
+grup PR'ının (`python-patch-minor`) aynı biçimde kapanıp kapanmadığı; ilk
+seferde gözlenir.
+
+**`-c` yalnız iş akışının komut satırında.** Bir requirements dosyasının içine
+yazılmaz: Dependabot, `exclude-paths` ile dışladığı bir dosyaya başvuran
+requirements dosyasında hata ile duruyor (dependabot-core, kod okuması).
+
+**Eşitlik adımının tutmadığı şey.** Bir satırı kurulabilen başka bir sürüme
+çevirmek yeşil kalır: iddia "kurulan = dosya", "dosyadaki sürüm doğru" değil.
+Dosyanın elle düzenlenmemesinin nedeni bu.
+
+---
+
 ## Commit, dal ve PR
 
 - **Commit başlığı:** `tip(kapsam): özet`. Kullanılan tipler: `feat`, `fix`,

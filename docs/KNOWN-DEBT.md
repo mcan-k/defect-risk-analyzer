@@ -2049,6 +2049,22 @@ transitif paketi dondurmak bayatlığı kilitler ve 6D-4'ü tek bir büyük adı
 okuyup okumadığı; `pip-compile`'ı yeniden koşturup koşturmadığı; `-c`
 satırının setuptools'un dinamik okuduğu bir dosyada ne yaptığı.
 
+*Cevap (6D-3b-2b, 2026-10-15) — kod okuması, ölçüm değil; bir gözlem
+hariç:* (1) Dependabot'un pip toplayıcısı kökün bir alt dizinindeki `.txt`
+dosyalarını da alıyor (dependabot-core `4725d25`, `shared_file_fetcher.rb`,
+`req_files_for_dir`): dışlanmasaydı kısıt dosyası okunurdu. Dosya bu yüzden
+`dependabot.yml`'de `exclude-paths` ile dışarıda (6D-3b-2a, #58). **Tek
+gözlem:** #58'in merge'ünden sonraki ilk `pip in /.` koşusunun kaydında
+(denetleyicinin okuması, 2026-10-15) openai için 42 sonuç, starlette ve
+posthog için 0 — kısıt dosyasının dolaylı adları okunmadı; koşunun açtığı
+#59 yalnız `requirements.txt` ve `requirements-dev.txt`'e dokunuyor. (2)
+`pip-compile` kullanılmıyor: dosyayı uv 0.12.19 üretiyor ve bir `.in`
+dosyası yok — soru düştü. (3) `-c` hiçbir requirements dosyasında yok,
+yalnız iş akışlarının komut satırında; setuptools'un dinamik okuduğu
+`requirements.txt`'e girmiyor — soru düştü. Dışlanmış bir dosyaya başvuran
+bir requirements dosyasında Dependabot hata ile duruyor (aynı kaynak);
+`-c`'nin komut satırında kalmasının nedeni bu.
+
 **Sürüklenmenin somut bir örneği — 6D-4d-1'de ölçüldü.** 2026-09-25'te
 `opentelemetry-exporter-otlp-proto-grpc` 1.45.0 yayımlandı ve yeni bir
 bağımlılık getirdi: `opentelemetry-exporter-otlp-common==0.66b0`. Zincir:
@@ -2086,7 +2102,7 @@ pin, 123 transitif. `tests.yml`'in yorumu bu yüzden artık tarihli: sayı bir
 
 | Borç | İşaret |
 |---|---|
-| 123 transitif paket (2026-10-07, #47) dondurulmamış; çözünürlük manifest değişmeden değişebiliyor (09-25'te otlp-common, 10-07'de aiohttp-retry). pip-audit'in 16 transitifi de bu kümede | **6D-6 tamamlandıktan sonra, Faz 7'den önce.** Gerekçe: 6D-6 de tabanı oynatıyor (pandas, plotly majorları); kısıt dosyası ondan önce üretilirse dondurulan küme hemen yeniden açılır — "önce taban güncellensin, sonra dondurulsun" ilkesinin aynısı. **Bu tetikleyici 6D-6c'nin merge'üyle ateşlenir:** 6D-6 o PR'la tamamlanıyor ("Faz 6D-6 eki", 6D-6c bölümü). Satır açık kalır; kapatmak 6D-3b'nin işi |
+| ~~123 transitif paket (2026-10-07, #47) dondurulmamış; çözünürlük manifest değişmeden değişebiliyor (09-25'te otlp-common, 10-07'de aiohttp-retry). pip-audit'in 16 transitifi de bu kümede~~ — **Kapandı (6D-3b-2b, 2026-10-15):** dolaylı paketler `.github/constraints/ci-linux-py311.txt`'te kısıt altında (121 paket; 6D-3b-2a, #58). İki iş akışı `-c` ile kuruyor ve `tests.yml`'in eşitlik adımı kurulan kümeyi dosyaya iki yönde eşit tutuyor. 123 bu satırın 2026-10-07 ölçümü; 121, 6D-3b-1'in 2026-10-12 ölçümü. Ayrıntı: "Faz 6D-3b eki" | ~~**6D-6 tamamlandıktan sonra, Faz 7'den önce.** Gerekçe: 6D-6 de tabanı oynatıyor (pandas, plotly majorları); kısıt dosyası ondan önce üretilirse dondurulan küme hemen yeniden açılır — "önce taban güncellensin, sonra dondurulsun" ilkesinin aynısı. **Bu tetikleyici 6D-6c'nin merge'üyle ateşlenir:** 6D-6 o PR'la tamamlanıyor ("Faz 6D-6 eki", 6D-6c bölümü). Satır açık kalır; kapatmak 6D-3b'nin işi~~ |
 
 ---
 
@@ -2144,7 +2160,7 @@ hesaplanır ve anyio'nun sürümü ortamı değiştiriyor.
 
 | Borç | İşaret |
 |---|---|
-| CI `ubuntu-24.04`'e sabit; Ubuntu 26'ya geçiş bilerek ertelendi | Tetikleyici: **GitHub 24.04 için kullanımdan kaldırma duyurduğunda ya da 6D-3b'nin kısıt dosyası üretilmeden önce — hangisi önce gelirse.** Geçiş kendi PR'ında, freeze diff'i gözlenerek yapılır; `tests/test_workflow_runners.py`'deki `EXPECTED_RUNNER` orada değişir. Aynı PR `tests/test_env_writer.py:335`'in docstring'indeki `ubuntu-latest`'i de günceller (6D-4d-1'den beri bayat; 6D-4d'de kaydedildi, düzeltilmedi) |
+| CI `ubuntu-24.04`'e sabit; Ubuntu 26'ya geçiş bilerek ertelendi | ~~Tetikleyici: **GitHub 24.04 için kullanımdan kaldırma duyurduğunda ya da 6D-3b'nin kısıt dosyası üretilmeden önce — hangisi önce gelirse.**~~ Tetikleyici (kullanıcı kararı 6D-3b-0, 2026-10-12): **GitHub 24.04'ün kullanımdan kaldırılacağını duyurduğunda ya da CI'daki kısıt eşitlik kontrolü bir imaj değişikliğinde kırmızıya döndüğünde.** Gerekçe 6D-3b-1 (taslak PR #56): 26.04'ün kümesi 24.04'ünkiyle ad ve sürümce aynıydı, ve 26.04 daha eski bir Python yaması taşıyordu (3.11.16; 24.04'te 3.11.17). Geçiş kendi PR'ında, freeze diff'i gözlenerek yapılır; `tests/test_workflow_runners.py`'deki `EXPECTED_RUNNER` orada değişir. Aynı PR `tests/test_env_writer.py:335`'in docstring'indeki `ubuntu-latest`'i de günceller (6D-4d-1'den beri bayat; 6D-4d'de kaydedildi, düzeltilmedi) |
 | ~~`anyio==4.14.2` pininin gerekçesi starlette 1.7.0 ile kalktı~~ | **Kapandı (6D-4d, 2026-10-06)** — aşağıdaki 6D-4d eki |
 
 ---
@@ -2336,9 +2352,9 @@ yoktu.
 |---|---|
 | Kapı ağa bağlı: pip-audit PyPI'ye ulaşamazsa rapor yazılmaz ya da bozuk çıkar, kapı kırmızı — ilgisiz bir PR da kırmızı görünür. Bu bilinçli: "sonuçsuz"u yeşil saymak, boş taramayı iyi haber saymak olurdu | Tetikleyici: **ağ kaynaklı ilk kırmızı.** O zaman yeniden deneme mi, ayrı bir "sonuçsuz" durumu mu — karar o gün, gözlenen hata metniyle verilir |
 | Gece yayımlanan bir advisory, açık her PR'ı (Dependabot'unkiler dahil) kırmızıya çevirir. Tasarım gereği; yol: aynı PR'da ya bump, ya da kimlik ignore'a ve gerekçesi bu dosyaya | Tetikleyici: **ilk "yeni bulgu" kırmızısı** — yol o gün izlenir ve buraya bir satır yazılır |
-| setuptools sabitlenmedi, yükseltiliyor: her koşu o günün en yeni sürümünü alıyor (2026-10-07'de 84.0.0) | Tetikleyici: **6D-3b'nin kısıt dosyası üretildiğinde** — setuptools'un da kısıt altına girip girmeyeceği orada karara bağlanır |
-| `pr-risk-analysis.yml` denetlenmiyor. Kurduğu küme `tests.yml`'inkinin alt kümesi, ama çözünürlüğü ayrı (6D-3b'nin bilinen ayrışması) | Tetikleyici: **6D-3b** — iki iş akışı aynı kısıt dosyasını kullandığında bu satır kapanır |
-| `tests.yml:56–57`'deki yorum ("installs the runtime deps plus pytest and the pinned ruff") eksik: `pip-audit`'i de, zaten 6D-4d-2'den önce `pytest-cov`'u da saymıyor. Bilerek dokunulmadı: satır C1'in değiştirdiği `--upgrade pip setuptools` satırına bitişik; C2 burayı da değiştirseydi iki hunk arasında değişmemiş satır kalmaz, C1 tek başına temiz revert edilemezdi (bugün aralarında 5 satır var) | Tetikleyici: **`tests.yml`'e dokunan bir sonraki PR** — yorum orada iki paketi de sayacak biçimde düzeltilir |
+| ~~setuptools sabitlenmedi, yükseltiliyor: her koşu o günün en yeni sürümünü alıyor (2026-10-07'de 84.0.0)~~ — **Kapandı (6D-3b-2b, 2026-10-15):** setuptools ve pip bilerek kısıtın dışında (kullanıcı kararları 2026-10-11 ve 2026-10-12): CI ikisini `--upgrade` ile yükseltiyor, `pip freeze` ikisini de listelemiyor (6D-3b-1), üreteç `--no-emit-package` ile dışarıda bırakıyor ve `tests/test_constraints_file.py` bunu tutuyor. Her koşunun o günün sürümünü alması bilinçli kalıyor | ~~Tetikleyici: **6D-3b'nin kısıt dosyası üretildiğinde** — setuptools'un da kısıt altına girip girmeyeceği orada karara bağlanır~~ |
+| ~~`pr-risk-analysis.yml` denetlenmiyor. Kurduğu küme `tests.yml`'inkinin alt kümesi, ama çözünürlüğü ayrı (6D-3b'nin bilinen ayrışması)~~ — **Kapandı (6D-3b-2b, 2026-10-15):** iki iş akışı aynı kısıt dosyasıyla kuruyor; `tests/test_workflow_constraints.py` tutuyor. pr-risk'in kendi çözümlemesi ayrıca denetlenmiyor — beyan edilmiş kör nokta, "Faz 6D-3b eki" | ~~Tetikleyici: **6D-3b** — iki iş akışı aynı kısıt dosyasını kullandığında bu satır kapanır~~ |
+| ~~`tests.yml:56–57`'deki yorum ("installs the runtime deps plus pytest and the pinned ruff") eksik: `pip-audit`'i de, zaten 6D-4d-2'den önce `pytest-cov`'u da saymıyor. Bilerek dokunulmadı: satır C1'in değiştirdiği `--upgrade pip setuptools` satırına bitişik; C2 burayı da değiştirseydi iki hunk arasında değişmemiş satır kalmaz, C1 tek başına temiz revert edilemezdi (bugün aralarında 5 satır var)~~ — **Kapandı (6D-3b-2b, 2026-10-15):** yorum artık pytest, pytest-cov, ruff ve pip-audit'i sayıyor; kısıt satırıyla aynı commit'te | ~~Tetikleyici: **`tests.yml`'e dokunan bir sonraki PR** — yorum orada iki paketi de sayacak biçimde düzeltilir~~ |
 
 ---
 
@@ -2989,3 +3005,90 @@ tetikleyici ("6D-6 tamamlandıktan sonra, Faz 7'den önce") bu PR'ın merge'üyl
 ateşlenir; o hücre buraya bağlandı. Satır açık kalır, kapatmak 6D-3b'nin işi.
 #40'ın (Dependabot, pandas 3.0.6) nasıl kapanacağı gözlenecek; tahmin
 yazılmadı.
+
+---
+
+## Faz 6D-3b eki — CI kısıt dosyası
+
+**Where:** [`.github/constraints/ci-linux-py311.txt`](../.github/constraints/ci-linux-py311.txt),
+[`.github/scripts/constraints_generate.py`](../.github/scripts/constraints_generate.py),
+[`.github/scripts/constraints_check.py`](../.github/scripts/constraints_check.py),
+[`.github/workflows/tests.yml`](../.github/workflows/tests.yml),
+[`.github/workflows/pr-risk-analysis.yml`](../.github/workflows/pr-risk-analysis.yml),
+[`.github/dependabot.yml`](../.github/dependabot.yml) (`exclude-paths`),
+[`CONTRIBUTING.md`](../CONTRIBUTING.md) ("Bağımlılık kısıtları")
+
+**Ne yapıldı.** "Transitif sürüklenme" bölümünün dondurma işi üç adımda:
+6D-3b-1 ölçüm dalı (taslak PR #56, merge edilmedi), 6D-3b-2a üretim betiği,
+kısıt dosyası ve Dependabot dışlaması (#58), 6D-3b-2b CI bağlantısı, eşitlik
+adımı ve bu kayıtlar. Dosyada yalnız dolaylı paketler var (121); doğrudan
+pinlerin tek yeri `requirements*.txt`; pip, setuptools ve wheel dışarıda.
+
+**6D-3b-1 ölçümü (2026-10-12, CI, taslak PR #56).** `ubuntu-24.04`: freeze
+134 `==` satırı (13 doğrudan + 121 dolaylı) + 1 `-e` satırı; `pip list` 137
+(pip ve setuptools freeze'de görünmüyor); wheel kurulu değil. Windows'a karşı
+ad farkı tam olarak −colorama −tzdata +uvloop, sürüm farkı 0. `ubuntu-26.04`:
+küme 24.04'ünkiyle ad ve sürümce aynı; Python 3.11.16 (24.04'te 3.11.17).
+uv 0.12.19, `--python-platform x86_64-manylinux_2_39 --python-version 3.11`:
+çıktı CI'ın freeze'ine eşit (24.04 ve 26.04; eksik/fazla/sürüm 0/0/0);
+windows-2025'ten aynı komut aynı çıktıyı verdi, artı bir `pip` satırı. uv
+26.04'ün yerel hedefini (`x86_64-manylinux_2_43`) kabul etmedi.
+
+**Kararlar.** 2026-10-11: dosya yalnız dolaylı paketleri tutar; setuptools
+kısıtın dışında. 2026-10-12: (A) CI 24.04'te kalır, 26.04'e geçişin
+tetikleyicisi yeniden yazıldı (6D-4d-1 ekindeki satır); (B) üreteç uv 0.12.19,
+hedef `x86_64-manylinux_2_39`, Python 3.11, pip/setuptools/wheel çıktıdan
+çıkarılır; tam tazeleme her sürümden önce, ihtiyaçta tek paket; kurulum
+düşerse eşitlik ve pip-audit adımları atlanır; kırmızı bir Dependabot PR'ında
+varsayılan kendi PR'ımız; hash kilidinin sahibi Faz 7'nin v1.1 değerlendirmesi;
+iş 2a/2b olarak iki PR'a bölündü.
+
+**6D-3b-2a'dan sonraki gözlem (2026-10-15).** #58'in merge'ünden sonraki ilk
+`pip in /.` koşusu başarılı; kaydında openai için 42 sonuç, starlette ve
+posthog için 0 (denetleyicinin okuması). Koşunun açtığı #59 (openai 3.26.1 →
+3.29.0, ruff 0.16.10 → 0.17.0) yalnız iki requirements dosyasına dokunuyor.
+Dışlama tuttu — tek gözlem.
+
+**6D-3b-2b ölçümleri (2026-10-15, yerel Windows).**
+
+- `-c` ile taze bir venv (depo dışında, CI'ın sırasıyla; kurulum commit'in
+  `git archive` kopyasından): kurulum ve `pip check` temiz; freeze 135 `==`
+  satırı + 1 `-e` satırı (24.04'ün 134'ü − uvloop + colorama + tzdata).
+  Testler `.git`'li bir klonda, editable kurulum klona yönlendirilerek: 703
+  + 1. `.git`'siz kopyada `test_ci_analyzer_inference.py:508` atlanıyor
+  (`git ls-files`), 702 + 2 — ölçüm düzeneğinin farkı, kodun değil.
+- Eşitlik betiğinin pozitif kontrolü aynı venv'de: rc 1, "FARKLI - kurulu
+  135 paket; 121 kisit + 13 dogrudan bekleniyordu"; kısıtsız kurulan tam
+  olarak colorama ve tzdata, kurulmayan kısıt tam olarak uvloop, sürüm ve
+  doğrudan pin farkı 0. Kısıt dosyasının kopyasından bir satır (certifi)
+  silinince `kisitsiz kurulan: certifi`, sahte bir satır eklenince
+  `kurulmayan kisit: zzz-sahte`, boş bir kopyada 122 kısıtsız paket; üçü de
+  rc 1.
+- Kurulum düşerse (kısıt kopyasında starlette 0.45.3; streamlit 1.65.0
+  `starlette<2,>=0.46.0` istiyor): kurulum `ResolutionImpossible` ile düştü,
+  ortamda paket kalmadı, pip-audit kurulu değildi ve kapı o ortamda "rapor
+  yok" ile kırmızı verdi. Var olmayan bir sürüm (`certifi==999.0.0`) aynı
+  biçimde düştü. Eşitlik ve pip-audit adımlarının yalnız kurulum başarılıysa
+  koşmasının gerekçesi bu ikinci, yanıltıcı kırmızı.
+- `pr-risk-analysis.yml`'in "112-package" yorumu: CI hedefi için uv 0.12.19
+  ve kısıt dosyasıyla `requirements.txt` yeniden sayıldı, yine 112.
+
+**Beyan edilmiş kör noktalar.** (1) Eşitlik adımı "kurulan = dosya"yı tutar,
+"dosyadaki sürüm doğru"yu değil: bir satırı kurulabilen başka bir sürüme
+çevirmek yeşil kalır. (2) `pr-risk-analysis.yml` ayrı bir eşitlik adımı
+taşımıyor; kurduğu küme `tests.yml`'inkinin alt kümesi ve `-c` her paketi aynı
+sürüme zorluyor — kendi çözümlemesi ayrıca denetlenmiyor.
+
+**Bilinmiyor.** `exclude-paths`'in güvenlik güncellemelerine de uygulanıp
+uygulanmadığı belgede yazmıyor. Bir grup PR'ının (`python-patch-minor`)
+kırmızı geldiğinde kendi PR'ımız merge edilince kendini kapatıp kapatmadığı
+ölçülmedi; tek paketlik PR'larda üç kez görüldü (#31, #40, #41). İlk seferde
+gözlenir.
+
+| Borç | İşaret |
+|---|---|
+| Yerel kurulum kısıt kullanmıyor: `Dockerfile`, `BASLAT.bat` ve README'nin komutları dolaylı paketleri serbest çözüyor; CI'ın denetlediği küme kullanıcının kurduğu küme değil | Sahibi **Faz 7**, kurulum yolu kararıyla (ROADMAP: "Kurulum yolu Faz 7'de kararlaştırılacak") |
+| Hash kilidi yok (`--require-hashes`); pip'in kısıt dosyalarındaki hash desteği ölçülmedi | Sahibi **Faz 7'nin v1.1 değerlendirmesi** (kullanıcı kararı, 2026-10-12) |
+| Dolaylı paketlerin güvenlik düzeltmeleri artık bir sonraki CI çözümlemesiyle kendiliğinden gelmiyor | Tetikleyici: **kapının dolaylı bir paketteki ilk kırmızısı.** Yol `CONTRIBUTING.md`'de: düzeltme varsa kendi PR'ımızda `--upgrade-package`, yoksa ignore listesi ve gerekçe satırı |
+| Üreteç uv 0.12.19'a sabit ve Dependabot uv'yi görmüyor (`requirements-dev.txt`'te değil, bilerek) | Tetikleyici: **yeniden üretim uv yüzünden başarısız olduğunda ya da Faz 7** |
+| Kısıt dosyası tazelenmedikçe bayatlar: dolaylı paketlerin yeni sürümleri gelmiyor | Tetikleyici: **her sürümden önce tam tazeleme** (`--upgrade`); ilki Faz 7'de, v1.0'dan önce (kullanıcı kararı, 2026-10-12) |
