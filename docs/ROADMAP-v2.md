@@ -605,7 +605,16 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > (kullanıcı kararı, 2026-10-12). Tazeleme her sürümden önce ve
       > ihtiyaçta; süreç `CONTRIBUTING.md`'de, "Bağımlılık kısıtları".
       > Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-3b eki".
-      > *6D-3b-2c (denetleyici kararı, 2026-10-15):* kısıt dosyasının başlığına `CONTRIBUTING.md` işareti (üreteç değişikliği + bayraksız yeniden üretim) ve `pr-risk-analysis.yml`'deki bayat "no Dependabot pull request has ever existed" yorumu — ayrı PR, 2b'den sonra, #59'dan önce.
+      >
+      > *6D-3b-2c (denetleyici kararı, 2026-10-15):* kısıt dosyasının
+      > başlığına `CONTRIBUTING.md` işareti (üreteç değişikliği + bayraksız
+      > yeniden üretim) ve `pr-risk-analysis.yml`'deki bayat "no Dependabot
+      > pull request has ever existed" yorumu —
+      > ~~ayrı PR, 2b'den sonra, #59'dan önce.~~
+      > **Yapıldı (2026-10-15, 6D-3b-2c):** ayrı PR'da, 2b'nin merge'ünden
+      > (#60) sonra ve #59'dan önce. Bu not öteki notlar gibi boş bir `>`
+      > satırıyla ayrıldı ve sarıldı. Bu bölüm GitHub'da kod bloğu olarak
+      > görünüyor; ayrım paragraf değil satır ayrımıdır.
 - [ ] **Faz 6D-7 — gizli bilgi ve e-posta taraması.** 6D-3b'den sonra,
       6E'den önce, küçük bir PR (kullanıcı kararı, 2026-10-11/12): CI'a
       kalıcı bir gizli bilgi taraması, ve yazar ya da committer e-postası
