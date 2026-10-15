@@ -55,6 +55,17 @@ updates:
   - package-ecosystem: pip
     directory: "/"
 
+    # The CI constraints file (phase 6D-3b-2a) is generated, not a manifest,
+    # and it holds only transitive pins. The fetcher also collects `.txt`
+    # files one directory below the root (dependabot-core, shared_file_fetcher
+    # `req_files_for_dir`), so without this entry Dependabot would read its
+    # ~120 pins as direct dependencies and open pull requests for them. The
+    # file is passed with `-c` on the CI command line, never from inside a
+    # requirements file: a requirements file that references an excluded
+    # file stops Dependabot with an error.
+    exclude-paths:
+      - ".github/constraints/ci-linux-py311.txt"
+
     schedule:
       # Same day as the actions ecosystem, for one weekly review pass rather
       # than two.
