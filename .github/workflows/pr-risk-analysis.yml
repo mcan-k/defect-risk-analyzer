@@ -39,8 +39,11 @@ jobs:
     # 2026-10-15 with uv 0.12.19 and the constraints file: still 112).
     # Nothing measurable is lost by skipping.
     #
-    # NOT OBSERVED: no Dependabot pull request has ever existed in this
-    # repository, so the 403 is read from the documentation, not seen here.
+    # OBSERVED, HALF OF IT: Dependabot pull requests have existed here since
+    # phase 6D-3c (#24 onwards), and on them this job shows as skipped — #24
+    # and #59, for example, both report "Analyze PR Risk: skipped". The 403
+    # itself is still not seen, and cannot be while the skip is in place: the
+    # job never runs for the bot, so that half is read from the documentation.
     # Removal trigger in docs/KNOWN-DEBT.md.
     if: github.actor != 'dependabot[bot]'
 
