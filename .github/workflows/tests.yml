@@ -42,6 +42,7 @@ jobs:
           cache: pip
 
       - name: Install dependencies
+        id: install
         run: |
           # setuptools is upgraded, not pinned (phase 6D-4d-2). It is not one
           # of our dependencies: it ships with setup-python's interpreter, and
@@ -54,24 +55,32 @@ jobs:
           # #47: 79.0.1 -> 84.0.0, and the record is gone.
           python -m pip install --upgrade pip setuptools
           # requirements-dev.txt starts with `-r requirements.txt`, so this
-          # installs the runtime deps plus pytest and the pinned ruff.
-          pip install -r requirements-dev.txt
+          # installs the runtime deps plus pytest, pytest-cov, the pinned ruff
+          # and pip-audit. `-c` holds every transitive package to the version
+          # in the constraints file (phase 6D-3b). The file lists transitive
+          # packages only: the direct pins stay in requirements*.txt, and pip,
+          # setuptools and wheel are left out so the line above can upgrade
+          # them. It is generated, never edited by hand — CONTRIBUTING.md,
+          # "Bağımlılık kısıtları". `-c` stays on this command line, never
+          # inside a requirements file: Dependabot stops with an error on a
+          # requirements file that points at a file it excludes.
+          pip install -r requirements-dev.txt -c .github/constraints/ci-linux-py311.txt
           pip install -e . --no-deps
 
       # requirements.txt and requirements-dev.txt pin their direct dependencies
-      # with `==`; everything else arrives transitively with no upper bound and
-      # drifts between runs. It already scrolls past in the install output;
-      # this records it in one greppable place so a version change is visible
-      # in a log diff.
+      # with `==`, and since phase 6D-3b the constraints file pins every
+      # transitive one, so the resolved set should no longer change between
+      # runs on its own; when it does, the equality step after Pytest is red.
+      # This records the set in one greppable place, and saves it for that
+      # step.
       #
-      # The counts are a dated measurement, not a claim about today. Measured
-      # 2026-10-07 in CI (PR #47, ubuntu-24.04): 13 direct, 136 packages, 123
-      # transitive. 16 of the 136 arrive with pip-audit (phase 6D-4d-2). One
-      # more, aiohttp-retry, arrived that same day with no edit here:
-      # kubernetes 37.0.0 (via chromadb) started requiring it. The count had
-      # gone stale the same way on 2026-09-25 (opentelemetry-exporter-otlp-
-      # common, via chromadb). That drift is the case for phase 6D-3b; the
-      # history of this comment's numbers is in docs/KNOWN-DEBT.md.
+      # Before 6D-3b it did drift: on 2026-09-25 (opentelemetry-exporter-otlp-
+      # common) and 2026-10-07 (aiohttp-retry, via kubernetes 37.0.0) a package
+      # arrived with no edit in this repository. Measured 2026-10-12 in CI
+      # (draft PR #56, ubuntu-24.04): 134 packages = 13 direct + 121
+      # transitive, plus the editable install. pip and setuptools are
+      # installed but `pip freeze` does not list them; wheel is not installed.
+      # The history of these numbers is in docs/KNOWN-DEBT.md.
       #
       # Placed before Ruff and Pytest on purpose: when lint or the suite breaks,
       # knowing what was actually resolved is worth the most, so the record has
@@ -82,7 +91,7 @@ jobs:
       # pytest/pytest-cov/ruff/pip-audit), so a second freeze would record the same
       # resolution twice.
       - name: pip freeze (resolved dependency versions)
-        run: pip freeze
+        run: pip freeze | tee "$RUNNER_TEMP/freeze.txt"
 
       # Lint first: a formatting failure is cheaper to report than a test run.
       - name: Ruff
@@ -90,6 +99,20 @@ jobs:
 
       - name: Pytest
         run: pytest
+
+      # The constraints file against what was installed, in both directions
+      # (phase 6D-3b-2): every installed package is in the file or is a direct
+      # pin at the version requirements*.txt names, and every line of the file
+      # was installed. A package installed with no constraint (a bump brought
+      # a new transitive) or a constraint nothing installed (a bump dropped
+      # one) is red; what to do then is in CONTRIBUTING.md, "Bağımlılık
+      # kısıtları". After Pytest, like the audit steps and for the same reason.
+      - name: Constraints equality check
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
+        run: >-
+          python .github/scripts/constraints_check.py
+          --freeze "$RUNNER_TEMP/freeze.txt"
+          --constraints .github/constraints/ci-linux-py311.txt
 
       # pip-audit runs with no ignores and this step never fails: it only writes
       # the report. The verdict is the next step's, in both directions — a
@@ -102,15 +125,18 @@ jobs:
       # test evidence (phase 6D-3c's lesson: a step that fails first hides
       # every step after it). `!cancelled()` lets both audit steps run even
       # when Ruff or Pytest failed, for the same reason in the other direction.
+      # They are skipped only when the install itself failed (user decision,
+      # 2026-10-12): pip-audit is then not installed at all, and the gate would
+      # add a second red, "rapor yok", that is not the cause.
       - name: pip-audit (report only)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: |
           rc=0
           pip-audit --format json -o "$RUNNER_TEMP/pip-audit.json" || rc=$?
           echo "pip-audit exit code: $rc (1 = vulnerabilities found)"
 
       - name: pip-audit gate
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && steps.install.outcome == 'success' }}
         run: >-
           python .github/scripts/pip_audit_gate.py
           --report "$RUNNER_TEMP/pip-audit.json"
