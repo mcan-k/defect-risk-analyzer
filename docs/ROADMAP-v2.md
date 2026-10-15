@@ -746,7 +746,7 @@ Bekleyenler:
       `ayarlar.py`, `buglar.py` tarayıcı adresini belirliyor (Streamlit
       adresi `pages/` altındaki dosya adından türetiyor).
       Envanter (2026-10-12, `git ls-files`): ASCII dışı karakterli yol yok;
-      Yeniden adlandırılacak Türkçe adlı dosya bu ikisi. Başvurular:
+      yeniden adlandırılacak Türkçe adlı dosya bu ikisi. Başvurular:
       `.streamlit/config.toml`, `DURDUR.bat`, `README.md`,
       `docs/KNOWN-DEBT.md`, bu dosya ve `tests/test_installer_script.py` —
       yeniden adlandırma testi de değiştirir.
