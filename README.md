@@ -418,6 +418,12 @@ effect. The `pip install -e .` above is optional for the tests alone:
 
 The streamlit page walk is the slow part; skip it with `pytest -m "not slow"`.
 
+CI installs with `-c .github/constraints/ci-linux-py311.txt`, a generated file
+that pins every transitive package for the CI image (Linux, Python 3.11). It is
+for CI only — the commands above do not use it, and a Windows install resolves
+a slightly different set. How and when it is regenerated:
+[`CONTRIBUTING.md`](CONTRIBUTING.md#bağımlılık-kısıtları).
+
 #### Cleaning up `data/chroma_db`
 
 Deleting a collection can leave its HNSW segment directory and its rows behind

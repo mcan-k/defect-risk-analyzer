@@ -594,6 +594,18 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > kontrolünde on üç maddenin hepsi aynı. 6D-6 bu PR'la tamamlanıyor;
       > 6D-3b'nin tetikleyicisi ("6D-6 tamamlandıktan sonra") merge'le
       > ateşlenir. Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-6 eki", 6D-6c bölümü.
+      >
+      > *6D-3b notu (2026-10-15):* CI'ın dolaylı paketleri artık bir kısıt
+      > dosyasında: `.github/constraints/ci-linux-py311.txt`, uv 0.12.19 ile
+      > üretiliyor, elle düzenlenmiyor (6D-3b-2a, #58). İki iş akışı onunla
+      > kuruyor ve `tests.yml` Pytest'ten sonra kurulan kümenin dosyaya iki
+      > yönde eşit olduğunu denetliyor (6D-3b-2b). Önce ölçüldü (6D-3b-1,
+      > taslak PR #56): uv'nin çıktısı CI'ın kendi freeze'ine ad ve sürümce
+      > eşitti, 26.04'ün kümesi 24.04'ünkiyle aynıydı; CI 24.04'te kalıyor
+      > (kullanıcı kararı, 2026-10-12). Tazeleme her sürümden önce ve
+      > ihtiyaçta; süreç `CONTRIBUTING.md`'de, "Bağımlılık kısıtları".
+      > Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-3b eki".
+      > *6D-3b-2c (denetleyici kararı, 2026-10-15):* kısıt dosyasının başlığına `CONTRIBUTING.md` işareti (üreteç değişikliği + bayraksız yeniden üretim) ve `pr-risk-analysis.yml`'deki bayat "no Dependabot pull request has ever existed" yorumu — ayrı PR, 2b'den sonra, #59'dan önce.
 - [ ] **Faz 6D-7 — gizli bilgi ve e-posta taraması.** 6D-3b'den sonra,
       6E'den önce, küçük bir PR (kullanıcı kararı, 2026-10-11/12): CI'a
       kalıcı bir gizli bilgi taraması, ve yazar ya da committer e-postası
