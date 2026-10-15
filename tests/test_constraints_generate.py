@@ -9,6 +9,10 @@ betikte üç şey sağlıyor ve her biri burada ayrı tutuluyor:
     olarak taşıyor — doğrudan adlar bugünkü requirements dosyalarından
     okunuyor, yani bir pin eklenince komut da kendiliğinden değişiyor;
   * başlık yeniden üretim tarifini ve "elle düzenlenmez" uyarısını taşıyor;
+  * başlık, kırmızı bir Dependabot PR'ında ne yapılacağı için
+    `CONTRIBUTING.md`'nin var olan bir bölümüne işaret ediyor (6D-3b-2c) —
+    bölüm yeniden adlandırılırsa işaret boşa düşmesin diye bölümün varlığı da
+    tutuluyor;
   * sürüm kapısı başka bir uv ile çalışmayı reddediyor.
 
 uv burada hiç çağrılmıyor: depoda ağ testi yok, ve uv CI'ın kurduğu kümede
@@ -77,6 +81,30 @@ def test_header_carries_the_recipe_and_the_not_editable_mark():
         assert f"--no-emit-package {name}" in text
     assert all(line.startswith("#") for line in header)
     assert text.isascii(), "baslik ASCII olmali (modul docstring'i: cp1254)"
+
+
+def test_header_points_to_a_contributing_section_that_exists():
+    header = generate.render_header("2026-10-13", generate.direct_pins(REPO_ROOT))
+    text = "\n".join(header)
+    section = generate.CONTRIBUTING_SECTION
+    assert "CONTRIBUTING.md" in text and f"'{section}'" in text, (
+        "Baslik CONTRIBUTING.md'deki bolume isaret etmiyor (6D-3b-2c)."
+    )
+
+    # Başlık ASCII (cp1254), CONTRIBUTING.md Türkçe: bölüm adları katlanarak
+    # karşılaştırılır.
+    fold = str.maketrans("çğıöşüÇĞİÖŞÜ", "cgiosuCGIOSU")
+    contributing = (REPO_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    sections = [
+        line[3:].strip().translate(fold)
+        for line in contributing.splitlines()
+        if line.startswith("## ")
+    ]
+    assert section in sections, (
+        f"Basligin isaret ettigi bolum ('{section}') CONTRIBUTING.md'de yok; "
+        f"bolumler: {sections}. Bolum yeniden adlandirildiysa uretecteki "
+        "CONTRIBUTING_SECTION da degisir ve dosya yeniden uretilir."
+    )
 
 
 def test_version_gate_refuses_any_other_uv():

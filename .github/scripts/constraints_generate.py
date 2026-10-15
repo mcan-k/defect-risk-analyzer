@@ -67,6 +67,9 @@ PYTHON_VERSION = "3.11"
 INSTALLER_TRIO = ("pip", "setuptools", "wheel")
 
 NOT_EDITABLE = "ELLE DUZENLENMEZ"
+# CONTRIBUTING.md'deki "Bağımlılık kısıtları" bölümü, başlıkta ASCII adıyla.
+# Kırmızı bir Dependabot PR'ında ne yapılacağı orada yazılı (6D-3b-2c).
+CONTRIBUTING_SECTION = "Bagimlilik kisitlari"
 
 # `ad==sürüm` satırı; yorum ve `-r` satırları eşleşmez.
 _PIN = re.compile(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\s*==\s*([^\s;#]+)")
@@ -150,6 +153,8 @@ def render_header(date: str, directs: list[str]) -> list[str]:
         "# Icerik: yalniz dolayli paketler. Dogrudan pinler requirements*.txt'te;",
         "# pip, setuptools ve wheel disarida (CI onlari bilerek yukseltiyor).",
         "# Yalniz CI icindir (ubuntu-24.04, Python 3.11); yerel kurulumda kullanilmaz.",
+        "# Dependabot PR'i kirmizi gelirse ve yeniden uretim icin: CONTRIBUTING.md,",
+        f"# '{CONTRIBUTING_SECTION}' bolumu.",
         "# " + "=" * 77,
     ]
     return lines
