@@ -605,7 +605,16 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > (kullanıcı kararı, 2026-10-12). Tazeleme her sürümden önce ve
       > ihtiyaçta; süreç `CONTRIBUTING.md`'de, "Bağımlılık kısıtları".
       > Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-3b eki".
-      > *6D-3b-2c (denetleyici kararı, 2026-10-15):* kısıt dosyasının başlığına `CONTRIBUTING.md` işareti (üreteç değişikliği + bayraksız yeniden üretim) ve `pr-risk-analysis.yml`'deki bayat "no Dependabot pull request has ever existed" yorumu — ayrı PR, 2b'den sonra, #59'dan önce.
+      >
+      > *6D-3b-2c (denetleyici kararı, 2026-10-15):* kısıt dosyasının
+      > başlığına `CONTRIBUTING.md` işareti (üreteç değişikliği + bayraksız
+      > yeniden üretim) ve `pr-risk-analysis.yml`'deki bayat "no Dependabot
+      > pull request has ever existed" yorumu —
+      > ~~ayrı PR, 2b'den sonra, #59'dan önce.~~
+      > **Yapıldı (2026-10-15, 6D-3b-2c):** ayrı PR'da, 2b'nin merge'ünden
+      > (#60) sonra ve #59'dan önce. Bu not öteki notlar gibi boş bir `>`
+      > satırıyla ayrıldı ve sarıldı. Bu bölüm GitHub'da kod bloğu olarak
+      > görünüyor; ayrım paragraf değil satır ayrımıdır.
 - [ ] **Faz 6D-7 — gizli bilgi ve e-posta taraması.** 6D-3b'den sonra,
       6E'den önce, küçük bir PR (kullanıcı kararı, 2026-10-11/12): CI'a
       kalıcı bir gizli bilgi taraması, ve yazar ya da committer e-postası
@@ -640,6 +649,11 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
 - [ ] Bu dosyada işaretlenmemiş `[ ]` / `[~]` kutular — tamamlanmış fazlarda
       kalanlar dahil (2026-10-11'de Faz 0, 1, 2, 3, 5 ve 6'da var).
 - [ ] `KNOWN-DEBT.md`'de sahibi ya da tetikleyicisi olmayan satırlar.
+- [ ] `KNOWN-DEBT.md:1448`'in "ilk Dependabot PR'ı" tetikleyicisi çoktan
+      çalışmış — #24'ten beri Dependabot PR'ları var — ama kayıt
+      güncellenmemiş; tetikleyicisi çalışmış bir borç olarak ele alınır
+      (denetleyici kararı, kullanıcı onaylı, 2026-10-15; 6D-3b-2c'de
+      görüldü).
 - [ ] Depo genelinde "sahipsiz", "no phase owns" ve işaretsiz "Trigger:"
       ifadeleri.
 - [ ] Kullanıcının devir belgesindeki Faz 7 kuyruğunun her maddesinin depoda
@@ -750,6 +764,12 @@ Bekleyenler:
       `.streamlit/config.toml`, `DURDUR.bat`, `README.md`,
       `docs/KNOWN-DEBT.md`, bu dosya ve `tests/test_installer_script.py` —
       yeniden adlandırma testi de değiştirir.
+- [ ] `ROADMAP-v2.md`'nin 6D notları bölümü fazla girinti yüzünden GitHub'da
+      kod bloğu olarak görünüyor — Faz 7'nin temizlik kuyruğu, README
+      cilasıyla birlikte (denetleyici kararı, kullanıcı onaylı, 2026-10-15).
+      6D-3b-2c'de ölçüldü: GitHub sayfası bölümü `<pre><code>` içinde
+      gösteriyor, markdown-it-py de aynı sonucu veriyor. Düzeltme tarihli
+      notlara dokunduğu için Faz 7'de.
 - [ ] `CHANGELOG.md` + `v1.0.0` git tag + GitHub Release
 - [ ] v1.0 sürüm notlarında chromadb 0.6.3'ün düzeltmesiz üç açığı
       (CVE-2026-45830, CVE-2026-45833, CVE-2026-45831) ve her birinin bu
