@@ -14,7 +14,7 @@ Sabitlemenin kendisi tek satır, ve tek satırın sorunu yine aynı: biri bir g�
 yalnız bir dosyayı değiştirir, CI yeşil kalır ve iki iş akışı sessizce ayrışır.
 Yorum bunu söyler ama tutmaz. Bu dosya tutar.
 
-İKİ TEST, İKİ AYRI İŞ.
+ÜÇ TEST, ÜÇ AYRI İŞ.
 
   * `test_every_workflow_job_runs_on_the_pinned_runner` — iddianın kendisi:
     `.github/workflows/` altındaki her `runs-on:` değeri `EXPECTED_RUNNER`.
@@ -25,6 +25,9 @@ Yorum bunu söyler ama tutmaz. Bu dosya tutar.
     tutar. Desen hiçbir satırı yakalamazsa birinci test "her değer doğru"
     der, çünkü hiç değer yoktur. 6D-4c'nin imza kontrat testi aynı sebeple
     `**kwargs`'ın yokluğunu ayrıca assert ediyordu.
+  * `test_every_workflow_on_disk_is_known` — ikincinin öteki yönü: diskteki
+    her workflow `KNOWN_WORKFLOWS`'ta (Faz 6D-7a). Liste güncellenmezse
+    kırmızı.
 
 Ağsız, alt süreçsiz; yalnız metin okur. YAML ayrıştırıcısı kullanılmıyor:
 `PyYAML` bu depoda doğrudan bir bağımlılık değil, chromadb üzerinden geliyor ve
@@ -49,7 +52,13 @@ EXPECTED_RUNNER = "ubuntu-24.04"
 
 # Varlığı bilinen iş akışları. Taramanın boş dönmediğinin kanıtı bunlar.
 # chromadb-1x-watch.yml: Faz 6D-4d-3, haftalık chromadb 1.x izleyicisi.
-KNOWN_WORKFLOWS = ("tests.yml", "pr-risk-analysis.yml", "chromadb-1x-watch.yml")
+# commit-checks.yml: Faz 6D-7a, commit e-posta bekçisi.
+KNOWN_WORKFLOWS = (
+    "tests.yml",
+    "pr-risk-analysis.yml",
+    "chromadb-1x-watch.yml",
+    "commit-checks.yml",
+)
 
 # `runs-on:` değerini satır içi yorumu ve tırnakları atarak yakalar.
 _RUNS_ON = re.compile(r"^\s*runs-on:\s*['\"]?([^'\"\s#]+)", re.MULTILINE)
@@ -102,4 +111,18 @@ def test_runner_scan_is_not_vacuous():
     assert not empty, (
         f"Su workflow'larda hic `runs-on:` satiri yakalanmadi: {empty}. "
         "Desen ya da dosya bicimi degismis; birinci test bos yere gecer."
+    )
+
+
+def test_every_workflow_on_disk_is_known():
+    """Diskteki her workflow `KNOWN_WORKFLOWS`'ta olmalı (Faz 6D-7a).
+
+    İkinci testin öteki yönü: o, listedekilerin diskte olduğunu tutuyor; bu,
+    diskte olanın listede olduğunu. Yeni bir workflow listeye eklenmezse burada
+    kırmızı — ekleyen, ikinci testin kapsamını da genişletmiş olur.
+    """
+    unknown = sorted(set(_runners_by_workflow()) - set(KNOWN_WORKFLOWS))
+    assert not unknown, (
+        f"KNOWN_WORKFLOWS'ta olmayan workflow(lar): {unknown}. Yeni bir workflow "
+        "eklendiyse listeye ve yanindaki yoruma eklenir."
     )

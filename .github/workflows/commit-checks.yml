@@ -1,0 +1,54 @@
+# =============================================================================
+# Commit checks — the commit e-mail guard (phase 6D-7a)
+# =============================================================================
+# Every commit that a pull request or a push to main brings must carry
+# GitHub's noreply address as both author and committer. The history is not
+# rewritten (user decision, 2026-10-12), so only the event's own range is
+# checked: base.sha..head.sha for a pull request, before..after for a push.
+# What is allowed, what is printed (the hash and the field, never the address
+# or the name) and why an empty or uncomputable range is red: the script's
+# docstring.
+#
+# Detection, not prevention: by the time this runs, the commit is already on
+# GitHub. The prevention is the local user.email setting; the fix for a red
+# run is in CONTRIBUTING.md, "Commit e-postası".
+#
+# No install step: the script needs only the standard library and git.
+# =============================================================================
+
+name: Commit checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  email:
+    name: Commit e-mail check
+    # Same pinned image as tests.yml (phase 6D-4d-1);
+    # tests/test_workflow_runners.py holds every workflow to it.
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+        with:
+          # Full history: the base of the range (base.sha or before) has to
+          # be in the clone. A depth-1 clone does not have it, and the check
+          # would be red on every run ("nesnesi depoda yok").
+          fetch-depth: 0
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      # The event name and payload are read from the runner's own environment
+      # (GITHUB_EVENT_NAME, GITHUB_EVENT_PATH). Nothing is interpolated into
+      # this command line; tests/test_commit_checks_workflow.py holds that.
+      - name: Commit e-mail check
+        run: python .github/scripts/commit_email_check.py
