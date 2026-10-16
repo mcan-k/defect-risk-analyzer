@@ -633,6 +633,13 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       - **Karar (kullanıcı, 2026-10-12): geçmiş yeniden yazılmaz.**
         Geçmişteki commit'lerin bir kısmı kişisel bir e-posta adresi
         taşıyor; kontrol yalnız bundan sonraki commit'lere uygulanır.
+
+      **6D-7a yapıldı (2026-10-16):** e-posta kontrolü,
+      `.github/workflows/commit-checks.yml`, job "Commit e-mail check".
+      Yalnız bir PR'ın ya da `main`'e bir push'un aralığına bakar; kırmızıda
+      yalnız commit hash'i ve alan basılır, adres basılmaz. Gizli bilgi
+      taraması 6D-7b'de, ayrı bir PR'da (kullanıcı kararı, 2026-10-16).
+      Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-7a eki".
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 6E — Doğrulama ve test borcu

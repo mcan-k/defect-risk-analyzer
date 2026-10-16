@@ -174,6 +174,42 @@ Dosyanın elle düzenlenmemesinin nedeni bu.
 
 ---
 
+## Commit e-postası
+
+Her commit'in yazar ve committer adresi GitHub'ın noreply adresi olur (Faz
+6D-7a). Geçmiş yeniden yazılmıyor (kullanıcı kararı, 2026-10-12); CI yalnız
+bir PR'ın ya da `main`'e bir push'un getirdiği commit'lere bakar:
+`.github/workflows/commit-checks.yml`, job "Commit e-mail check". İzin
+verilenler, kuralı ve çıktısı `.github/scripts/commit_email_check.py`'nin
+docstring'inde.
+
+**Önleme yerel ayardadır, CI'da değil.** Bekçi koştuğunda commit zaten
+GitHub'da. Adresini GitHub'da Settings → Emails sayfası gösterir; depo
+düzeyinde ayarla:
+
+```bash
+git config user.email "<ID>+<kullanıcı-adı>@users.noreply.github.com"
+```
+
+**"Commit e-mail check" kırmızıysa.** Çıktı yalnız commit hash'ini ve alanı
+söyler ("yazar", "committer" ya da "yazar+committer"); adres basılmaz. Önce
+ayarı düzelt, sonra yalnız senin dalındaki commit'leri yeniden yaz: son
+commit için `git commit --amend --reset-author --no-edit`, birden çoğu için
+`git rebase -r <taban> --exec "git commit --amend --reset-author --no-edit"`,
+ardından dalı `--force-with-lease` ile push et. `main`'in geçmişi yeniden
+yazılmaz.
+
+Yeniden yazmak eski commit'i GitHub'dan silmez: GitHub'ın `refs/pull/*`
+ref'leri, kapatılan ve merge edilmeyen PR'ların commit'lerini de tutuyor.
+Kırmızı bir tespittir, önleme değil; ayrıntı `docs/KNOWN-DEBT.md`, "Faz 6D-7a
+eki".
+
+**"aralik hesaplanamiyor" ya da "aralik bos".** Bir e-posta bulgusu değil:
+olay yükündeki aralık denetlenemedi (yeni dal, force-push, boş aralık), ve
+bekçi bunu yeşil saymaz. Nedeni hata metninde yazar.
+
+---
+
 ## Üç pratik kural
 
 **Belge metninde adı geçen her paketleme artefaktı beyanla karşılaştırılır.**
