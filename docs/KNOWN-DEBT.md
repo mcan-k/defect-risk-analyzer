@@ -3092,3 +3092,50 @@ gözlenir.
 | Dolaylı paketlerin güvenlik düzeltmeleri artık bir sonraki CI çözümlemesiyle kendiliğinden gelmiyor | Tetikleyici: **kapının dolaylı bir paketteki ilk kırmızısı.** Yol `CONTRIBUTING.md`'de: düzeltme varsa kendi PR'ımızda `--upgrade-package`, yoksa ignore listesi ve gerekçe satırı |
 | Üreteç uv 0.12.19'a sabit ve Dependabot uv'yi görmüyor (`requirements-dev.txt`'te değil, bilerek) | Tetikleyici: **yeniden üretim uv yüzünden başarısız olduğunda ya da Faz 7** |
 | Kısıt dosyası tazelenmedikçe bayatlar: dolaylı paketlerin yeni sürümleri gelmiyor | Tetikleyici: **her sürümden önce tam tazeleme** (`--upgrade`); ilki Faz 7'de, v1.0'dan önce (kullanıcı kararı, 2026-10-12) |
+
+---
+
+## Faz 6D-7a eki — commit e-posta bekçisi
+
+**Where:** [`.github/scripts/commit_email_check.py`](../.github/scripts/commit_email_check.py),
+[`.github/workflows/commit-checks.yml`](../.github/workflows/commit-checks.yml),
+[`tests/test_commit_email_check.py`](../tests/test_commit_email_check.py),
+[`tests/test_commit_checks_workflow.py`](../tests/test_commit_checks_workflow.py),
+[`CONTRIBUTING.md`](../CONTRIBUTING.md) ("Commit e-postası")
+
+**Ne yapıldı.** ROADMAP'teki 6D-7 maddesinin e-posta yarısı. Yeni iş akışı
+her PR'da ve `main`'e her push'ta, olayın aralığındaki commit'lerin yazar ve
+committer adresini denetliyor: PR'da `base.sha..head.sha`, push'ta
+`before..after`. Kırmızıda yalnız commit hash'i ve alan basılır. Gizli bilgi
+taraması 6D-7b'de, ayrı bir PR'da.
+
+**Kararlar (kullanıcı, 2026-10-16).** İki PR, önce e-posta (K1). İzin verilen
+adresler: genel noreply deseni ve tam olarak `noreply@github.com`; depoda
+kullanıcı ID'si sabitlenmiyor (K2). Yer: yeni `commit-checks.yml`, bu PR'da
+tek job (K4). 40 sıfırlı uç, depoda olmayan uç ve boş aralık kırmızı (K5).
+Kırmızı CI'da gözlenmedi: yerelde test verisiyle ve mutasyonlarla gösterildi,
+taslak ölçüm PR'ı açılmadı (K8).
+
+**Neden yalnız aralık.** 6D-7 keşfi (2026-10-16, depo dışında) bekçinin
+kuralını `main`'in bütün geçmişine uyguladı: 247 commit (48 merge), 176'sı
+kırmızı, hepsi "yazar+committer"; en eskisi kök commit `d13e067`, en yenisi
+`d20391c` (2026-10-11). Yalnız PR ref'lerinde duran 19 commit'ten 10'u daha
+kırmızı (#1, #2, #3, #38, #47). Aralıksız bir bekçi ilk koşuda kırmızı verir
+ve geçmiş yeniden yazılmadıkça hiç yeşile dönemez. Genel desen ile tam bir
+adres listesi bu geçmişte aynı sonucu veriyor; seçim yalnız gelecek için.
+
+**Bulgu: `--no-mailmap` ikinci kat.** git 2.51.2'de `.mailmap`, `%ae`/`%ce`'yi
+değiştirmiyor — ne varsayılanda ne `--use-mailmap` ile; yalnız `%aE`/`%cE`'yi
+(izole yapılandırmayla ölçüldü). Bayrağı kaldıran mutasyon bu yüzden hayatta
+kalıyor; asıl güvence biçim, ve `.mailmap` testi biçimi `%aE`/`%cE`'ye çeviren
+mutasyonda kırmızı. Bayrak, biçim bir gün değişirse diye duruyor.
+
+**Beyan edilmiş kör noktalar.** (1) PR açılmayan bir dal hiç denetlenmez:
+iş akışı yalnız PR'da ve `main` push'unda koşuyor, ve dalın ilk push'unda
+commit zaten herkese açık. (2) Kimlik denetimi yok: başka birinin noreply
+adresi de geçer; amaç gizlilik.
+
+| Borç | İşaret |
+|---|---|
+| Etiketler denetlenmiyor: etiket push'u iş akışını tetiklemiyor, tagger adresine bakılmıyor. Depoda bugün etiket yok | Tetikleyici: **ilk etiket** — Faz 7'nin `v1.0.0`'ı (ROADMAP Faz 7) |
+| Bekçi tespit eder, önlemez: commit GitHub'a ulaştıktan sonra koşuyor, ve `refs/pull/*` kapatılan ya da merge edilmeyen PR'ların commit'lerini de kalıcı tutuyor; kırmızıyı düzeltmek eski commit'i silmez | Karar kaydı (kullanıcı, 2026-10-12: geçmiş yeniden yazılmaz); önleme yerel `user.email`'de. Tetikleyici: **bekçinin GitHub'daki ilk gerçek kırmızısı** — önlemenin yeterliliği o gün yeniden tartılır |
