@@ -1,19 +1,26 @@
 # =============================================================================
-# Commit checks — the commit e-mail guard (phase 6D-7a)
+# Commit checks — the commit e-mail guard (phase 6D-7a) and the secret scan
+# (phase 6D-7b)
 # =============================================================================
-# Every commit that a pull request or a push to main brings must carry
-# GitHub's noreply address as both author and committer. The history is not
-# rewritten (user decision, 2026-10-12), so only the event's own range is
-# checked: base.sha..head.sha for a pull request, before..after for a push.
-# What is allowed, what is printed (the hash and the field, never the address
-# or the name) and why an empty or uncomputable range is red: the script's
-# docstring.
+# Both jobs look only at the commits that a pull request or a push to main
+# brings: base.sha..head.sha for a pull request, before..after for a push.
+# The history is not rewritten (user decision, 2026-10-12). An empty or
+# uncomputable range is red in both jobs (user decision K5, 2026-10-16).
+#
+# "Commit e-mail check": every commit must carry GitHub's noreply address as
+# both author and committer. What is allowed, what is printed (the hash and
+# the field, never the address or the name) and why an empty or uncomputable
+# range is red: the script's docstring.
+#
+# "Secret scan": gitleaks over the same range, with .gitleaks.toml. Only the
+# rule, file:line and commit are printed — never the value, the author or the
+# e-mail — and no report file is kept, uploaded or commented. Before the scan,
+# a positive control: a fake token made at run time must be found, or the job
+# is red.
 #
 # Detection, not prevention: by the time this runs, the commit is already on
-# GitHub. The prevention is the local user.email setting; the fix for a red
-# run is in CONTRIBUTING.md, "Commit e-postası".
-#
-# No install step: the script needs only the standard library and git.
+# GitHub. The fixes for a red run are in CONTRIBUTING.md, "Commit e-postası"
+# and "Gizli bilgi taraması".
 # =============================================================================
 
 name: Commit checks
@@ -50,5 +57,126 @@ jobs:
       # The event name and payload are read from the runner's own environment
       # (GITHUB_EVENT_NAME, GITHUB_EVENT_PATH). Nothing is interpolated into
       # this command line; tests/test_commit_checks_workflow.py holds that.
+      # No install step: the script needs only the standard library and git.
       - name: Commit e-mail check
         run: python .github/scripts/commit_email_check.py
+
+  secrets:
+    name: Secret scan
+    # Same pinned image as the job above.
+    runs-on: ubuntu-24.04
+    # The scanner pin, and the one place for it: the gitleaks release and the
+    # sha256 of its linux_x64 archive, as the release's checksums.txt and the
+    # GitHub release API both give it (user decision K3, 2026-10-18).
+    # Dependabot does not see this pin; it is updated by hand
+    # (docs/KNOWN-DEBT.md, "Faz 6D-7b eki").
+    env:
+      GITLEAKS_VERSION: 8.30.1
+      GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+    # Step names differ from the job above: tests/test_commit_checks_workflow.py
+    # finds steps by name, and a repeated name would hide the first job's step.
+    steps:
+      - name: Checkout repository for the scan
+        uses: actions/checkout@v7
+        with:
+          # Full history, for the same reason as the job above.
+          fetch-depth: 0
+
+      - name: Set up Python 3.11 for the scan range
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      # Download, check the sha256, unpack, check the version. The report
+      # template prints the rule, file:line and commit — nothing else.
+      - name: Install gitleaks
+        run: |
+          dir="$RUNNER_TEMP/gitleaks"
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          mkdir -p "$dir"
+          curl -fsSL --retry 3 -o "$dir/$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/$archive"
+          echo "$GITLEAKS_SHA256  $dir/$archive" | sha256sum -c - || {
+            echo "::error title=secret scan::gitleaks arsivinin sha256'si tutmadi; ikili kullanilmaz"
+            exit 1
+          }
+          tar -xzf "$dir/$archive" -C "$dir" gitleaks
+          [ "$("$dir/gitleaks" version)" = "$GITLEAKS_VERSION" ] || {
+            echo "::error title=secret scan::gitleaks surumu beklenen degil; ikili kullanilmaz"
+            exit 1
+          }
+          printf '{{ range . }}{{ .RuleID }} {{ .File }}:{{ .StartLine }} {{ .Commit }}\n{{ end }}' \
+            > "$dir/findings.tmpl"
+
+      # The scanner has to find a fake token before its silence on the range
+      # means anything. The token is made here, at run time, in a throwaway
+      # repository under RUNNER_TEMP: it is never written to this repository,
+      # nothing is pushed or uploaded, and the report holds no value. The
+      # control runs with this repository's .gitleaks.toml, so an allowlist
+      # that blinds the github-pat rule is red here too.
+      - name: Positive control
+        run: |
+          dir="$RUNNER_TEMP/gitleaks"
+          ctl="$RUNNER_TEMP/gitleaks-control"
+          report="$dir/control-report.txt"
+          token="ghp_$(head -c 600 /dev/urandom | LC_ALL=C tr -dc 'A-Za-z0-9' | cut -c 1-36)"
+          [ "${#token}" -eq 40 ] || {
+            echo "::error title=secret scan::pozitif kontrol kurulamadi: sahte token uretilemedi"
+            exit 1
+          }
+          git init -q "$ctl"
+          printf '%s\n' "$token" > "$ctl/control.txt"
+          unset token
+          git -C "$ctl" add control.txt
+          git -C "$ctl" -c user.name=control -c user.email=control@example.invalid \
+            commit -q -m control
+          set +e
+          "$dir/gitleaks" git --config .gitleaks.toml --redact --no-banner \
+            --report-format template --report-template "$dir/findings.tmpl" \
+            --report-path "$report" "$ctl"
+          rc=$?
+          set -e
+          rm -rf "$ctl"
+          if [ "$rc" -eq 1 ] && [ -f "$report" ] && [ "$(wc -l < "$report")" -eq 1 ] \
+            && grep -Eq '^github-pat control\.txt:1 [0-9a-f]{40}$' "$report"; then
+            echo "::notice title=secret scan::pozitif kontrol: calisma aninda uretilen sahte token bulundu (github-pat); tarayici goruyor"
+          else
+            echo "::error title=secret scan::tarayici kor: calisma aninda uretilen sahte token bulunamadi (rc $rc); tarama sonucu gecersiz"
+            exit 1
+          fi
+
+      # The same range as the e-mail check, computed by the same functions
+      # (the script imports them); handed to the next step through GITHUB_ENV
+      # as SCAN_EVENT, SCAN_BASE, SCAN_HEAD and SCAN_COUNT, each checked
+      # against its own pattern before it is written.
+      - name: Scan range
+        run: python .github/scripts/scan_range.py
+
+      # The base and head are checked again here: an empty --log-opts would
+      # scan the whole history.
+      - name: Secret scan
+        run: |
+          dir="$RUNNER_TEMP/gitleaks"
+          report="$dir/scan-report.txt"
+          [[ "$SCAN_BASE" =~ ^[0-9a-f]{40}$ && "$SCAN_HEAD" =~ ^[0-9a-f]{40}$ ]] || {
+            echo "::error title=secret scan::aralik yok: Scan range adimi SCAN_BASE/SCAN_HEAD yazmadi ya da bicim bozuk; tarama yesil gecmez"
+            exit 1
+          }
+          span="$SCAN_EVENT ${SCAN_BASE:0:7}..${SCAN_HEAD:0:7}"
+          set +e
+          "$dir/gitleaks" git --log-opts="$SCAN_BASE..$SCAN_HEAD" --config .gitleaks.toml --redact --no-banner \
+            --report-format template --report-template "$dir/findings.tmpl" \
+            --report-path "$report" .
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ] && [ ! -s "$report" ]; then
+            echo "::notice title=secret scan::0 bulgu, $SCAN_COUNT commit tarandi ($span)"
+          elif [ "$rc" -eq 1 ] && [ -s "$report" ]; then
+            echo "::error title=secret scan::$(wc -l < "$report") bulgu ($span); deger basilmaz. Duzeltme: CONTRIBUTING.md, 'Gizli bilgi taramasi'."
+            sed 's/%/%25/g; s/^/::error title=secret scan::/' "$report"
+            exit 1
+          else
+            echo "::error title=secret scan::gitleaks beklenmeyen bir sonuc verdi (rc $rc); tarama gecersiz"
+            exit 1
+          fi

@@ -42,6 +42,13 @@ file would shadow what you just saved. If the store refuses, the value goes to
 (`.dockerignore`). Writes go through a temp file and `os.replace`, and POSIX
 permission bits are carried over.
 
+Every pull request and every push to `main` is scanned for committed secrets
+with gitleaks (`.github/workflows/commit-checks.yml`, job "Secret scan").
+The scan reports the rule, the file and line, and the commit — never the
+value. If it finds a real credential, revoke and replace it at the provider:
+rewriting the commit does not take it back. Details in `CONTRIBUTING.md`,
+"Gizli bilgi taraması".
+
 Docker and CI pass credentials as environment variables by definition —
 `docker-compose.yml` hands `.env` to both services with `env_file`, and
 `python:3.11-slim` has no credential store. The guarantee above is scoped to
