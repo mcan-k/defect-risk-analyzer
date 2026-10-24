@@ -3089,9 +3089,79 @@ gözlenir.
 |---|---|
 | Yerel kurulum kısıt kullanmıyor: `Dockerfile`, `BASLAT.bat` ve README'nin komutları dolaylı paketleri serbest çözüyor; CI'ın denetlediği küme kullanıcının kurduğu küme değil | Sahibi **Faz 7**, kurulum yolu kararıyla (ROADMAP: "Kurulum yolu Faz 7'de kararlaştırılacak") |
 | Hash kilidi yok (`--require-hashes`); pip'in kısıt dosyalarındaki hash desteği ölçülmedi | Sahibi **Faz 7'nin v1.1 değerlendirmesi** (kullanıcı kararı, 2026-10-12) |
-| Dolaylı paketlerin güvenlik düzeltmeleri artık bir sonraki CI çözümlemesiyle kendiliğinden gelmiyor | Tetikleyici: **kapının dolaylı bir paketteki ilk kırmızısı.** Yol `CONTRIBUTING.md`'de: düzeltme varsa kendi PR'ımızda `--upgrade-package`, yoksa ignore listesi ve gerekçe satırı |
+| Dolaylı paketlerin güvenlik düzeltmeleri artık bir sonraki CI çözümlemesiyle kendiliğinden gelmiyor | Tetikleyici: **kapının dolaylı bir paketteki ilk kırmızısı.** Yol `CONTRIBUTING.md`'de: düzeltme varsa kendi PR'ımızda `--upgrade-package`, yoksa ignore listesi ve gerekçe satırı. **Ateşlendi 2026-10-22** (certifi + pillow), PR sürerken 2026-10-23'te ikinci kez (filelock); yol ilk kez kullanıldı — aşağıdaki "Tetikleyicinin ilk ateşlenmesi" |
 | Üreteç uv 0.12.19'a sabit ve Dependabot uv'yi görmüyor (`requirements-dev.txt`'te değil, bilerek) | Tetikleyici: **yeniden üretim uv yüzünden başarısız olduğunda ya da Faz 7** |
 | Kısıt dosyası tazelenmedikçe bayatlar: dolaylı paketlerin yeni sürümleri gelmiyor | Tetikleyici: **her sürümden önce tam tazeleme** (`--upgrade`); ilki Faz 7'de, v1.0'dan önce (kullanıcı kararı, 2026-10-12) |
+
+### Tetikleyicinin ilk ateşlenmesi — certifi, pillow, filelock (2026-10-24)
+
+**Ne oldu.** 6D-7b'nin PR'ında (#64) pip-audit kapısı kırmızıya döndü; kod
+değişikliği yüzünden değil, 20–22 Ekim arasında yayımlanan kayıtlar yüzünden
+(OSV'nin yayım tarihleri).
+İkinci ateşleme bu düzeltmenin PR'ı sürerken geldi. Üç dolaylı paket, 42
+kayıt:
+
+| Paket | Kayıt | Önem | Düzelten en küçük sürüm | Yayım |
+|---|---|---|---|---|
+| certifi 2026.7.22 | 1 (GHSA-6q48-6c7w-9gw2) | CRITICAL | 2026.10.19 | ilk ateşleme, 2026-10-22'de görüldü |
+| pillow 12.3.0 | 35 | 3 CRITICAL / 22 HIGH / 10 MODERATE | 13.0.0 | ilk ateşleme |
+| filelock 4.1.1 | 6 | 1 HIGH / 3 MODERATE / 2 LOW | 4.2.1 | 2026-10-23 21:59–22:28Z, PR sürerken |
+
+Kayıt sayıları tekil kayıt (kapının "tekil bulgu"su); önemler OSV'den.
+
+**Neden bir doğrudan pin de değişti.** pillow 13'ü streamlit 1.65.0'ın
+`pillow<13` kısıtı engelliyordu: yalnız `--upgrade-package pillow` hata
+vermeden 12.3.0'da kalıyor (keşif, 2026-10-22). streamlit 1.66.1
+(2026-10-21) kısıtı `pillow<14,>=9.2.0`'a gevşetti. Bu yüzden
+`requirements.txt`'de tek doğrudan değişiklik `streamlit==1.66.1`; başka
+doğrudan pin değişmedi (kullanıcı kararı K-G1, 2026-10-23). streamlit 1.66
+`toml`'u artık istemiyor, kısıt satırı 121 → 120.
+
+**İki üretim komutu** (üreteç `--upgrade-package` bayraklarını dosyanın
+başlığına yazmıyor; tam komut yalnız burada ve commit mesajlarında):
+
+    python .github/scripts/constraints_generate.py --uv <uv 0.12.19> --upgrade-package certifi==2026.10.19 --upgrade-package pillow
+    python .github/scripts/constraints_generate.py --uv <uv 0.12.19> --upgrade-package filelock==4.2.1
+
+İlki `requirements.txt`'deki streamlit değişikliğinden sonra koşuldu. Sürüm
+yazılan iki paket bilerek yazıldı: PyPI'da certifi 2026.10.23 (2026-10-23) ve
+filelock 4.2.4 de var; sürümsüz `--upgrade-package` onları seçerdi.
+Toptan tazeleme (`--upgrade`) yapılmadı. İkinci üretimden sonra bayraksız
+bir üretim dosyayı değiştirmedi (blob aynı): bir sonraki bayraksız üretim bu
+düzeltmeyi geri almaz.
+
+**Genç sürüm istisnası (kullanıcı kararı K-G2, 2026-10-23; "en küçük
+düzelten sürüm" yorumu denetleyicinin, 2026-10-24).** Bu PR'daki sürümler
+PR anında birkaç günlüktü: streamlit 1.66.1 ≈2,9 gün, certifi 2026.10.19
+≈4,5 gün, filelock 4.2.1 ≈6,9 gün, pillow 13.0.0 ≈7,7 gün. Depoda yazılı bir
+yaş kuralı yok; Dependabot'un sürüm güncellemelerine uyguladığı 3 günlük
+varsayılan bekleme yukarıda (6D-4c eki, "3 günlük varsayılan bekleme"). İstisna **yalnız
+güvenlik düzeltmeleri** için ve dört şartın hepsiyle geçerli:
+
+1. kayıt CRITICAL ya da HIGH;
+2. alınan sürüm yank'li değil ve bilinen bir açık kaydı yok — PR anında
+   yeniden bakılır (2026-10-24: PyPI ve OSV, dört sürümün dördü de temiz);
+3. üst paketin kendi beyan ettiği aralık o sürüme izin veriyor (certifi:
+   kubernetes `>=2026.7.22`, requests `>=2023.5.7`; pillow: streamlit 1.66.1
+   `<14`; filelock: huggingface-hub `>=3.10.0`; hiçbirinde üst sınır engeli
+   yok);
+4. tam CI yeşil.
+
+Açığı kapatan **en küçük** sürüm alınır, daha yenisi alınmaz: daha yeni bir
+sürüm güvenlik düzeltmesi değildir ve istisnanın kapsamı dışındadır. certifi
+2026.10.23 ve sonrası, filelock 4.2.2 ve sonrası, her sürümden önceki toptan
+tazelemeyle gelir (yukarıdaki son satır).
+
+**Ölçüldü (yerel, Windows, depo dışında taze venv, CI'ın kurulum yolu).**
+`pip check` temiz; yerel pip-audit kapısı rc 0, yalnız chromadb 0.6.3'ün
+ignore listesindeki üç kaydı; certifi, pillow ve filelock kaydı 0. Testler
+733 + 1 atlanan. Uygulama headless başladı, `/_stcore/health` "ok" döndü, API
+anahtarı istemedi. CI'ın sonucu PR'da.
+
+**Beyan edilmiş kör nokta.** Uygulama PIL'i doğrudan import etmiyor;
+pillow'u `import streamlit` yüklüyor ve kullanıcıdan görsel alınmıyor. Yani
+pillow kayıtlarının bu uygulamada erişilebilirliği ölçülmedi; düzeltme
+erişilebilirlikten bağımsız alındı.
 
 ---
 
