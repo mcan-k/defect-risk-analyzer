@@ -210,6 +210,41 @@ bekçi bunu yeşil saymaz. Nedeni hata metninde yazar.
 
 ---
 
+## Gizli bilgi taraması
+
+Aynı iş akışının ikinci job'u, "Secret scan", bir PR'ın ya da `main`'e bir
+push'un getirdiği commit'leri gitleaks ile tarar (Faz 6D-7b): aralık commit
+e-posta bekçisininkiyle aynı hesap, yapılandırma depo kökündeki
+`.gitleaks.toml` (gitleaks'in varsayılan kuralları + iki dar izin listesi).
+Bulguda yalnız kural, dosya:satır ve commit basılır; değer, yazar ve e-posta
+basılmaz, rapor dosyası yüklenmez, PR'a yorum yazılmaz.
+
+Taramadan önce bir pozitif kontrol koşar: çalışma anında üretilen sahte bir
+token'ı geçici bir depoda bulmak zorunda. Bulamazsa job kırmızı
+("tarayici kor") — sessiz bir tarayıcı iyi haber değil.
+
+**"Secret scan" kırmızıysa.** Önce bulgunun gerçek olup olmadığına bak.
+
+- **Gerçekse:** anahtarı sağlayıcıda **hemen iptal et ve yenile**. Commit'i
+  yeniden yazmak anahtarı kurtarmaz: commit zaten GitHub'da, ve
+  `refs/pull/*` kapatılan PR'ların commit'lerini de tutuyor (yukarıda,
+  "Commit e-postası"). Yeni anahtar `.env`'e ya da işletim sisteminin
+  kimlik deposuna girer, depoya asla.
+- **Sahteyse** (test verisi, belge örneği): `.gitleaks.toml`'a dar bir izin
+  listesi ekle — tek kural, tek yol ve değerin biçimi, `condition = "AND"`.
+  İzin listesine **yalnız sahte olanı ekle**; gerçek bir değeri susturmak
+  onu gizlemez, yalnız görünmez kılar. Yalnız `paths` taşıyan bir liste
+  testte kırmızı (`tests/test_gitleaks_config.py`).
+
+**"tarayici kor", "aralik yok" ya da "beklenmeyen bir sonuc".** Bir gizli
+bilgi bulgusu değil: tarama ya hiç koşamadı ya da sonucuna güvenilemez, ve
+job bunu yeşil saymaz. Nedeni hata metninde yazar.
+
+gitleaks'in sürümü ve sha256'sı iş akışında tek yerde ve elle güncellenir;
+tetikleyicisi `docs/KNOWN-DEBT.md`, "Faz 6D-7b eki".
+
+---
+
 ## Üç pratik kural
 
 **Belge metninde adı geçen her paketleme artefaktı beyanla karşılaştırılır.**

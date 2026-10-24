@@ -1,0 +1,39 @@
+# =============================================================================
+# gitleaks configuration — the secret scan (phase 6D-7b)
+# =============================================================================
+# gitleaks' default rules, plus two narrow allowlists for the three false
+# alarms the 6D-7 discovery found in the history (2026-10-16, user decision
+# K7, 2026-10-18): two hand-made fake keys in tests and one upper-case
+# placeholder in the README. The README and the tests are not touched.
+#
+# Each allowlist names one rule, one path and the shape of the value, and all
+# three must hold: condition = "AND". gitleaks' default is "OR", under which
+# the path alone would silence the rule for the whole file and the shape alone
+# for the whole repository (measured, 2026-10-18). An allowlist with only
+# "paths" is not allowed: tests/test_gitleaks_config.py holds both.
+#
+# Used by .github/workflows/commit-checks.yml, job "Secret scan". A red scan:
+# CONTRIBUTING.md, "Gizli bilgi taraması". Add only a fake value here, never a
+# real one.
+# =============================================================================
+
+title = "defect-risk-analyzer"
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "hand-made fake keys in two test files"
+targetRules = ["generic-api-key"]
+condition = "AND"
+paths = ['''(^|/)tests/test_(api_auth|secret_migration)\.py$''']
+regexTarget = "secret"
+regexes = ['''^[a-z]{9}-(api|groq)-key-[a-z0-9]{4}$''']
+
+[[allowlists]]
+description = "upper-case placeholder in the README's curl example"
+targetRules = ["curl-auth-header"]
+condition = "AND"
+paths = ['''(^|/)README\.md$''']
+regexTarget = "line"
+regexes = ['''X-API-Key: [A-Z_]+"''']

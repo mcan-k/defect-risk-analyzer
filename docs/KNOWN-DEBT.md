@@ -3209,3 +3209,67 @@ adresi de geçer; amaç gizlilik.
 |---|---|
 | Etiketler denetlenmiyor: etiket push'u iş akışını tetiklemiyor, tagger adresine bakılmıyor. Depoda bugün etiket yok | Tetikleyici: **ilk etiket** — Faz 7'nin `v1.0.0`'ı (ROADMAP Faz 7) |
 | Bekçi tespit eder, önlemez: commit GitHub'a ulaştıktan sonra koşuyor, ve `refs/pull/*` kapatılan ya da merge edilmeyen PR'ların commit'lerini de kalıcı tutuyor; kırmızıyı düzeltmek eski commit'i silmez | Karar kaydı (kullanıcı, 2026-10-12: geçmiş yeniden yazılmaz); önleme yerel `user.email`'de. Tetikleyici: **bekçinin GitHub'daki ilk gerçek kırmızısı** — önlemenin yeterliliği o gün yeniden tartılır |
+
+---
+
+## Faz 6D-7b eki — gizli bilgi taraması
+
+**Where:** [`.github/workflows/commit-checks.yml`](../.github/workflows/commit-checks.yml)
+(job "Secret scan"), [`.gitleaks.toml`](../.gitleaks.toml),
+[`.github/scripts/scan_range.py`](../.github/scripts/scan_range.py),
+[`tests/test_gitleaks_config.py`](../tests/test_gitleaks_config.py),
+[`tests/test_secret_scan_workflow.py`](../tests/test_secret_scan_workflow.py),
+[`tests/test_scan_range.py`](../tests/test_scan_range.py),
+[`CONTRIBUTING.md`](../CONTRIBUTING.md) ("Gizli bilgi taraması")
+
+**Ne yapıldı.** ROADMAP'teki 6D-7 maddesinin ikinci yarısı. Her PR'da ve
+`main`'e her push'ta, olayın aralığındaki commit'ler gitleaks ile taranıyor;
+aralık 6D-7a'nın bekçisinin işlevleriyle hesaplanıyor (aynı aralık, aynı
+kenar durumlar, ve boş ya da hesaplanamayan aralık burada da kırmızı). Bulguda
+yalnız kural, dosya:satır ve commit basılır. Taramadan önce bir pozitif
+kontrol, çalışma anında üretilen sahte bir token'ı geçici bir depoda bulmak
+zorunda.
+
+**Kararlar.** Kullanıcı, 2026-10-18: gitleaks ikilisi, sürüm 8.30.1, linux_x64
+arşivinin sha256'sı iş akışında sabit — yayıncının `checksums.txt`'si ve
+release API digest'iyle aynı; gitleaks-action ve trufflehog kullanılmıyor
+(K3). Mevcut üç yanlış alarm için `.gitleaks.toml`'da dar izin listesi;
+README'ye ve testlere dokunulmadı (K7). Kullanıcı, 2026-10-16: iki PR (K1),
+`commit-checks.yml`'de ikinci job (K4), boş ya da hesaplanamayan aralık
+kırmızı (K5), kırmızı CI'da değil yerelde gösterilir ve CI'da her koşuda
+pozitif kontrol var (K8).
+
+**Bulgu: keşifteki izin listesi "dar" değildi.** 6D-7 keşfinin denediği
+dosyada (2026-10-16, depo dışında) her `[[allowlists]]` kural, yol ve biçim
+regex'i taşıyordu, ama `condition` yoktu — ve gitleaks'in varsayılanı
+**"OR"**. O dosyayla bir bulgu yol ya da biçimden **biri** tutunca susuyordu:
+yol tek başına bütün dosyayı, biçim tek başına bütün depoyu kör ederdi. Bu
+PR'da her izin listesi `condition = "AND"` taşıyor; üçü birden tutmadıkça
+bulgu susmuyor. Ölçüm (gitleaks 8.30.1, 2026-10-18, geçici depo, çalışma
+anında üretilen iki sahte değer — biri izinli yolda ama biçimsiz, öteki
+biçimli ama başka bir yolda): keşif dosyasıyla **0** bulgu, `AND`'li
+dosyayla **2**, varsayılan yapılandırmayla **2**. Geçmişte (`main`, bu dal ve
+62 PR ref'i): yeni yapılandırmayla **0**,
+yapılandırmasız **3** — keşfin bulduğu aynı üç (`generic-api-key` iki test
+dosyasında, `curl-auth-header` README'de). `tests/test_gitleaks_config.py`
+`AND`'i ve yalnız `paths` taşıyan bir listenin yokluğunu tutuyor.
+
+**Neden `-v` ve SARIF yok.** Keşif, gitleaks'in `-v` çıktısının ve SARIF
+raporunun yazar e-postasını bastığını ölçtü; geçmişteki commit'lerin bir
+kısmı kişisel bir adres taşıyor (6D-7a eki). Rapor bu yüzden yalnız dört
+alanı basan bir şablonla yazılıyor, ve iş akışı testi `-v`'yi, JSON/SARIF/CSV
+raporunu, artifact'ı ve PR yorumunu kırmızı sayıyor.
+
+**Beyan edilmiş kör noktalar.** (1) Satır içi `gitleaks:allow` yorumu ve bir
+`.gitleaksignore` dosyası gitleaks'te varsayılan olarak geçerli: bir commit
+kendi bulgusunu `.gitleaks.toml`'a dokunmadan susturabilir. Bugün depoda
+ikisi de yok; tarama `--ignore-gitleaks-allow` ile koşmuyor. (2) PR açılmayan
+bir dal hiç taranmaz (6D-7a ekiyle aynı). (3) Tarama tespit eder, önlemez:
+koştuğunda commit zaten GitHub'da; gerçek bir bulguda tek düzeltme anahtarı
+iptal edip yenilemek (`CONTRIBUTING.md`). GitHub'ın Push protection'ı
+(2026-10-11'de açıldı) bilinen sağlayıcı biçimlerinde push'u önceden
+durdurur; bu tarama onun yerine geçmiyor.
+
+| Borç | İşaret |
+|---|---|
+| gitleaks pini (sürüm + sha256) elle güncelleniyor: Dependabot iş akışındaki bir indirme URL'sini görmüyor | Tetikleyici: **her sürümden önceki tazeleme** (kısıt dosyasıyla aynı kadans) ya da **bir gitleaks güvenlik bildirimi**. Güncelleme: yeni sürümün `checksums.txt` satırı ve release API digest'i karşılaştırılır, ikisi tek satırda değişir |

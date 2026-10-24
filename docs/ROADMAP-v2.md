@@ -615,8 +615,9 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       > (#60) sonra ve #59'dan önce. Bu not öteki notlar gibi boş bir `>`
       > satırıyla ayrıldı ve sarıldı. Bu bölüm GitHub'da kod bloğu olarak
       > görünüyor; ayrım paragraf değil satır ayrımıdır.
-- [ ] **Faz 6D-7 — gizli bilgi ve e-posta taraması.** 6D-3b'den sonra,
-      6E'den önce, küçük bir PR (kullanıcı kararı, 2026-10-11/12): CI'a
+- [x] **Faz 6D-7 — gizli bilgi ve e-posta taraması.** 6D-3b'den sonra,
+      6E'den önce, ~~küçük bir PR~~ iki PR'da (kullanıcı kararı,
+      2026-10-11/12; ikiye bölme K1, 2026-10-16): CI'a
       kalıcı bir gizli bilgi taraması, ve yazar ya da committer e-postası
       GitHub'ın noreply adresi olmayan bir commit'i kırmızı yapan bir
       kontrol.
@@ -639,7 +640,14 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       Yalnız bir PR'ın ya da `main`'e bir push'un aralığına bakar; kırmızıda
       yalnız commit hash'i ve alan basılır, adres basılmaz. Gizli bilgi
       taraması 6D-7b'de, ayrı bir PR'da (kullanıcı kararı, 2026-10-16).
-      Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-7a eki".
+      Ayrıntı: `KNOWN-DEBT.md`, "Faz 6D-7a eki". PR #62.
+
+      **6D-7b yapıldı (2026-10-18):** gizli bilgi taraması, aynı iş
+      akışında job "Secret scan": aynı aralıkta gitleaks (sabit sürüm ve
+      sha256), depo kökünde `.gitleaks.toml` (varsayılan kurallar + üç
+      yanlış alarm için iki dar izin listesi), taramadan önce çalışma anı
+      pozitif kontrolü. Bulguda değer basılmaz. Ayrıntı: `KNOWN-DEBT.md`,
+      "Faz 6D-7b eki".
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 6E — Doğrulama ve test borcu
