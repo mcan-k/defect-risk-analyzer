@@ -14,7 +14,7 @@ plotly==7.1.0
 
 # --- LLM Providers (BYOK) ---
 groq==1.7.0
-openai==3.29.0
+openai==3.35.1
 
 # --- Vector Database ---
 chromadb==0.6.3
