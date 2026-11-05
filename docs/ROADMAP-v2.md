@@ -791,6 +791,15 @@ Bekleyenler:
       6D-3b-2c'de ölçüldü: GitHub sayfası bölümü `<pre><code>` içinde
       gösteriyor, markdown-it-py de aynı sonucu veriyor. Düzeltme tarihli
       notlara dokunduğu için Faz 7'de.
+- [ ] "Secret scan"in **"tarayici kor"** mesajı `.gitleaks.toml` eksik
+      olduğunda da çıkıyor — Faz 7'nin temizlik kuyruğu (denetleyici kararı,
+      2026-11-05). 6D-7b'de ölçüldü (2026-10-18, klonda, yapılandırma
+      commit'i tek başına geri alınarak): pozitif kontrol "tarayici kor …
+      (rc 1)" ile kırmızı; asıl neden yalnız günlükteki gitleaks `FTL`
+      satırında ("unable to load gitleaks config, err: open .gitleaks.toml").
+      Bozuk bir dosyada da aynı yoldan geçmesi çıkarım, ölçülmedi. Mesaj iki
+      durumu ayırt etmeli: tarayıcı gerçekten kör mü, yoksa yapılandırma mı
+      yüklenemedi.
 - [ ] `CHANGELOG.md` + `v1.0.0` git tag + GitHub Release
 - [ ] v1.0 sürüm notlarında chromadb 0.6.3'ün düzeltmesiz üç açığı
       (CVE-2026-45830, CVE-2026-45833, CVE-2026-45831) ve her birinin bu
