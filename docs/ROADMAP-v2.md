@@ -648,6 +648,12 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       yanlış alarm için iki dar izin listesi), taramadan önce çalışma anı
       pozitif kontrolü. Bulguda değer basılmaz. Ayrıntı: `KNOWN-DEBT.md`,
       "Faz 6D-7b eki".
+
+      **K6 (kullanıcı kararı, 2026-11-05):** `main` için kural seti
+      "main-koruma" 2026-11-05'te kuruldu — yalnız PR, üç zorunlu kontrol
+      ("Lint & Test", "Commit e-mail check", "Secret scan"), silme ve
+      force-push kapalı. İlk gerçek kullanım #68. Ayrıntı: `KNOWN-DEBT.md`,
+      "Faz 6D-7 eki — K6".
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 6E — Doğrulama ve test borcu
