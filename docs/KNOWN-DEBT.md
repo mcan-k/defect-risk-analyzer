@@ -3319,3 +3319,53 @@ durdurur; bu tarama onun yerine geçmiyor.
 | Borç | İşaret |
 |---|---|
 | gitleaks pini (sürüm + sha256) elle güncelleniyor: Dependabot iş akışındaki bir indirme URL'sini görmüyor | Tetikleyici: **her sürümden önceki tazeleme** (kısıt dosyasıyla aynı kadans) ya da **bir gitleaks güvenlik bildirimi**. Güncelleme: yeni sürümün `checksums.txt` satırı ve release API digest'i karşılaştırılır, ikisi tek satırda değişir |
+
+---
+
+## Faz 6D-7 eki — K6: `main` kural seti
+
+**Where:** GitHub'da depo ayarı, Settings → Rules → Rulesets → "main-koruma"
+(depoda dosyası yok); [`CONTRIBUTING.md`](../CONTRIBUTING.md) ("main koruması")
+
+**Ne yapıldı.** 6D-7'nin iki bekçisi ve "Lint & Test" artık merge'ü
+kilitliyor: `main`'e yalnız PR'la girilir ve üç kontrol yeşil olmadan PR
+merge edilemez. Karar K6(a), kullanıcı, 2026-11-05; kural setini kullanıcı
+GitHub arayüzünde kurdu.
+
+**Ayarlar.** 2026-11-05'te kimlik doğrulamasız API ile okundu
+(`GET /repos/mcan-k/defect-risk-analyzer/rules/branches/main` ve
+`GET /repos/mcan-k/defect-risk-analyzer/rulesets/26599287`):
+
+- ad "main-koruma", id 26599287, oluşturma 2026-11-05T08:57:20Z, enforcement
+  `active`, hedef varsayılan dal (`~DEFAULT_BRANCH`);
+- `deletion` ve `non_fast_forward`: `main` silinemez, force-push edilemez;
+- `pull_request`: gerekli onay 0; merge, squash ve rebase açık. Yanıtta
+  `require_extra_approval_for_unattributed_changes: true` da görünüyor
+  (arayüzün varsayılanı); #68'in merge'ünde onay istenmedi;
+- `required_status_checks`: "Lint & Test", "Commit e-mail check", "Secret
+  scan"; üçünde de `integration_id` 15368 — GitHub Actions
+  (`GET /apps/github-actions` ile doğrulandı); `strict` kapalı, yani PR
+  dalının `main`'e göre güncel olması gerekmiyor;
+- bypass: Repository admin, yalnız PR'da ("Allow for pull requests only").
+  Kaynak: arayüzde kullanıcıyla birlikte görüldü; kimlik doğrulamasız API
+  `bypass_actors` alanını döndürmüyor.
+
+**Neden yalnız bu üçü.** "chromadb 1.x watch" yalnız belirli yollara dokunan
+PR'larda koşar (`paths`), ve "Analyze PR Risk" bir karar değil bilgi raporudur
+— bot PR'larında `if` ile atlanır. Zorunlu tutulsalar, koşmadıkları PR'larda
+merge sonsuza dek beklerdi.
+
+**İlk gerçek kullanım: #68** (Dependabot, 2026-11-05T09:22:55Z, "Create a
+merge commit"). Merge kutusunda üç kontrol "Required" ve yeşildi (kullanıcının
+gözlemi). Merge'ün `main` push'unda üçü de yeşil; annotation'lar: "2 commit,
+hepsi noreply (push da9a43d..36b9adb)" ve "0 bulgu, 2 commit tarandi (push
+da9a43d..36b9adb)".
+
+**Beyan edilmiş kör nokta.** Kural seti depoda değil, GitHub'ın ayarlarında:
+değişikliği PR'dan geçmez ve hiçbir test onu görmez. Bu kayıt 2026-11-05'teki
+durumu tutar.
+
+| Borç | İşaret |
+|---|---|
+| Zorunlu kontrollerin adları kural setinde yazılı (iş akışlarındaki job `name:` alanları). Bir job'un adı değişirse eski ad bir daha raporlanmaz ve merge kilitlenir (GitHub'ın davranışı; bu depoda ölçülmedi) | Tetikleyici: **zorunlu üç job'dan birinin adının değişmesi** — kural seti aynı PR'da güncellenir ve PR gövdesine yazılır |
+| Bypass'ın kullanımı hiçbir yerde kendiliğinden kaydedilmiyor | Kural: her kullanım PR'da gerekçesiyle yazılır. Tetikleyici: **bypass'ın ilk kullanımı** |

@@ -102,8 +102,9 @@ birlikte durur — kaynaksız yazılan doğrulanamaz bir iddiadır.
 CI paketleri `-c .github/constraints/ci-linux-py311.txt` ile kuruyor (Faz
 6D-3b). Dosyada yalnız **dolaylı** paketler var; doğrudan `==` pinlerin tek
 yeri `requirements*.txt`. pip, setuptools ve wheel dışarıda: CI onları bilerek
-yükseltiyor. Dosya yalnız CI içindir (ubuntu-24.04, Python 3.11); yerel kurulum
-onu kullanmaz. `tests.yml` Pytest'ten sonra kurulan kümenin dosyaya iki yönde
+yükseltiyor. Dosya CI içindir (ubuntu-24.04, Python 3.11); kullanıcının yerel
+kurulumu (README, `BASLAT.bat`, Dockerfile) onu kullanmaz. Tek istisna
+geliştiricinin `.venv`'i — aşağıda, "Yerel ortam". `tests.yml` Pytest'ten sonra kurulan kümenin dosyaya iki yönde
 eşit olduğunu denetliyor ("Constraints equality check").
 
 **Dosya elle düzenlenmez, üretilir** — uv 0.12.19 ile, depo dışında atılacak
@@ -144,9 +145,27 @@ dolaylıları tazeler; `--upgrade-package <paket>` yalnız o paketi.
 Varsayılan yol **kendi PR'ımız** (kullanıcı kararı, 2026-10-12): aynı bump
 `requirements*.txt`'te yapılır ve kısıt dosyası aynı PR'da yeniden üretilir.
 Dependabot PR'ı merge'den sonra kendini kapatır — tek paketlik PR'larda üç kez
-gözlendi (#31, #40, #41: "Looks like … is up-to-date now"). **Gözlenmedi:** bir
-grup PR'ının (`python-patch-minor`) aynı biçimde kapanıp kapanmadığı; ilk
-seferde gözlenir.
+gözlendi (#31, #40, #41: "Looks like … is up-to-date now"). Grup PR'ı
+(`python-patch-minor`) da kendini kapatıyor, ama başka bir mesajla — aşağıda.
+
+**Dependabot PR'larının gözlenen davranışı** (2026-10-24 – 11-05):
+
+- **Eski PR'ı kapatıp yenisini açar.** Grubun bir üyesi başka yoldan
+  güncellendiğinde ya da yeni sürümler çıktığında bot eski PR'ı *"Looks like
+  these dependencies are updatable in another way, so this is no longer
+  needed."* diyerek kapatır, dalını siler ve yenisini açar: #63 → #66 → #67 →
+  #68. #63, kendi PR'ımız (#65) streamlit'i yükseltince kapandı; ötekiler yeni
+  sürümler gelince.
+- **Kapalı bir PR'a yazılan `@dependabot rebase` etkisiz** (#66, 2026-11-05:
+  yorumdan sonra botun bir eylemi gözlenmedi).
+- **PR'ı yeni `main`'e göre yeniden koşturmak:** Dependabot PR'ında
+  `@dependabot rebase` (#59: dal yeni `main` üzerine yeniden yazıldı, CI
+  yeniden koştu); kendi PR'ımızda kapatıp yeniden açmak (#64, 2026-10-24:
+  commit eklemedi, CI yeni `main`'le koştu — pip-audit 136 yerine 135 paket
+  taradı).
+- **Actions'taki "Re-run" yeni `main`'i almaz:** ilk koşunun commit'ini ve
+  ref'ini yeniden kullanır (GitHub belgesi, "Re-running workflows and jobs";
+  bu depoda ölçülmedi).
 
 **`-c` yalnız iş akışının komut satırında.** Bir requirements dosyasının içine
 yazılmaz: Dependabot, `exclude-paths` ile dışladığı bir dosyaya başvuran
@@ -155,6 +174,32 @@ requirements dosyasında hata ile duruyor (dependabot-core, kod okuması).
 **Eşitlik adımının tutmadığı şey.** Bir satırı kurulabilen başka bir sürüme
 çevirmek yeşil kalır: iddia "kurulan = dosya", "dosyadaki sürüm doğru" değil.
 Dosyanın elle düzenlenmemesinin nedeni bu.
+
+**Yerel ortam (`.venv`).** Bağımlılık değiştiren (`requirements*.txt` ya da
+kısıt dosyası) bir PR merge edildikten sonra geliştiricinin `.venv`'i CI'ın
+kurulum komutlarıyla tazelenir (kullanıcı kararı K-V, 2026-11-05). `.venv`'e
+bunun dışında kurulum yapılmaz. Önce yedek, sonra iki komut:
+
+```bash
+.venv/Scripts/python -m pip freeze > <arsiv>/freeze-once.txt
+.venv/Scripts/python -m pip install -r requirements-dev.txt -c .github/constraints/ci-linux-py311.txt
+.venv/Scripts/python -m pip install -e . --no-deps
+```
+
+- pip ve setuptools yükseltilmez (CI'ın `--upgrade pip setuptools` satırı
+  atlanır). `--upgrade`, `--force-reinstall` ve `pip uninstall` kullanılmaz.
+- Artık gerekmeyen bir paket — eşitlik betiğinin "kisitsiz kurulan"
+  listesinde colorama ve tzdata dışında kalan — yalnız onayla, ayrı bir adımda
+  kaldırılır (ilk örnek: toml, 2026-11-05).
+- Ardından `pip check`, eşitlik betiği, tam pytest, `ruff check .` ve izole
+  lint bakiyesi. Windows'ta eşitlik betiği beklenen bir farkla kırmızı:
+  kısıtsız colorama ve tzdata, kurulmamış uvloop (6D-3b-2b ölçümü).
+- İlk komut pip'in "dependency conflicts" uyarısını basabilir: eski editable
+  kurulumun eski pinleri. İkinci komut onu yeniler; karar `pip check`'in
+  (2026-11-05'te gözlendi).
+- Beklenmeyen bir sonuçta (kurulum hatası, kırık `pip check`, kırmızı test)
+  düzeltmeye ya da geri yüklemeye kalkılmaz; durulur ve raporlanır.
+- `.venv-core`'a dokunulmaz.
 
 ---
 
@@ -242,6 +287,27 @@ job bunu yeşil saymaz. Nedeni hata metninde yazar.
 
 gitleaks'in sürümü ve sha256'sı iş akışında tek yerde ve elle güncellenir;
 tetikleyicisi `docs/KNOWN-DEBT.md`, "Faz 6D-7b eki".
+
+---
+
+## main koruması
+
+`main`'e yalnız PR'la girilir (kural seti "main-koruma", K6, 2026-11-05):
+doğrudan push, force-push ve dalın silinmesi kapalı. Merge için üç kontrol
+zorunlu: "Lint & Test" (`tests.yml`), "Commit e-mail check" ve "Secret scan"
+(`commit-checks.yml`). Onay gerekmiyor; PR dalının `main`'e göre güncel olması
+da gerekmiyor. "chromadb 1.x watch" ve "Analyze PR Risk" zorunlu değil: ilki
+yalnız belirli yollarda koşar, ikincisi bir bilgi raporudur ve bot PR'larında
+atlanır.
+
+**Zorunlu bir kontrol kırmızıysa** nedeni düzeltilir; her birinin kırmızısı
+yukarıdaki bölümlerde ("Bağımlılık kısıtları", "Commit e-postası", "Gizli
+bilgi taraması"). Bypass (Repository admin, yalnız PR'da) yalnız acil durumda
+kullanılır ve gerekçesi PR'a yazılır.
+
+**Zorunlu bir job'un adı değişirse** kural seti aynı PR'da güncellenir:
+kontroller adla tanınıyor. Ayarların tamamı: `docs/KNOWN-DEBT.md`, "Faz 6D-7
+eki — K6".
 
 ---
 

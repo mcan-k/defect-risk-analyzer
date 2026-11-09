@@ -648,6 +648,12 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       yanlış alarm için iki dar izin listesi), taramadan önce çalışma anı
       pozitif kontrolü. Bulguda değer basılmaz. Ayrıntı: `KNOWN-DEBT.md`,
       "Faz 6D-7b eki".
+
+      **K6 (kullanıcı kararı, 2026-11-05):** `main` için kural seti
+      "main-koruma" 2026-11-05'te kuruldu — yalnız PR, üç zorunlu kontrol
+      ("Lint & Test", "Commit e-mail check", "Secret scan"), silme ve
+      force-push kapalı. İlk gerçek kullanım #68. Ayrıntı: `KNOWN-DEBT.md`,
+      "Faz 6D-7 eki — K6".
 - [ ] `CONTRIBUTING.md`, issue şablonları
 
 ### Faz 6E — Doğrulama ve test borcu
@@ -785,6 +791,15 @@ Bekleyenler:
       6D-3b-2c'de ölçüldü: GitHub sayfası bölümü `<pre><code>` içinde
       gösteriyor, markdown-it-py de aynı sonucu veriyor. Düzeltme tarihli
       notlara dokunduğu için Faz 7'de.
+- [ ] "Secret scan"in **"tarayici kor"** mesajı `.gitleaks.toml` eksik
+      olduğunda da çıkıyor — Faz 7'nin temizlik kuyruğu (denetleyici kararı,
+      2026-11-05). 6D-7b'de ölçüldü (2026-10-18, klonda, yapılandırma
+      commit'i tek başına geri alınarak): pozitif kontrol "tarayici kor …
+      (rc 1)" ile kırmızı; asıl neden yalnız günlükteki gitleaks `FTL`
+      satırında ("unable to load gitleaks config, err: open .gitleaks.toml").
+      Bozuk bir dosyada da aynı yoldan geçmesi çıkarım, ölçülmedi. Mesaj iki
+      durumu ayırt etmeli: tarayıcı gerçekten kör mü, yoksa yapılandırma mı
+      yüklenemedi.
 - [ ] `CHANGELOG.md` + `v1.0.0` git tag + GitHub Release
 - [ ] v1.0 sürüm notlarında chromadb 0.6.3'ün düzeltmesiz üç açığı
       (CVE-2026-45830, CVE-2026-45833, CVE-2026-45831) ve her birinin bu
