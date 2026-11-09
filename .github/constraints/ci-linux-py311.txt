@@ -3,7 +3,7 @@
 # =============================================================================
 # Ureten: python .github/scripts/constraints_generate.py --uv <uv>
 # uv 0.12.19, hedef x86_64-manylinux_2_39, --python-version 3.11
-# Tarih (UTC): 2026-10-24
+# Tarih (UTC): 2026-11-09
 # Komut:
 #   uv pip compile requirements-dev.txt
 #     --python-platform x86_64-manylinux_2_39
@@ -90,7 +90,7 @@ mmh3==5.3.1
 msgpack==1.2.3
 multidict==7.1.0
 narwhals==2.27.1
-oauthlib==4.0.0
+oauthlib==4.0.1
 onnxruntime==1.31.0
 opentelemetry-api==1.45.1
 opentelemetry-exporter-otlp-common==0.66b1

@@ -3163,6 +3163,52 @@ pillow'u `import streamlit` yüklüyor ve kullanıcıdan görsel alınmıyor. Ya
 pillow kayıtlarının bu uygulamada erişilebilirliği ölçülmedi; düzeltme
 erişilebilirlikten bağımsız alındı.
 
+### Tetikleyicinin ikinci ateşlenmesi — oauthlib (2026-11-09)
+
+Yukarıdaki alt başlığın "ikinci ateşleme"si (filelock) aynı düzeltme PR'ının
+içindeydi; bu, o düzeltme birleştirildikten sonra ayrı bir PR'la gelen
+ilkidir.
+
+**Ne oldu.** 2026-11-09'da açılan iki PR'da — Dependabot'un #69'u ve belge
+PR'ı #70 — pip-audit kapısı aynı yeni kayıtla kırmızıydı: oauthlib 4.0.0,
+CVE-2026-49272 (GHSA-3jp2-3mrg-2vxc). **HIGH** (CVSS 3.1: 8.5). Cihaz
+akışında (RFC 8628) token uç noktası `device_code`'u doğrulamıyor; cihaz
+akışına açık geçerli bir istemci kimliğini bilen biri uydurma bir kodla
+bearer token alabiliyor. Etkilenen aralık `>=3.3.0,<4.0.1`. GHSA kaydı
+2026-10-27, CVE kaydı 2026-11-05 tarihli (OSV).
+
+**Kim istiyor.** Yalnız requests-oauthlib 2.0.0 (`oauthlib>=3.0.0`, üst sınır
+yok); o da kubernetes üzerinden chromadb'den geliyor. Uygulama oauthlib'i
+doğrudan içe aktarmıyor (`src/` ve `tests/`'te eşleşme yok); düzeltme,
+yukarıdaki pillow gibi, erişilebilirlikten bağımsız alındı.
+
+**Komut** (tek dolaylı paket, doğrudan pin değişmedi):
+
+    python .github/scripts/constraints_generate.py --uv <uv 0.12.19> --upgrade-package oauthlib==4.0.1
+
+Kısıt dosyasında fark yalnız `oauthlib==4.0.0 → 4.0.1` ve başlıktaki tarih
+satırı; 120 kısıt. Ardından bayraksız bir üretim dosyayı değiştirmedi.
+
+**Hangi şartla alındı.** 4.0.1 açığı kapatan en küçük sürüm (aynı zamanda en
+yenisi). 2026-10-31'de yayımlandı, PR anında ≈9 günlük; 14 günden genç olduğu
+için yukarıdaki genç sürüm istisnasıyla (K-G2) alındı: kayıt HIGH; 4.0.1
+yank'li değil ve PyPI ile OSV'de bilinen kaydı yok (PR anında, 2026-11-09);
+üst paketin aralığı izin veriyor; tam CI yeşil şartı PR'da.
+
+**Kural seti ilk kez kilitledi.** `main`'in kural seti `main-koruma`
+(2026-11-05) #70'in birleştirilmesini zorunlu "Lint & Test" kontrolü kırmızı
+olduğu için engelledi: kural setinin ilk gerçek kilidi. Kod değişikliği
+yüzünden değil, yayımlanan bir kayıt yüzünden; yani bir belge PR'ı da bu
+yolla kilitlenebilir.
+Bypass kullanılmadı. Bu düzeltme birleştirilince #70 kapatılıp yeniden
+açılır (#64'ün emsali).
+
+**Ölçüldü (yerel, Windows, depo dışında taze venv, CI'ın kurulum yolu).**
+`pip check` temiz; yerel pip-audit kapısı rc 0, yalnız chromadb 0.6.3'ün
+ignore listesindeki üç kaydı; oauthlib kaydı 0. Testler 744 + 1 atlanan.
+Uygulama headless başladı, `/_stcore/health` "ok" döndü, API anahtarı
+istemedi. CI'ın sonucu PR'da.
+
 ---
 
 ## Faz 6D-7a eki — commit e-posta bekçisi
