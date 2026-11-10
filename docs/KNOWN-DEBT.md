@@ -3423,3 +3423,29 @@ durumu tutar.
 |---|---|
 | Zorunlu kontrollerin adları kural setinde yazılı (iş akışlarındaki job `name:` alanları). Bir job'un adı değişirse eski ad bir daha raporlanmaz ve merge kilitlenir (GitHub'ın davranışı; bu depoda ölçülmedi) | Tetikleyici: **zorunlu üç job'dan birinin adının değişmesi** — kural seti aynı PR'da güncellenir ve PR gövdesine yazılır |
 | Bypass'ın kullanımı hiçbir yerde kendiliğinden kaydedilmiyor | Kural: her kullanım PR'da gerekçesiyle yazılır. Tetikleyici: **bypass'ın ilk kullanımı** |
+
+---
+
+## Doğrudan `numpy` pini — 6E-1 taraması
+
+**Where:** [`requirements.txt`](../requirements.txt) (`numpy==2.4.6`)
+
+Kullanıcının devir belgesindeki Faz 7 kuyruğunda "kullanılmayan doğrudan
+pinler (numpy, pytest-cov)" maddesi vardı. 6E-1 taramasına kadar bu
+maddenin depoda kaydı yoktu.
+
+**Ölçüldü (2026-11-10):**
+- **`src/` ve `tests/` altında `numpy` import eden dosya 0.**
+- numpy dolaylı olarak yine de kuruluyor. Kurulu paketlerin bildirdiği
+  gereksinimler: `chromadb` (`numpy>=1.22.5`), `pandas` (`numpy>=2.0.2`,
+  Python < 3.14) ve `onnxruntime` (`numpy>=1.21.6`).
+- Doğrudan pin olduğu için `.github/constraints/ci-linux-py311.txt`'te yok;
+  üreteç doğrudan pinleri dışarıda bırakıyor.
+
+**pytest-cov bu kayda girmiyor.** Kullanılmıyor değil, bilerek elle
+kullanılıyor ("ROADMAP Faz 3'te olup Faz 3'e alınmayanlar", kapsam rozeti
+maddesi). 6E keşfi 2026-11-09'da onunla ölçüm yaptı.
+
+| Borç | İşaret |
+|---|---|
+| `numpy` doğrudan pinli ama depo onu hiç import etmiyor. Pin, aslında dolaylı olan bir paketin sürümünü elle tutuyor ve Dependabot onu ayrıca güncelliyor (#28, `numpy-2.4.6`). Kaldırılırsa numpy'nin kısıt dosyasına dolaylı paket olarak gireceği bir çıkarım, ölçülmedi; dosya yeniden üretilmeli ve eşitlik kontrolü yeniden ölçülmeli | **Faz 7'nin temizlik kuyruğu** (temizlik; K-E9 kuralı, 2026-11-10), tetikleyici: **Faz 7 başladığında** |

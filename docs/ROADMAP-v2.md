@@ -747,34 +747,102 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       belgesi; denetleyici 2026-10-11'de aktardı). Tarama her maddenin depoda
       kaydı olup olmadığını ve sahibini belirler.
 
-      - [ ] `.gitattributes`
-      - [ ] `requirements-dev.txt`'in UTF-8 / cp1254 sorunu
-      - [ ] README'deki yerinde yükseltme adımı (CVE düzeltmesi getirmiyor)
-      - [ ] TLS mekanizmasının ayrışması (openai/httpx2 → işletim sistemi güven
-            deposu; groq/httpx → certifi)
-      - [ ] chromadb telemetrisi ("kazara kapalı" — 6E'nin b sorusuyla
-            bağlantılı)
-      - [ ] `module-map.json`'un genişliği (PR risk raporlarının çoğu "NOT
-            ASSESSED")
-      - [ ] kullanılmayan doğrudan pinler (numpy, pytest-cov)
-      - [ ] `.streamlit/config.toml` yorumu (6D-6b'de: kapanmış 6D-4a işinin
-            izi olduğu bulundu — taramada "kapandı" diye işaretlenebilir)
-      - [ ] masaüstü özelliğinin (`requirements-desktop.txt`, keyring) gerçek
-            ortamda doğrulanması
-      - [ ] README, CHANGELOG, v1.0.0, demo, temiz makinede "5 dakikada
+      *6E-1 taraması (2026-11-10).* Bir kutu "kaydı var" diye işaretlendiyse
+      maddenin kendisi bitmiş değildir; iş kayıttaki sahibinde sürer.
+
+      - [x] `.gitattributes` — kaydı: `KNOWN-DEBT.md`, "`.gitattributes` yok"
+            satırı; sahibi **Faz 7**
+      - [x] `requirements-dev.txt`'in UTF-8 / cp1254 sorunu — kaydı:
+            `KNOWN-DEBT.md`, "`requirements-dev.txt` UTF-8 olmayan yerelde"
+            satırı; sahibi **Faz 7**
+      - [x] README'deki yerinde yükseltme adımı (CVE düzeltmesi getirmiyor) —
+            kaydı: `KNOWN-DEBT.md`, "`README.md`'nin Development adımı" satırı;
+            sahibi **Faz 7**
+      - [x] TLS mekanizmasının ayrışması (openai/httpx2 → işletim sistemi güven
+            deposu; groq/httpx → certifi) — kaydı: `KNOWN-DEBT.md`, "httpx2
+            TLS'i işletim sistemi güven deposundan doğruluyor" bölümü; sahibi
+            **Faz 7**
+      - [x] chromadb telemetrisi ("kazara kapalı" — 6E'nin b sorusuyla
+            bağlantılı) — kaydı: aşağıda, Doğrulama soruları **b**; sahibi
+            **6E**
+      - [x] `module-map.json`'un genişliği (PR risk raporlarının çoğu "NOT
+            ASSESSED") — kaydı: `KNOWN-DEBT.md`, "Kapsamın iki katmanı var ve
+            boşluk ikisinde de" paragrafı ve tablo satırı. Satır kurala uygun:
+            tetikleyicisi "`module-map.json` bir daha genişletildiğinde".
+      - [x] kullanılmayan doğrudan pinler (numpy, pytest-cov) — iki ayrı kayıt:
+            - **numpy:** `src/` ve `tests/` altında import eden dosya 0
+              (2026-11-10). Kaydı yeni açıldı: `KNOWN-DEBT.md`, "Doğrudan
+              `numpy` pini — 6E-1 taraması" bölümü. Sahibi **Faz 7**
+              (temizlik).
+            - **pytest-cov:** kullanılmıyor değil, bilerek elle kullanılıyor.
+              Yukarıdaki Faz 3 bölümünde "Kapsam rozeti reddedildi, `pytest-cov`
+              kurulu, isteyen elle çalıştırır" kararı var. 6E keşfi 2026-11-09'da
+              onunla kapsam ölçtü.
+      - [x] `.streamlit/config.toml` yorumu (6D-6b'de: kapanmış 6D-4a işinin
+            izi olduğu bulundu — taramada "kapandı" diye işaretlenebilir) —
+            kaydı: `KNOWN-DEBT.md`, "Faz 6D-6 eki", gömülü CSS satırı; sahibi
+            **Faz 7**. Yoruma bu taramada dokunulmadı (kullanıcı kararı K-E8).
+      - [x] masaüstü özelliğinin (`requirements-desktop.txt`, keyring) gerçek
+            ortamda doğrulanması — kaydı: Faz 7, "`desktop` extra'sını bu
+            makineye kur" maddesi
+      - [x] README, CHANGELOG, v1.0.0, demo, temiz makinede "5 dakikada
             çalıştır", KNOWN-DEBT v1.1 gözden geçirmesi (ROADMAP Faz 7'de kaydı
-            var mı)
+            var mı) — var, hepsi Faz 7'de:
+            - "README sıfırdan"
+            - "`CHANGELOG.md` + `v1.0.0` git tag + GitHub Release"
+            - "Streamlit Cloud demo"
+            - Kalite kontrol listesindeki "Temiz bir makinede `pipx install`"
+            - v1.1 listesindeki "Faz 7'nin v1.1 değerlendirmesinden çıkacaklar"
 
       Denetleyici sohbetinde geçen sahipsiz küçük işler (2026-10-06 → 10-11):
 
-      - [ ] uzak `fix/secret-layer-i18n` dalı (#15'ten kalan, merge edilmiş)
+      - [x] uzak `fix/secret-layer-i18n` dalı (#15'ten kalan, merge edilmiş) —
+            Mustafa 2026-10-16'da sildi. 2026-11-10'da `git ls-remote origin`'de
+            yalnız `refs/heads/main` var.
       - [ ] Actions listesinde `active` görünen iki silinmiş ölçüm workflow'u
             (`olcum-pip-audit.yml`, `olcum-pip-audit-4d2.yml`) ve 6D-3b-1'in
             ekleyeceği üçüncüsü
-      - [ ] `%TEMP%`'teki eski `dra-*` klasörleri (conftest kum havuzu
-            temizliği ölçülecek)
-      - [ ] 6D-6c duman testindeki ayrıştırılamayan "-Infinity" konsol hatası
-            (kullanıcıda görülmedi)
+            *(6E-1 taraması, 2026-11-10: üçü de hâlâ `active` (GET
+            `actions/workflows`). Her birinde bir koşu var, hepsi `pull_request`
+            ve `success`:*
+            - *`olcum-pip-audit.yml`: 37003478350 (2026-10-02)*
+            - *`olcum-pip-audit-4d2.yml`: 37616218735 (2026-10-07)*
+            - *`olcum-6d3b-1.yml`: 38241498766 (2026-10-12)*
+
+            *Temizliği Mustafa GitHub arayüzünden yapacak (kullanıcı kararı
+            K-E10). Kutu 6E-5'te kapanır.)*
+      - [x] `%TEMP%`'teki eski `dra-*` klasörleri (conftest kum havuzu
+            temizliği ölçülecek) — **ölçüldü ve temizlendi (6E, 2026-11-10).**
+            - 2026-11-09'daki iki tam pytest koşusu yeni bir `dra-*` klasörü
+              bırakmadı; conftest kendi kum havuzunu temizliyor.
+            - Kalan 7 eski klasör tek tek silindi:
+              - `dra-tests-*` × 5 (2026-08-12 → 2026-10-06)
+              - `dra-wheel` ve `dra-wheel-control` (2026-08-29)
+            - Hepsi boştu; yalnız birinde boş bir `data/` alt klasörü vardı.
+            - Silmeden önce hiçbirini kullanan süreç yoktu. Silmeden sonra
+              `dra-*` sayısı 0.
+      - [x] 6D-6c duman testindeki ayrıştırılamayan "-Infinity" konsol hatası
+            (kullanıcıda görülmedi) — kaydı: `KNOWN-DEBT.md`, "Faz 6D-6 eki",
+            6D-6c bölümü, "Duman testinde ayrıştırılamayan bir gözlem". Borç
+            satırı bilerek açılmadı: hata yeniden üretilemedi.
+
+      *6E-1 taraması (2026-11-10), bu listenin dört üst kutusunun durumu.*
+      Hepsi tarandı ama işaretlenmedi:
+      - **İşaretsiz kutular.** Bitmiş fazlardaki 22 kutudan 15'i kanıtla
+        kapandı. Açık kalan 7'nin gerekçesi kutuların yanında. Üçü kullanıcı
+        kararı bekliyor: `__version__` / CLI, risk rengi, issue şablonları.
+      - **Sahipsiz KNOWN-DEBT satırları.**
+        - Tablolarda sahibi de tetikleyicisi de olmayan açık satır kalmadı.
+        - Düzyazıdaki sahipsiz kayıtlardan kurala uyanlar sahiplendi. Kurala
+          uymayan 9 kayda sahip yazılmadı; kullanıcı kararı bekliyor.
+      - **İfade taraması.** Depo genelinde "sahipsiz", "no phase owns" ve
+        işaretsiz "Trigger:" arandı. Tek işaretsiz "Trigger:"
+        `.streamlit/config.toml`'da; sahibi `KNOWN-DEBT.md`'deki gömülü CSS
+        satırında (Faz 7). Yoruma dokunulmadı. Öteki geçişler tarihsel
+        anlatım.
+      - **Kuyruk.** Her maddenin depoda kaydı var (yukarıda).
+
+      Bu dört kutu, kararlar işlenince en geç 6E-5'te işaretlenir.
 
 **Kapsam:**
 - [ ] Aşağıdaki **Doğrulama soruları** — her biri ölçülerek cevaplanır.
