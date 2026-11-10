@@ -307,6 +307,15 @@ değerlendirilirse bu da kendiliğinden düzelir. Alt sınırlar sabitleme
 sağlamadığı için, yeni bir fastapi sürümünün `api.py`'yi bozmasına karşı asıl
 koruma Faz 3'teki testler olacak.
 
+*6E taraması (2026-11-10):* Faz 4 kapandı ve ayrım gerçekleşmedi; kaydın
+dayandığı faz bayat.
+- Ayrımın yolu artık chromadb 1.x geçişi: 1.x, `fastapi`yi runtime'dan
+  `dev` extra'sına taşıyor (bu dosyada "`chromadb` 1.x `fastapi`yi
+  runtime'dan `dev` extra'sına taşıyor" satırı). Geçiş 6D-5 → v1.1.
+- **Sahibi v1.1** (büyük bağımlılık değişikliği; K-E9 kuralı).
+- Cümlenin son yarısı da bayat: `api.py`'nin HTTP davranışını test eden bir
+  test yok. Kaydı "`GET /blind-spots` sözleşmesi" bölümünde; sahibi 6E.
+
 ---
 
 ## Two processes share one ChromaDB directory
