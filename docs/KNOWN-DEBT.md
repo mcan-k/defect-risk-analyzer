@@ -163,8 +163,16 @@ atlatıyordu (ölçüldü). Append bloğu kaldırıldı.
 implementasyon kullanıcı dosyasına dokunmuyor. İlk kayıtta (ör. API anahtarı
 yenileme) tekilleşir; o ana kadar bugünkü davranış sürer, son satır etkin.
 
-**Planned fix (Faz 6B):** kimlik bilgileri `keyring`'e taşınırken `API_KEY` de
-`.env`'den çıkacak; yorumlanmış eski sır satırları da o sırada temizlenecek.
+~~**Planned fix (Faz 6B):** kimlik bilgileri `keyring`'e taşınırken `API_KEY` de
+`.env`'den çıkacak; yorumlanmış eski sır satırları da o sırada temizlenecek.~~
+**Yapıldı (6B, #14; 6E taramasında işaretlendi, 2026-11-10).**
+- `API_KEY` taşınan anahtarlar arasında: `STORED_SECRET_KEYS`,
+  `config.py:115`.
+- Taşıma bir anahtarı boşaltırken, o anahtarın daha önce emekliye ayrılmış
+  yorum satırlarını da değersiz bırakıyor (`config.py:342–357`,
+  `1f6665e`, 2026-08-27).
+- Kalan tek yol keyring'in olmadığı fallback. Kaydı "Sır yüzeyinin 6B
+  sonrası bıraktıkları" tablosunda ("Fallback yolunda kalan ölü sır").
 
 ---
 
@@ -179,11 +187,11 @@ bilinçli sınırlar.
 
 | Borç | İşaret |
 |---|---|
-| Yorumlanmış eski sır satırları `.env`'de düz metin kalıyor | **6B** — keyring taşımasıyla birlikte temizlenecek |
+| ~~Yorumlanmış eski sır satırları `.env`'de düz metin kalıyor~~ — **Kapandı (6B, #14; 6E taramasında işaretlendi, 2026-11-10):** taşınan anahtarın emekliye ayrılmış yorum satırları boşaltmada değersiz bırakılıyor (`1f6665e`, `config.py:342–357`). Keyring'siz fallback'te kalan kopya ayrı bir satırda: "Sır yüzeyinin 6B sonrası bıraktıkları", "Fallback yolunda kalan ölü sır" | ~~**6B** — keyring taşımasıyla birlikte temizlenecek~~ |
 | `export KEY=v` ve `KEY = v` biçimleri yazıcı tarafından görülmüyor (dotenv okuyor). Yazma bunları eşleştiremez, sona yeni satır ekler; etkin değer doğru olur ama bayat satır kalır | Tetikleyici: **`.env`'e üçüncü parti bir araç yazmaya başladığında**; aksi hâlde **v1.1** |
 | Tırnaklama: boşluk ya da `#` içeren bir değer tırnaksız yazılıyor | Tetikleyici: **6B sonrası `.env`'de kalan bir ayar tırnak gerektiren değer aldığında**; aksi hâlde **v1.1** |
 | `save_multiple_env` her anahtar için ayrı atomik yazma yapıyor — tek tek atomik, bütün olarak değil; yarıda çökerse anahtarların bir kısmı kaydedilmiş olur | Tetikleyici: **Ayarlar kaydetme yolu bir daha değiştiğinde**; aksi hâlde **v1.1** |
-| `save_multiple_env` yolunda `OSError` UI'da ham traceback olarak yüzeye çıkıyor (`ui.service.call()` ile sarmalı değil) | **6E** ("Doğrulama ve test borcu", ROADMAP), tetikleyici: **6E başladığında** (2026-10-11'de eklendi) |
+| `save_multiple_env` yolunda `OSError` UI'da ham traceback olarak yüzeye çıkıyor (`ui.service.call()` ile sarmalı değil) | **6E** ("Doğrulama ve test borcu", ROADMAP), tetikleyici: **6E başladığında** (2026-10-11'de eklendi). **Ateşlendi 2026-11-10:** kullanıcı kararıyla (K-E11) 6E, 6E-1'in ilk commit'i `15642f7` ile başlamış sayılıyor. İş 6E-2c'de |
 | `BASLAT.bat` fallback'i (`.env.example` yokken) 19 anahtardan 1'ini üretiyor. İşlevsel kayıp yok — 19'unun da modül default'u var ve yazılan tek değer default'una eşit — ama `.env.example`'ın 49 satırlık dokümantasyonu kayboluyor | Tetikleyici: **`.env.example` olmadan dağıtılan bir paket üretildiğinde**; aksi hâlde **v1.1** |
 
 ---
@@ -952,14 +960,22 @@ gerçeğin sessizce ayrışmaması için buraya yazıldı.
 - **`tests/test_adf_parser.py`** — `parse_adf_to_text`
   ([`jira_client.py:25`](../src/defect_risk_analyzer/jira_client.py)) saf ve
   özyinelemeli; ROADMAP'in kendi deyimiyle "en yüksek getiri". Buradaki en ucuz
-  gerçek boşluk.
-- **`tests/test_anonymizer.py`** — round-trip **ve telefon regex'i düzeltmesi**
+  gerçek boşluk. **Hâlâ açık; sahibi 6E (6E-2a).** 6E keşfinin kapsam
+  ölçümünde (2026-11-09) fonksiyonun hiçbir satırı çalışmıyordu.
+- ~~**`tests/test_anonymizer.py`** — round-trip **ve telefon regex'i düzeltmesi**
   (sürüm numarası, sipariş kodu ve tarih maskelenmemeli). Dikkat: bu eksik bir
-  test değil, **yaşayan bir hata**; test yazmak tek başına yetmez.
+  test değil, **yaşayan bir hata**; test yazmak tek başına yetmez.~~
+  **Kapandı (6B, #14; 6E taramasında işaretlendi, 2026-11-10):** `efefa11`
+  (21 test, sekizi yazıldığı gün kırmızı) ve aynı PR'daki düzeltme. Ayrıntı:
+  ROADMAP, Faz 3 bölümü.
 - **`pattern_detector.py`, `component_classifier.py`** — hiç testleri yok.
   `blind_spot_detector.py` Faz 5A'da karşılandı (`tests/test_blind_spots.py`);
   `component_classifier` için ayrıca yukarıdaki "`classify_bugs` diske hiç
   yazmıyor" kaydına bakın.
+  *6E taraması (2026-11-10):* "hiç testleri yok" yarı yarıya bayat.
+  - `pattern_detector`'ın testi var: `tests/test_pattern_detector.py`,
+    `f7c33f7` (ilk PR #11, 2026-08-23), 6D-6b'de (#52) genişledi.
+  - `component_classifier`'ın kendi testi hâlâ yok. Sahibi 6E (6E-2b).
 - ~~**`pip-audit`** — ROADMAP hem `requirements-dev.txt` hem CI için istiyor;
   ikisinde de yok. Faz 3 CI'a `pytest` + `ruff` ekledi, bunu eklemedi.~~
   **Kapandı (6D-4d-2, 2026-10-07):** `pip-audit==2.10.1`
@@ -971,9 +987,13 @@ gerçeğin sessizce ayrışmaması için buraya yazıldı.
   isteyen elle çalıştırabilir. Sonradan gözden kaçmış bir eksik sanılmasın diye
   buraya yazıldı.
 
-**Planned fix (Phase 5):** `test_adf_parser.py` ve `test_anonymizer.py`
+~~**Planned fix (Phase 5):** `test_adf_parser.py` ve `test_anonymizer.py`
 (regex düzeltmesiyle birlikte) önce; detektör testleri `blind_spot_detector`
-yeniden yazımıyla aynı fazda.
+yeniden yazımıyla aynı fazda.~~ *6E taraması (2026-11-10):* Faz 5 kapandı,
+plan bayattı. Bugünkü sahipler yukarıda, maddelerin yanında:
+- `test_anonymizer` 6B'de yapıldı.
+- `test_adf_parser` ve `component_classifier` testlerinin sahibi 6E
+  (6E-2a, 6E-2b).
 
 ---
 
@@ -1445,7 +1465,7 @@ Dependabot PR'ında job'ın atlandığı Actions'ta görülecek.
 | Borç | İşaret |
 |---|---|
 | Bot PR'larında bu iş akışı hiç koşmuyor; bugün kaybı sıfır ama bu, raporun bugün boş olmasına bağlı | Tetikleyici: **`module-map.json`'un `exclude` listesinden `**/*.txt` çıkarıldığında** — o an bot PR'ının analiz edilecek içeriği olur ve `if` gerekçesinin yarısını kaybeder |
-| `if` koşulu belgeden okunan bir davranışa dayanıyor, gözlenen bir 403'e değil | Tetikleyici: **ilk Dependabot PR'ı** — job'ın atlandığı görüldüğünde bu satır ölçüme dönüşür. Ayrıca depo ayarı bot workflow'larına yükseltilmiş izin verirse koşul kalkabilir |
+| `if` koşulu belgeden okunan bir davranışa dayanıyor, gözlenen bir 403'e değil | Tetikleyici: **ilk Dependabot PR'ı** — job'ın atlandığı görüldüğünde bu satır ölçüme dönüşür. Ayrıca depo ayarı bot workflow'larına yükseltilmiş izin verirse koşul kalkabilir. **Ateşlendi 2026-09-08 (6E taramasında işaretlendi, 2026-11-10).** İlk Dependabot PR'ı #24 2026-09-08T19:21:47Z'de açıldı ve head'inde (`841e47f`) "Analyze PR Risk" `conclusion: skipped` (GET `commits/<sha>/check-runs`, 2026-11-10). Bunun sonraki PR'larda da sürdüğü "Sonuçlar — tahminler merge'den önce…" bölümünde kayıtlı (#39–#41, 2026-10-05). Satırın yalnız yarısı ölçüme döndü: atlamanın çalıştığı gözlendi, 403'ün kendisi gözlenmedi ve tasarım gereği gözlenemez — job hiç koşmuyor. Satır açık kalıyor; kalan tetikleyici ikinci cümledeki depo ayarı |
 
 ---
 
@@ -2351,7 +2371,7 @@ yoktu.
 | Borç | İşaret |
 |---|---|
 | Kapı ağa bağlı: pip-audit PyPI'ye ulaşamazsa rapor yazılmaz ya da bozuk çıkar, kapı kırmızı — ilgisiz bir PR da kırmızı görünür. Bu bilinçli: "sonuçsuz"u yeşil saymak, boş taramayı iyi haber saymak olurdu | Tetikleyici: **ağ kaynaklı ilk kırmızı.** O zaman yeniden deneme mi, ayrı bir "sonuçsuz" durumu mu — karar o gün, gözlenen hata metniyle verilir |
-| Gece yayımlanan bir advisory, açık her PR'ı (Dependabot'unkiler dahil) kırmızıya çevirir. Tasarım gereği; yol: aynı PR'da ya bump, ya da kimlik ignore'a ve gerekçesi bu dosyaya | Tetikleyici: **ilk "yeni bulgu" kırmızısı** — yol o gün izlenir ve buraya bir satır yazılır |
+| Gece yayımlanan bir advisory, açık her PR'ı (Dependabot'unkiler dahil) kırmızıya çevirir. Tasarım gereği; yol: aynı PR'da ya bump, ya da kimlik ignore'a ve gerekçesi bu dosyaya | Tetikleyici: **ilk "yeni bulgu" kırmızısı** — yol o gün izlenir ve buraya bir satır yazılır. **Ateşlendi 2026-10-22 (6E taramasında işaretlendi, 2026-11-10).** İki kez yaşandı:<br>• 2026-10-22: 6D-7b'nin PR'ı #64 kapıda kırmızı (certifi, pillow).<br>• 2026-11-09: #70 ve Dependabot'un #69'u aynı yeni kayıtla (oauthlib) aynı anda kırmızı. Bu satırın tarif ettiği durumun ta kendisi: açık her PR, Dependabot'unkiler dahil.<br>İki seferde de yol "bump"tı: düzeltmeli bir sürüm vardı, ignore'a gidilmedi. Satır buraya değil, dolaylı paket satırına ("Faz 6D-3b eki") ve iki alt başlığa yazıldı: "Tetikleyicinin ilk ateşlenmesi — certifi, pillow, filelock" ve "Tetikleyicinin ikinci ateşlenmesi — oauthlib". Davranış tasarım gereği sürüyor; satır bir tasarım kaydı olarak açık kalıyor |
 | ~~setuptools sabitlenmedi, yükseltiliyor: her koşu o günün en yeni sürümünü alıyor (2026-10-07'de 84.0.0)~~ — **Kapandı (6D-3b-2b, 2026-10-15):** setuptools ve pip bilerek kısıtın dışında (kullanıcı kararları 2026-10-11 ve 2026-10-12): CI ikisini `--upgrade` ile yükseltiyor, `pip freeze` ikisini de listelemiyor (6D-3b-1), üreteç `--no-emit-package` ile dışarıda bırakıyor ve `tests/test_constraints_file.py` bunu tutuyor. Her koşunun o günün sürümünü alması bilinçli kalıyor | ~~Tetikleyici: **6D-3b'nin kısıt dosyası üretildiğinde** — setuptools'un da kısıt altına girip girmeyeceği orada karara bağlanır~~ |
 | ~~`pr-risk-analysis.yml` denetlenmiyor. Kurduğu küme `tests.yml`'inkinin alt kümesi, ama çözünürlüğü ayrı (6D-3b'nin bilinen ayrışması)~~ — **Kapandı (6D-3b-2b, 2026-10-15):** iki iş akışı aynı kısıt dosyasıyla kuruyor; `tests/test_workflow_constraints.py` tutuyor. pr-risk'in kendi çözümlemesi ayrıca denetlenmiyor — beyan edilmiş kör nokta, "Faz 6D-3b eki" | ~~Tetikleyici: **6D-3b** — iki iş akışı aynı kısıt dosyasını kullandığında bu satır kapanır~~ |
 | ~~`tests.yml:56–57`'deki yorum ("installs the runtime deps plus pytest and the pinned ruff") eksik: `pip-audit`'i de, zaten 6D-4d-2'den önce `pytest-cov`'u da saymıyor. Bilerek dokunulmadı: satır C1'in değiştirdiği `--upgrade pip setuptools` satırına bitişik; C2 burayı da değiştirseydi iki hunk arasında değişmemiş satır kalmaz, C1 tek başına temiz revert edilemezdi (bugün aralarında 5 satır var)~~ — **Kapandı (6D-3b-2b, 2026-10-15):** yorum artık pytest, pytest-cov, ruff ve pip-audit'i sayıyor; kısıt satırıyla aynı commit'te | ~~Tetikleyici: **`tests.yml`'e dokunan bir sonraki PR** — yorum orada iki paketi de sayacak biçimde düzeltilir~~ |
@@ -3089,7 +3109,7 @@ gözlenir.
 |---|---|
 | Yerel kurulum kısıt kullanmıyor: `Dockerfile`, `BASLAT.bat` ve README'nin komutları dolaylı paketleri serbest çözüyor; CI'ın denetlediği küme kullanıcının kurduğu küme değil | Sahibi **Faz 7**, kurulum yolu kararıyla (ROADMAP: "Kurulum yolu Faz 7'de kararlaştırılacak") |
 | Hash kilidi yok (`--require-hashes`); pip'in kısıt dosyalarındaki hash desteği ölçülmedi | Sahibi **Faz 7'nin v1.1 değerlendirmesi** (kullanıcı kararı, 2026-10-12) |
-| Dolaylı paketlerin güvenlik düzeltmeleri artık bir sonraki CI çözümlemesiyle kendiliğinden gelmiyor | Tetikleyici: **kapının dolaylı bir paketteki ilk kırmızısı.** Yol `CONTRIBUTING.md`'de: düzeltme varsa kendi PR'ımızda `--upgrade-package`, yoksa ignore listesi ve gerekçe satırı. **Ateşlendi 2026-10-22** (certifi + pillow), PR sürerken 2026-10-23'te ikinci kez (filelock); yol ilk kez kullanıldı — aşağıdaki "Tetikleyicinin ilk ateşlenmesi" |
+| Dolaylı paketlerin güvenlik düzeltmeleri artık bir sonraki CI çözümlemesiyle kendiliğinden gelmiyor | Tetikleyici: **kapının dolaylı bir paketteki ilk kırmızısı.** Yol `CONTRIBUTING.md`'de: düzeltme varsa kendi PR'ımızda `--upgrade-package`, yoksa ignore listesi ve gerekçe satırı. **Ateşlendi 2026-10-22** (certifi + pillow), PR sürerken 2026-10-23'te ikinci kez (filelock); yol ilk kez kullanıldı — aşağıdaki "Tetikleyicinin ilk ateşlenmesi". 2026-11-09'da ayrı bir PR'la yeniden ateşlendi (oauthlib) — aşağıdaki "Tetikleyicinin ikinci ateşlenmesi — oauthlib" (işaretçi 6E taramasında eklendi, 2026-11-10) |
 | Üreteç uv 0.12.19'a sabit ve Dependabot uv'yi görmüyor (`requirements-dev.txt`'te değil, bilerek) | Tetikleyici: **yeniden üretim uv yüzünden başarısız olduğunda ya da Faz 7** |
 | Kısıt dosyası tazelenmedikçe bayatlar: dolaylı paketlerin yeni sürümleri gelmiyor | Tetikleyici: **her sürümden önce tam tazeleme** (`--upgrade`); ilki Faz 7'de, v1.0'dan önce (kullanıcı kararı, 2026-10-12) |
 

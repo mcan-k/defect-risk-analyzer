@@ -728,11 +728,16 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
 - [ ] Bu dosyada işaretlenmemiş `[ ]` / `[~]` kutular — tamamlanmış fazlarda
       kalanlar dahil (2026-10-11'de Faz 0, 1, 2, 3, 5 ve 6'da var).
 - [ ] `KNOWN-DEBT.md`'de sahibi ya da tetikleyicisi olmayan satırlar.
-- [ ] `KNOWN-DEBT.md:1448`'in "ilk Dependabot PR'ı" tetikleyicisi çoktan
+- [x] `KNOWN-DEBT.md:1448`'in "ilk Dependabot PR'ı" tetikleyicisi çoktan
       çalışmış — #24'ten beri Dependabot PR'ları var — ama kayıt
       güncellenmemiş; tetikleyicisi çalışmış bir borç olarak ele alınır
       (denetleyici kararı, kullanıcı onaylı, 2026-10-15; 6D-3b-2c'de
-      görüldü).
+      görüldü). **Yapıldı (6E taraması, 2026-11-10).** Satır "ateşlendi
+      2026-09-08" notunu aldı. Kanıt: #24'ün head'inde "Analyze PR Risk"
+      `skipped`. Taramanın bulduğu öteki ateşlenmiş tetikleyiciler de aynı
+      commit'te işlendi: "ilk 'yeni bulgu' kırmızısı" satırı, dolaylı paket
+      satırının ikinci ateşleme işaretçisi, `save_multiple_env` `OSError`
+      satırı (K-E11) ve 6B'ye bağlı iki kayıt.
 - [ ] Depo genelinde "sahipsiz", "no phase owns" ve işaretsiz "Trigger:"
       ifadeleri.
 - [ ] Kullanıcının devir belgesindeki Faz 7 kuyruğunun her maddesinin depoda
