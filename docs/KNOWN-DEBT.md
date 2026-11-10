@@ -77,6 +77,11 @@ CI etkilenmiyor.
 (`user_data_dir("defect-risk-analyzer")`) when no project root is found, and
 migrate any existing `./data` contents on first run.
 
+*6E taraması (2026-11-10):* Faz 2 kapandı ve bu düzeltme yapılmadı;
+`platformdirs` `src/`, `pyproject.toml` ve `requirements.txt`'te 0 kez geçiyor.
+**Sahibi Faz 7** (kurulum; K-E9 kuralı). Pipx/wheel kurulumu Faz 7'nin
+"kurulum yolu" kararına bağlı (ROADMAP, Faz 7).
+
 ---
 
 ## `calculate_risk_score()`'s unused `module_name` parameter
@@ -258,6 +263,11 @@ zorlaştırıyor.
 doğrulaması `core/` katmanına giremez (bağımlılık kuralı), bu yüzden bir
 adapter üzerinden ve her render'da değil; açık bir tetikleyiciyle ya da
 önbelleğe alınmış sonuçla çalışmalı.
+
+*6E taraması (2026-11-10):* Faz 5 kapandı ve dört durum yapılmadı;
+`ui/shell.py:180` ve `:185` hâlâ `is_jira_configured()` /
+`is_llm_configured()` gösteriyor. **Sahibi v1.1** (yeni yetenek: doğrulama
+durumu ve onu tutan adapter; K-E9 kuralı).
 
 ---
 
@@ -501,6 +511,15 @@ Daha kesin olurdu ama 5C'nin genişleteceği dört şekli çivilerdi. Ayrıca bu
 endpoint'in HTTP davranışı hâlâ test edilmiyor — pakette API test altyapısı yok
 (`TestClient` yok, `api.py` modül seviyesinde `analyzer` singleton'ı kuruyor,
 route API anahtarı bağımlılığı taşıyor). Sözleşme servis seviyesinde pinlendi.
+
+*6E taraması (2026-11-10):* bu "kalan borç"un sahibi yazılmamıştı.
+- **HTTP davranışının testi: sahibi 6E** (test borcu; K-E9 kuralı). 6E
+  keşfinin kapsam ölçümünde (2026-11-09) `api.py`'nin hiçbir satırı
+  çalışmıyordu. 6E-2'ye mi alınacağı K-E5 kararına bağlı.
+- `TestClient` artık pakette kullanılıyor (`tests/test_api_auth.py`), ama
+  `api.py`'nin kendisine değil.
+- `params`'ın ayrımlı birliğe çevrilmesine sahip yazılmadı. Kurala tek
+  başına uymuyor; kullanıcı kararı bekliyor.
 
 **Faz 5C eki:** aynı boşluk `GET /patterns`'te de vardı ve aynı şekilde
 kapatıldı — `PatternResponse` + `response_model=`, dolu payload'la round-trip
@@ -914,6 +933,12 @@ listeliyor.
 **Planned fix:** kalıcılık kararı (sınıflandırılmış component'ler `bugs.json`'a
 geri yazılsın mı, yoksa türetilmiş veri olarak mı kalsın) Faz 6; anahtar mantığı
 testleri `pattern_detector` ile birlikte.
+
+*6E taraması (2026-11-10):*
+- **Anahtar mantığı testlerinin sahibi 6E (6E-2b)** (test borcu; K-E9
+  kuralı). `pattern_detector`'ın testi 5C'den beri var.
+- Kalıcılık kararına sahip yazılmadı. Bir tasarım kararı ve kurala tek
+  başına uymuyor; kullanıcı kararı bekliyor.
 
 ---
 
