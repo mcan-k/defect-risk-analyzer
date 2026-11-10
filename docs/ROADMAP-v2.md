@@ -54,36 +54,79 @@ pyproject.toml
 ### Faz 0 — Dürüstlük yaması (1 saat)
 Repo şu an public ve yanlış bilgi veriyor. Kod taşımadan:
 
-- [ ] `ci_analyzer.py`'daki `Kartall01` GitHub linkini `mcan-k` ile değiştir
-- [ ] README'deki `scripts/*.bat` referanslarını `BASLAT.bat` / `DURDUR.bat` ile hizala
-- [ ] README: 5 sayfa → 7, 9 endpoint → 13, risk formülüne `volume_factor` ekle
-- [ ] README proje yapısına eksik 3 modülü ekle, tamamlanmış roadmap maddelerini işaretle
-- [ ] `api.py`'daki `except (LLMError, Exception)` ifadesini düzelt
+*6E taraması (2026-11-10):* Faz 0'ın beş maddesi de `2c5c86c`'de
+(2026-08-11, "paket yapisina gecis ve dokumantasyon duzeltmeleri") yapılmış;
+kutular işaretlenmemişti. Her kutunun kanıtı yanında. README o tarihten sonra
+Faz 5'te yeniden yazıldı; aşağıdaki sayılar o günün README'sine aittir.
+
+- [x] `ci_analyzer.py`'daki `Kartall01` GitHub linkini `mcan-k` ile değiştir —
+      `2c5c86c`: `Kartall01` ebeveynde 1, sonrasında 0
+- [x] README'deki `scripts/*.bat` referanslarını `BASLAT.bat` / `DURDUR.bat` ile hizala —
+      `2c5c86c`: README'deki `scripts\` / `scripts/` 3 → 0
+- [x] README: 5 sayfa → 7, 9 endpoint → 13, risk formülüne `volume_factor` ekle —
+      `2c5c86c`: "7-Page Dashboard", `volume_factor` formülü ve tablosu; uç
+      sayısı 13 değil 14 yazıldı (commit mesajı: "14 endpoint")
+- [x] README proje yapısına eksik 3 modülü ekle, tamamlanmış roadmap maddelerini işaretle —
+      `2c5c86c`: `pattern_detector`, `blind_spot_detector`, `component_classifier`
+      eklendi; README'nin yol haritasında üç madde `[x]` oldu
+- [x] `api.py`'daki `except (LLMError, Exception)` ifadesini düzelt —
+      `2c5c86c`: ifade ebeveynde 1, sonrasında 0
 
 ### Faz 1 — Paket iskeleti (yarım gün)
 Import satırları burada bir kez değişsin, sonraki fazlarda tekrar dokunulmasın.
 
-- [ ] Tüm modülleri `src/defect_risk_analyzer/` altına taşı, `__init__.py` ekle
+*6E taraması (2026-11-10):* Faz 1 de `2c5c86c`'de (2026-08-11) yapılmış;
+iki kutu açık kalıyor, gerekçeleri yanlarında.
+
+- [x] Tüm modülleri `src/defect_risk_analyzer/` altına taşı, `__init__.py` ekle —
+      `2c5c86c`: 14 modül taşındı, `src/defect_risk_analyzer/__init__.py` eklendi
 - [ ] Tek `__version__` kaynağı; `api.py` ve CLI oradan okusun
-- [ ] `pyproject.toml` (PEP 621): `requires-python = ">=3.11"`, bağımlılıklar requirements.txt'ten
-- [ ] `[project.scripts]` ile `dra` konsol giriş noktası
-- [ ] `requirements-dev.txt`: pytest, pytest-cov, ruff, pip-audit — *pip-audit
+      *(6E taraması, 2026-11-10: açık. Tek kaynak var — `__init__.py:10`;
+      `api.py` onu okuyor, `pyproject.toml:35` `attr` ile okuyor. Ama
+      `cli.py` hiçbir sürüm göstermiyor, yani "CLI oradan okusun" yarısının
+      kanıtı yok. Kapatılması ya da `dra --version` olarak sahiplenmesi
+      kullanıcı kararı bekliyor.)*
+- [x] `pyproject.toml` (PEP 621): `requires-python = ">=3.11"`, bağımlılıklar requirements.txt'ten —
+      `2c5c86c`: `requires-python = ">=3.11"`, `dependencies = { file = ["requirements.txt"] }`
+- [x] `[project.scripts]` ile `dra` konsol giriş noktası —
+      `2c5c86c`: `dra = "defect_risk_analyzer.cli:main"`
+- [x] `requirements-dev.txt`: pytest, pytest-cov, ruff, pip-audit — *pip-audit
       6D-4d-2'de eklendi (`pip-audit==2.10.1`). Kutu işaretlenmedi: bu Faz 1
       listesinin yapılmış öteki maddeleri de işaretsiz, tek başına işaretlemek
-      listeyi tutarsız bırakırdı.*
+      listeyi tutarsız bırakırdı.* Kanıt (6E taraması, 2026-11-10): pytest,
+      pytest-cov ve ruff `2c5c86c`'de; pip-audit #48'de (`8b21c79`,
+      2026-10-07).
 - [ ] `BASLAT.bat` ve Dockerfile'ın hâlâ çalıştığını doğrula
+      *(6E taraması, 2026-11-10: açık. Dockerfile yarısının kanıtı var —
+      `a0d7109` ve `66b270e` (Faz 2, 2026-08-12): `docker build` tam çalıştı,
+      container'da dashboard yolu ve API uçları ölçüldü. `BASLAT.bat`'ın
+      gerçekten çalıştırıldığına dair kanıt bulunamadı;
+      `tests/test_installer_script.py` dosyayı yalnız okuyor. Sahibi **Faz 7**
+      (kurulum; temiz makinede "5 dakikada çalıştır" denemesi).)*
 
 ### Faz 2 — Servis katmanı (1-2 gün)
 Projenin en kritik adımı. `ui/` ile `server/` arasındaki HTTP bağımlılığı burada ölür.
 
-- [ ] `risk_analyzer.py`'ı böl: `vector_store` / `scoring` / `results_repository` / `analysis_service`
-- [ ] `dashboard.py`'daki `api_request()` çağrılarını doğrudan servis çağrısına çevir
+*6E taraması (2026-11-10):* Faz 2'nin beş maddesi de Faz 2 merge'ünde
+(`2a52585`, 2026-08-12) yapılmış; kanıt her kutunun yanında.
+
+- [x] `risk_analyzer.py`'ı böl: `vector_store` / `scoring` / `results_repository` / `analysis_service` —
+      `083576e` (`core/scoring`) ve `a5c3cfe` (servis katmanı, `risk_analyzer.py` silindi)
+- [x] `dashboard.py`'daki `api_request()` çağrılarını doğrudan servis çağrısına çevir
       (Faz 5B notu: **ölçülmedi**, muhtemelen bayat — `README.md` dashboard'un
       servisi doğrudan çağırdığını söylüyor ve `api_request` kaynakta yok.
-      Kapatmadan önce ayrı bir ölçüm gerekiyor.)
-- [ ] `config.py`'ın import anındaki yan etkisini kaldır (testler `.env`'i bozmasın)
-- [ ] LLM provider'ı `analysis_service` constructor'ından enjekte et
-- [ ] `docker-compose.yml`'ı tek servise indir; `API_URL` / paylaşılan `API_KEY` sorunu ortadan kalkar
+      Kapatmadan önce ayrı bir ölçüm gerekiyor.) **Ölçüldü (6E taraması,
+      2026-11-10):** `b541046` ("dashboard'daki HTTP katmanini kaldir");
+      bugün `src/` altında `api_request(` yalnız `ui/service.py`'nin bir
+      docstring'inde geçiyor ve `ui/` altında `requests`/`httpx`/`urllib`
+      import eden dosya 0.
+- [x] `config.py`'ın import anındaki yan etkisini kaldır (testler `.env`'i bozmasın) —
+      `824de72`
+- [x] LLM provider'ı `analysis_service` constructor'ından enjekte et —
+      `a5c3cfe`: `AnalysisService(..., llm: LLMProvider | None = None)`
+- [x] `docker-compose.yml`'ı tek servise indir; `API_URL` / paylaşılan `API_KEY` sorunu ortadan kalkar —
+      `7d614cd`: varsayılan `docker-compose up` yalnız `dashboard`'u başlatıyor;
+      `api` servisi `profiles: ["webhook"]` altında
 
 ### Faz 3 — Testler (tamamlandı)
 Kapsam bu bölümün ilk halinden dardı. Yapılanlar, yapılmayanlar ve nedenleri
@@ -438,6 +481,8 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
 
       363 → 440 test.
 - [ ] Renk sadece risk seviyesini kodlasın → 5B kapsamına alınmadı
+      *(6E taraması, 2026-11-10: açık. Yapıldığına dair kanıt yok ve sahibi
+      yok; Faz 7 mi, v1.1 mi, kullanıcı kararı bekliyor.)*
 - [x] `data/sample_bugs_en.json` (İngilizce demo için)
 
       Brifing "demo veri tamamen İngilizce" diyordu; ölçüm tersini gösterdi —
@@ -488,7 +533,14 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       açılış gerekmiyor. Seçiciye ayrıca yönlendirici bir `help` metni eklendi
       (moda göre iki cümle); daha önce hiç yoktu, yani vaat hiçbir kullanıcı
       yüzeyinde yazılı değildi. 440 → 445 test.
-- [ ] N+1 API çağrısı ve her render'daki `config.reload()` düzeltmesi
+- [x] N+1 API çağrısı ve her render'daki `config.reload()` düzeltmesi —
+      **ölçüldü (6E taraması, 2026-11-10)**, kaynak taramasıyla. `config.reload()`
+      `src/` altında yalnız iki yerde çağrılıyor: `ui/service.py:45`
+      (`save_multiple_env`) ve `api.py:167` (`/reload-config`). İkisi de render
+      yolunda değil. `ui/` altında HTTP istemcisi import eden dosya yok; HTTP
+      katmanı `b541046`'da kalktığı için N+1 API çağrısı da kalmadı.
+      `config.init()` `ui/shell.py:35`'te bir kez çağrılıyor ve
+      `_initialized` ile korunuyor (`config.py:788–790`).
 
       Faz 5B notu: **ölçülmedi**, muhtemelen bayat. `config.init()`
       `_initialized` bayrağıyla korunuyor (`config.py:295-319`) ve `reload()`
@@ -655,6 +707,12 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       force-push kapalı. İlk gerçek kullanım #68. Ayrıntı: `KNOWN-DEBT.md`,
       "Faz 6D-7 eki — K6".
 - [ ] `CONTRIBUTING.md`, issue şablonları
+      *(6E taraması, 2026-11-10: açık. `CONTRIBUTING.md` yarısı yapıldı —
+      #19, `354c12d` (2026-09-02). Issue şablonları bilerek yazılmadı; aynı
+      commit'in gövdesi: "ISSUE SABLONU YOK: sifir issue acilmis, 18 ogenin
+      hepsi PR". Kutunun
+      "yapılmayacak" diye mi kapanacağı, yoksa bir sahiple mi açık kalacağı
+      kullanıcı kararı bekliyor.)*
 
 ### Faz 6E — Doğrulama ve test borcu
 
