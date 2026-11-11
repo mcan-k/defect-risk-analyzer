@@ -1,27 +1,28 @@
 """
-What component_classifier decides today, and where it is known to be wrong (Faz 6E-2b).
+What component_classifier decides, and the defects 6E-2 PR4 fixed (Faz 6E-2).
 
 `classify_bugs` fills in `component` when Jira left it empty or "Unknown", and
 `core/scoring.py` groups every bug by that field — so a wrong guess moves a bug
-into another module's risk score. Until this file the module had no test of its
+into another module's risk score. Until 6E-2b the module had no test of its
 own: one test in test_analysis_service_indexing.py checked one input. The 6E
 discovery's coverage run showed 94% line coverage anyway, all of it indirect —
 coverage is not verification.
 
-HOW IT DECIDES (read from the code, not the docstring). Each component scores
-one point per keyword occurrence: keywords of three characters or fewer must
-match a whole word (`\\b…\\b`), longer ones match anywhere as a substring. The
-highest score wins; on a tie `max()` returns the component listed first in
-COMPONENT_KEYWORDS. No match, or no text, is "Genel". The module docstring
-says "first match wins" — that is not what the code does (KNOWN-DEBT, the
-component_classifier section); the docstring is left for the fix PR.
+HOW IT DECIDES (read from the code). Text and keywords are lower-cased with
+every form of i (İ, I, ı, i) folded to "i". A keyword matches as a whole word,
+optionally followed by one Turkish inflection chain (plural, possessive, case,
+"-ki") or an English -s/-es/-d/-ed/-ing — never inside another word. A match
+lying inside a longer match of another component does not count, and a
+keyword spelled two ways ("kayıt", "kayit") counts once. Each match scores one
+point; the highest score wins, and on a tie the component listed first in
+COMPONENT_KEYWORDS wins. No match, or no text, is "Genel".
 
-KNOWN DEFECTS ARE xfail(strict=True), each naming its KNOWN-DEBT row. The
-expected value in every xfail is the CORRECT component, derived from the
-keyword lists and argued in the case's comment — so when the fix lands, the
-case XPASSes and strict turns that into a red that forces the marker off.
-Measured before writing (6E-2a, 2026-11-11): 4 of the 218 keywords, given
-alone, land in another component.
+THE NINE DEFECTS 6E-2b PINNED as xfail(strict=True) — capital Turkish İ, word
+fragments ("Author" read as "auth") and keywords containing another
+component's keyword ("performans" contains "form") — were fixed in 6E-2 PR4
+and are plain tests now. The guards at the end of the file were written before
+that fix and were green on the old rule too: what was right must stay right.
+The new rule's known limits: KNOWN-DEBT.md, 'component_classifier kusurları'.
 """
 
 import pytest
@@ -32,8 +33,6 @@ from defect_risk_analyzer.component_classifier import (
     classify_component,
 )
 
-KNOWN_DEBT = "KNOWN-DEBT.md, 'component_classifier kusurları'"
-
 
 def classify(summary: str, description: str = "") -> str:
     return classify_component({"summary": summary, "description": description})
@@ -41,14 +40,14 @@ def classify(summary: str, description: str = "") -> str:
 
 # --- every keyword, alone, lands in its own component -----------------------
 
-# Keywords that do NOT, because a longer keyword of theirs contains a shorter
-# keyword of another component listed earlier — a tie that dictionary order
-# resolves the wrong way. Each is pinned as an xfail below.
+# Keywords that contain a shorter keyword of another component listed earlier.
+# Under the old substring rule each was a 1–1 tie that dictionary order
+# resolved the wrong way (6E-2b, xfail); they keep a test of their own.
 SUBSTRING_COLLISIONS = {
-    # "form" (Frontend) is inside both words; 1–1 tie, Frontend is listed first.
+    # "form" (Frontend) is inside both words, but not as a word of its own.
     "performans": "Performance",
     "performance": "Performance",
-    # "şifre"/"sifre" (Authentication) is inside both words; 1–1 tie.
+    # "şifre"/"sifre" (Authentication) + "leme" is not an inflection.
     "şifreleme": "Security",
     "sifreleme": "Security",
 }
@@ -75,26 +74,25 @@ KEYWORD_COUNTS = {
 @pytest.mark.parametrize("component", list(KEYWORD_COUNTS))
 def test_every_keyword_classifies_to_its_component(component):
     """Each keyword of a component, as the whole summary, classifies to that
-    component — the known collisions excepted, which have their own xfails —
-    and the component still has the number of keywords it was measured with.
-    The component list and its ORDER are pinned too: order decides every tie."""
+    component — every one of them, the four collisions included — and the
+    component still has the number of keywords it was measured with. The
+    component list and its ORDER are pinned too: order decides every tie."""
     assert list(COMPONENT_KEYWORDS) == list(KEYWORD_COUNTS)
     assert len(COMPONENT_KEYWORDS[component]) == KEYWORD_COUNTS[component]
     wrong = {
         keyword: classify(keyword)
         for keyword in COMPONENT_KEYWORDS[component]
-        if keyword not in SUBSTRING_COLLISIONS and classify(keyword) != component
+        if classify(keyword) != component
     }
     assert wrong == {}
 
 
 @pytest.mark.parametrize(("keyword", "expected"), sorted(SUBSTRING_COLLISIONS.items()))
-@pytest.mark.xfail(strict=True, reason=f"Bilinen kusur: kelime parçası eşleşmesi ({KNOWN_DEBT})")
 def test_a_keyword_containing_another_components_keyword(keyword, expected):
     assert classify(keyword) == expected
 
 
-# --- known defects, from the 6E discovery --------------------------------------
+# --- the 6E discovery's defects, fixed in 6E-2 PR4 -------------------------------
 
 WORD_FRAGMENTS = [
     # "auth" (Authentication) is inside "Author"; no word in the sentence is a
@@ -108,14 +106,13 @@ WORD_FRAGMENTS = [
 
 
 @pytest.mark.parametrize(("summary", "expected"), WORD_FRAGMENTS)
-@pytest.mark.xfail(strict=True, reason=f"Bilinen kusur: kelime parçası eşleşmesi ({KNOWN_DEBT})")
 def test_a_word_fragment_is_not_a_keyword(summary, expected):
     assert classify(summary) == expected
 
 
 TURKISH_UPPERCASE = [
     # "giriş" is an Authentication keyword. str.lower() turns "İ" into "i" +
-    # U+0307 (combining dot above), so "GİRİŞ".lower() is not "giriş".
+    # U+0307 (combining dot above), so "GİRİŞ".lower() was not "giriş".
     ("GİRİŞ YAPILAMIYOR", "Authentication"),
     # "şifre" is an Authentication keyword; same cause.
     ("ŞİFRE sıfırlanamıyor", "Authentication"),
@@ -123,9 +120,84 @@ TURKISH_UPPERCASE = [
 
 
 @pytest.mark.parametrize(("summary", "expected"), TURKISH_UPPERCASE)
-@pytest.mark.xfail(strict=True, reason=f"Bilinen kusur: büyük harfli Türkçe İ ({KNOWN_DEBT})")
 def test_turkish_uppercase_is_recognised(summary, expected):
     assert classify(summary) == expected
+
+
+# Capitals with suffixes, as a Turkish keyboard types them (i → İ, ı → I). All
+# were "Genel" or wrong under str.lower(). The last two have a dotless capital
+# I as well: "ÇIKIŞ".lower() is "çikiş", which matched neither "çıkış" nor
+# "cikis"; "İADE" became "i" + U+0307 + "ade".
+TURKISH_CAPITALS_WITH_SUFFIXES = [
+    ("ŞİFREMİ UNUTTUM BAĞLANTISI ÇALIŞMIYOR", "Authentication"),
+    ("GİRİŞTE HATA ALIYORUM", "Authentication"),
+    ("MOBİLDE DÜZEN KAYIYOR", "Frontend"),
+    ("SERVİSE İSTEK ATINCA ZAMAN AŞIMI", "Backend API"),
+    ("VERİTABANINA BAĞLANAMIYOR", "Database"),
+    ("GRAFİKTE EKSEN ETİKETLERİ KAYIYOR", "Reporting"),
+    ("BİLDİRİMLER GELMİYOR", "Notifications"),
+    ("GÜVENLİKTE AÇIK BULUNDU", "Security"),
+    ("ÇIKIŞ YAPILAMIYOR", "Authentication"),
+    ("İADE YAPILMADI", "Payment"),
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), TURKISH_CAPITALS_WITH_SUFFIXES)
+def test_turkish_capitals_with_suffixes_are_recognised(summary, expected):
+    assert classify(summary) == expected
+
+
+# A keyword at the start of a Turkish word that is NOT that keyword plus an
+# inflection: a derivational suffix or just another word. Each was filed under
+# the keyword's component by the old substring rule; nothing else matches.
+TURKISH_WORDS_STARTING_WITH_A_KEYWORD = [
+    ("Parametre listesi yanlış", "Genel"),  # para (Payment)
+    ("Veriler tutarsız görünüyor", "Genel"),  # tutar (Payment) + -sız
+    ("Depolama alanı doldu", "Genel"),  # depo (Inventory) + -lama: storage
+    ("Formatı bozuk tarih", "Genel"),  # form (Frontend)
+    ("Restoran listesi boş", "Genel"),  # rest (Backend API)
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), TURKISH_WORDS_STARTING_WITH_A_KEYWORD)
+def test_a_turkish_word_starting_with_a_keyword_is_not_that_keyword(summary, expected):
+    assert classify(summary) == expected
+
+
+ENGLISH_WORD_FRAGMENTS = [
+    ("Restore from backup fails", "Genel"),  # rest
+    ("Paragraph spacing broken", "Genel"),  # para
+    ("Reporter field is empty", "Genel"),  # report; Reporter is a Jira field
+    ("Date format is wrong", "Genel"),  # form
+    # rest (Backend API) inside "restart" tied 1–1 with database, and Backend
+    # API is listed first.
+    ("Database restart required", "Database"),
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), ENGLISH_WORD_FRAGMENTS)
+def test_an_english_word_fragment_is_not_a_keyword(summary, expected):
+    assert classify(summary) == expected
+
+
+def test_a_suffixed_keyword_containing_another_components_keyword():
+    """"şifreleme" + "de": Security's keyword with a case suffix. The old rule
+    also counted Authentication's "şifre" inside it — a 1–1 tie it lost."""
+    assert classify("Şifrelemede eski algoritma kullanılıyor") == "Security"
+
+
+def test_a_match_inside_a_longer_match_of_another_component_does_not_count():
+    """"sql" (Database) lies inside "sql injection" (Security). Counted on its
+    own it makes Database 2 (sql, query) against Security 2 (sql injection,
+    injection), and Database, listed first, wins. Dropped, Security wins."""
+    assert classify("SQL injection in search query") == "Security"
+
+
+def test_a_keyword_spelled_two_ways_counts_once():
+    """"kayıt" and "kayit" both normalize to "kayit". Counted twice, Database
+    would beat Authentication 2–1; once, it is a 1–1 tie that Authentication,
+    listed first, wins — as it did before normalization existed."""
+    assert classify("kayıt login") == "Authentication"
 
 
 # --- the decision rule ----------------------------------------------------------
@@ -184,7 +256,7 @@ def test_summary_and_description_are_read_together():
 )
 def test_turkish_and_english_inputs(summary, expected):
     """Lower-case Turkish, its ASCII spelling, English, and upper-case ASCII
-    English all classify (upper-case Turkish does not — see the xfail above)."""
+    English all classify (upper-case Turkish has its own tests above)."""
     assert classify(summary) == expected
 
 

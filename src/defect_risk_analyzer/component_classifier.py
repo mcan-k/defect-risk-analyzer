@@ -9,6 +9,7 @@ Users can customize keyword mappings via the COMPONENT_KEYWORDS dict.
 
 import logging
 import re
+from functools import cache
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -18,8 +19,13 @@ logger = logging.getLogger(__name__)
 # Default Keyword → Component Mappings
 # =============================================================================
 # Each key is a component name, value is a list of keywords/phrases.
-# Matching is case-insensitive. First match wins (ordered by specificity).
-# Turkish and English keywords are both included.
+# Matching is case-insensitive and Turkish-aware: İ, I, ı and i count as the
+# same letter. A keyword matches as a whole word, optionally followed by ONE
+# inflection — a Turkish suffix chain ("girişte", "ödemede", "ürünlerin") or an
+# English -s/-es/-d/-ed/-ing ("payments") — and never inside another word
+# ("Author" is not "auth", "Parametre" is not "para"). Each match scores one
+# point; the highest-scoring component wins, and a tie goes to the component
+# listed first. Turkish and English keywords are both included.
 
 COMPONENT_KEYWORDS: dict[str, list[str]] = {
     "Authentication": [
@@ -89,6 +95,80 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
 
 
 # =============================================================================
+# Matching
+# =============================================================================
+
+_TURKISH_I = str.maketrans({"İ": "i", "I": "i", "ı": "i"})
+
+
+def _normalize(text: str) -> str:
+    """Lower-case, with every form of i folded to "i".
+
+    `str.lower()` alone turns "İ" into "i" + U+0307 (a combining dot), so
+    "GİRİŞ" never equalled "giriş"; and it turns "I" into "i", so "ÇIKIŞ"
+    became "çikiş", matching neither "çıkış" nor "cikis". A Turkish-only
+    lower-casing would fix those but turn the English "I" into "ı" and break
+    "LOGIN". Folding all four forms keeps both languages working; keywords go
+    through the same function, so "çıkış" and "ÇIKIŞ" meet at "çikiş".
+    """
+    return text.translate(_TURKISH_I).lower().replace("̇", "")
+
+
+# A Turkish inflection chain, in the order the language stacks it: plural,
+# possessive, case, then "-ki" ("arayüzdeki"). Spelled after _normalize, so
+# "ı" is written "i". Derivational suffixes (-lik, -leme, -siz, -li, -la-) are
+# deliberately absent: they make new words — "tutarsız" is not "tutar",
+# "depolama" is not "depo" — and accepting them brings the word-fragment
+# matches back.
+_PLURAL = r"(?:lar|ler)"
+_POSSESSIVE = (
+    r"(?:imiz|umuz|ümüz|iniz|unuz|ünüz|miz|muz|müz|niz|nuz|nüz|lari|leri"
+    r"|si|su|sü|im|um|üm|in|un|ün|i|u|ü|m|n)"
+)
+_CASE = (
+    r"(?:ndan|nden|dan|den|tan|ten|nda|nde|da|de|ta|te|nin|nun|nün|yin|yun|yün"
+    r"|in|un|ün|yla|yle|la|le|ya|ye|yi|yu|yü|na|ne|ni|nu|nü|ca|ce|a|e|i|u|ü)"
+)
+# One of: the Turkish chain (which may be empty — the bare keyword), or an
+# English inflection. An apostrophe needs no branch: it is not a word
+# character, so "API'ye" already ends the keyword at a word boundary.
+_SUFFIX = rf"(?:{_PLURAL}?{_POSSESSIVE}?{_CASE}?(?:ki)?|s|es|d|ed|ing)"
+
+
+@cache
+def _pattern(keyword: str) -> re.Pattern[str]:
+    """A normalized keyword as a word: nothing word-like before it, at most
+    one _SUFFIX after it, then nothing word-like. Group 1 is the keyword."""
+    return re.compile(rf"(?<!\w)({re.escape(keyword)}){_SUFFIX}(?!\w)")
+
+
+def _matches(text: str) -> list[tuple[int, int, str]]:
+    """Every keyword match in normalized `text`, as (start, end, component)
+    spanning the keyword itself.
+
+    A match that lies inside a LONGER match of ANOTHER component is dropped:
+    "sql injection" is Security's and must not also count as Database's
+    "sql", nor "z-index" as Database's "index". Nesting within one component
+    still counts, as it always has.
+    """
+    found = []
+    for component, keywords in COMPONENT_KEYWORDS.items():
+        # "kayıt" and "kayit" normalize to the same keyword: count it once.
+        for keyword in dict.fromkeys(_normalize(k) for k in keywords):
+            if keyword not in text:  # cheap pre-check: no substring, no word
+                continue
+            for m in _pattern(keyword).finditer(text):
+                found.append((*m.span(1), component))
+    return [
+        (s, e, c) for s, e, c in found
+        if not any(
+            c2 != c and s2 <= s and e <= e2 and e2 - s2 > e - s
+            for s2, e2, c2 in found
+        )
+    ]
+
+
+# =============================================================================
 # Classifier
 # =============================================================================
 
@@ -96,8 +176,10 @@ def classify_component(bug: dict[str, Any]) -> str:
     """
     Classify a bug into a component based on keyword matching.
 
-    Searches bug summary and description for keywords from COMPONENT_KEYWORDS.
-    Returns the first matching component or "Genel" if no match.
+    Searches bug summary and description for keywords from COMPONENT_KEYWORDS
+    and scores each component by its number of matches. Returns the
+    highest-scoring component — on a tie, the one listed first in
+    COMPONENT_KEYWORDS — or "Genel" if nothing matches.
 
     Args:
         bug: Bug dictionary with 'summary' and 'description' fields.
@@ -105,33 +187,22 @@ def classify_component(bug: dict[str, Any]) -> str:
     Returns:
         Component name string.
     """
-    text = (
+    text = _normalize(
         f"{bug.get('summary', '')} {bug.get('description', '')}"
-    ).lower()
+    )
 
     if not text.strip():
         return "Genel"
 
-    # Score each component by number of keyword matches
     scores: dict[str, int] = {}
-
-    for component, keywords in COMPONENT_KEYWORDS.items():
-        score = 0
-        for keyword in keywords:
-            # Use word boundary for short keywords to avoid false matches
-            if len(keyword) <= 3:
-                pattern = rf"\b{re.escape(keyword)}\b"
-                score += len(re.findall(pattern, text))
-            else:
-                score += text.count(keyword.lower())
-        if score > 0:
-            scores[component] = score
+    for _, _, component in _matches(text):
+        scores[component] = scores.get(component, 0) + 1
 
     if not scores:
         return "Genel"
 
-    # Return component with highest score
-    best = max(scores, key=scores.get)
+    # Highest score; on a tie max() keeps the first, so walk COMPONENT_KEYWORDS order.
+    best = max((c for c in COMPONENT_KEYWORDS if c in scores), key=scores.__getitem__)
     logger.debug("Classified bug '%s' → %s (score: %d)", bug.get("key", "?"), best, scores[best])
     return best
 
