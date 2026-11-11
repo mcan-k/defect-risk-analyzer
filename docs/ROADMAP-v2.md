@@ -159,7 +159,10 @@ Yapıldı:
 
 Yapılmadı — ~~Faz 5'e taşındı~~ **Faz 5 kapandı; bu maddeler Faz 6A'da yeniden
 sahiplendirildi** (gerekçeleri `KNOWN-DEBT.md`'de):
-- [ ] `tests/test_adf_parser.py` — saf fonksiyon, en yüksek getiri → **Faz 6E**
+- [x] `tests/test_adf_parser.py` — saf fonksiyon, en yüksek getiri → **Faz 6E**
+      **Yapıldı (6E-2a, `4aa02bd`, 2026-11-11):** 30 test, fonksiyonun bütün
+      dalları; xfail gerektiren kusur bulunmadı. Mutasyonlar commit
+      gövdesinde.
 - [x] `tests/test_anonymizer.py` — **Faz 6B'de yazıldı**, 21 test; sekizi
       yazıldığı gün kırmızıydı. Telefon regex'i düzeltildi, ama bu maddenin
       parantezi YANLIŞTI ve ölçüm onu yalanladı: sürüm numarası, sipariş kodu
@@ -170,8 +173,12 @@ sahiplendirildi** (gerekçeleri `KNOWN-DEBT.md`'de):
       yazıldı. Ayrıca `deanonymize_text`'in bir oturumun değerini başka bir
       oturumun çıktısına koyduğu sızıntı kapatıldı (`anon_map.json` ile aynı
       çalışma).
-- [ ] `pattern_detector` / `component_classifier` testleri
+- [x] `pattern_detector` / `component_classifier` testleri
       (`blind_spot_detector` Faz 5A'da karşılandı) → **Faz 6E**
+      **Yapıldı (6E-2b, `7193e03`, 2026-11-11):** kalan yarı da kapandı.
+      `tests/test_component_classifier.py`'de 38 test var; 9'u bilinen kusur
+      olarak xfail(strict=True). Kusurlar `KNOWN-DEBT.md`'de,
+      "`component_classifier` kusurları" bölümünde.
 
       *Not (2026-10-11):* `pattern_detector` yarısı karşılandı —
       `tests/test_pattern_detector.py` 2026-08-22'den beri var (`f7c33f7`)
@@ -846,9 +853,11 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
 
 **Kapsam:**
 - [ ] Aşağıdaki **Doğrulama soruları** — her biri ölçülerek cevaplanır.
-- [ ] `parse_adf_to_text` testi (`jira_client.py`; yukarıda, Faz 3 bölümü).
-- [ ] `component_classifier` testleri (yukarıda, Faz 3 maddesinin kalan
-      yarısı).
+- [x] `parse_adf_to_text` testi (`jira_client.py`; yukarıda, Faz 3 bölümü).
+      Yapıldı: 6E-2a, `4aa02bd` (2026-11-11).
+- [x] `component_classifier` testleri (yukarıda, Faz 3 maddesinin kalan
+      yarısı). Yapıldı: 6E-2b, `7193e03` (2026-11-11). Kusurların düzeltmesi
+      6E-2'nin 4. PR'ında, tam süreçle (kullanıcı kararı K-E3).
 - [ ] `save_multiple_env` yolunda `OSError`'ın UI'a ham traceback olarak
       çıkması (`KNOWN-DEBT.md`, "`.env` yazıcısının 6A sonrası bıraktıkları").
 

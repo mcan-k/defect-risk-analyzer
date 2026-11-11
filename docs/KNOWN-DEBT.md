@@ -944,8 +944,9 @@ geri yazılsın mı, yoksa türetilmiş veri olarak mı kalsın) Faz 6; anahtar 
 testleri `pattern_detector` ile birlikte.
 
 *6E taraması (2026-11-10):*
-- **Anahtar mantığı testlerinin sahibi 6E (6E-2b)** (test borcu; K-E9
-  kuralı). `pattern_detector`'ın testi 5C'den beri var.
+- ~~**Anahtar mantığı testlerinin sahibi 6E (6E-2b)** (test borcu; K-E9
+  kuralı).~~ `pattern_detector`'ın testi 5C'den beri var. **Kapandı (6E-2b,
+  `7193e03`, 2026-11-11).**
 - Kalıcılık kararına sahip yazılmadı. Bir tasarım kararı ve kurala tek
   başına uymuyor; kullanıcı kararı bekliyor.
 
@@ -994,8 +995,10 @@ gerçeğin sessizce ayrışmaması için buraya yazıldı.
 - **`tests/test_adf_parser.py`** — `parse_adf_to_text`
   ([`jira_client.py:25`](../src/defect_risk_analyzer/jira_client.py)) saf ve
   özyinelemeli; ROADMAP'in kendi deyimiyle "en yüksek getiri". Buradaki en ucuz
-  gerçek boşluk. **Hâlâ açık; sahibi 6E (6E-2a).** 6E keşfinin kapsam
+  gerçek boşluk. ~~**Hâlâ açık; sahibi 6E (6E-2a).**~~ 6E keşfinin kapsam
   ölçümünde (2026-11-09) fonksiyonun hiçbir satırı çalışmıyordu.
+  **Kapandı (6E-2a, `4aa02bd`, 2026-11-11):** `tests/test_adf_parser.py`'de
+  30 test; xfail gerektiren kusur yok.
 - ~~**`tests/test_anonymizer.py`** — round-trip **ve telefon regex'i düzeltmesi**
   (sürüm numarası, sipariş kodu ve tarih maskelenmemeli). Dikkat: bu eksik bir
   test değil, **yaşayan bir hata**; test yazmak tek başına yetmez.~~
@@ -1009,7 +1012,10 @@ gerçeğin sessizce ayrışmaması için buraya yazıldı.
   *6E taraması (2026-11-10):* "hiç testleri yok" yarı yarıya bayat.
   - `pattern_detector`'ın testi var: `tests/test_pattern_detector.py`,
     `f7c33f7` (ilk PR #11, 2026-08-23), 6D-6b'de (#52) genişledi.
-  - `component_classifier`'ın kendi testi hâlâ yok. Sahibi 6E (6E-2b).
+  - ~~`component_classifier`'ın kendi testi hâlâ yok. Sahibi 6E (6E-2b).~~
+    **Kapandı (6E-2b, `7193e03`, 2026-11-11):**
+    `tests/test_component_classifier.py`'de 38 test, 9'u xfail. Kusurlar
+    aşağıdaki "`component_classifier` kusurları" bölümünde.
 - ~~**`pip-audit`** — ROADMAP hem `requirements-dev.txt` hem CI için istiyor;
   ikisinde de yok. Faz 3 CI'a `pytest` + `ruff` ekledi, bunu eklemedi.~~
   **Kapandı (6D-4d-2, 2026-10-07):** `pip-audit==2.10.1`
@@ -3449,3 +3455,48 @@ maddesi). 6E keşfi 2026-11-09'da onunla ölçüm yaptı.
 | Borç | İşaret |
 |---|---|
 | `numpy` doğrudan pinli ama depo onu hiç import etmiyor. Pin, aslında dolaylı olan bir paketin sürümünü elle tutuyor ve Dependabot onu ayrıca güncelliyor (#28, `numpy-2.4.6`). Kaldırılırsa numpy'nin kısıt dosyasına dolaylı paket olarak gireceği bir çıkarım, ölçülmedi; dosya yeniden üretilmeli ve eşitlik kontrolü yeniden ölçülmeli | **Faz 7'nin temizlik kuyruğu** (temizlik; K-E9 kuralı, 2026-11-10), tetikleyici: **Faz 7 başladığında** |
+
+---
+
+## `component_classifier` kusurları — 6E-2b testleriyle belgelendi
+
+**Where:** [`component_classifier.py`](../src/defect_risk_analyzer/component_classifier.py)
+(`classify_component`),
+testler: [`tests/test_component_classifier.py`](../tests/test_component_classifier.py)
+
+`classify_component`, Jira'nın bileşen alanını boş bıraktığı bug'a anahtar
+kelimelerle bir bileşen tahmin ediyor. `core/scoring.py` her bug'ı bu alana
+göre grupluyor. Yanlış tahmin, bug'ı başka bir modülün risk skoruna taşır.
+
+Aşağıdaki kusurlar 6E keşfinde (2026-11-09) ve 6E-2b'de (2026-11-11) ölçüldü.
+Hepsi testlerde `xfail(strict=True)` olarak duruyor. Beklenen değer doğru
+bileşen; düzeltme geldiğinde test XPASS verir ve strict onu kırmızıya
+çevirir. Düzeltme ayrı bir PR'da, tam süreçle (K-E3); docstring'e o PR'a
+kadar dokunulmuyor.
+
+| Borç | İşaret |
+|---|---|
+| **Büyük harfli Türkçe İ eşleşmiyor.** Metin `str.lower()` ile küçültülüyor ve `"İ".lower()` `"i"` + U+0307 (birleştirici üst nokta) veriyor. Bu yüzden `"GİRİŞ YAPILAMIYOR"` ve `"ŞİFRE sıfırlanamıyor"` `"giriş"` / `"şifre"` ile eşleşmiyor ve "Genel" dönüyor; doğrusu Authentication. `casefold()` da aynı sonucu veriyor. Türkçe arayüzün birincil dili ve büyük harfli başlık yazmak Jira'da yaygın — bu son cümle bir çıkarım | **6E** (6E-2'nin 4. PR'ı, tam süreç; kullanıcı kararı K-E3, 2026-11-11). Testler: `test_turkish_uppercase_is_recognised` (2 xfail) |
+| **Kelime parçası eşleşmesi.** Üç karakterden uzun anahtar kelimeler kelimenin içinde de eşleşiyor (`text.count(keyword)`). Ölçülen yanlış sonuçlar: `"Author …"` → Authentication (`auth`), `"Parameter …"` → Payment (`para`), `"Restart …"` → Backend API (`rest`); üçünün de doğrusu "Genel". 218 anahtar kelimenin 4'ü tek başına verildiğinde de başka bileşene düşüyor (yoklama, 2026-11-11): `performans` ve `performance` → Frontend (`form`); `şifreleme` ve `sifreleme` → Authentication (`şifre`/`sifre`). Bunlar 1–1 eşitlik ve sözlük sırası önce gelen bileşeni seçiyor | **6E** (6E-2'nin 4. PR'ı, tam süreç; K-E3). Testler: `test_a_word_fragment_is_not_a_keyword` (3 xfail) ve `test_a_keyword_containing_another_components_keyword` (4 xfail) |
+| **Docstring koddan farklı.** Modül yorumu "First match wins (ordered by specificity)", `classify_component` docstring'i "Returns the first matching component" diyor. Kod ise en yüksek skoru seçiyor (`max(scores, key=scores.get)`); eşitlikte `COMPONENT_KEYWORDS`'te önce gelen kazanıyor. Testler kodun bugünkü kuralını sabitliyor: `test_highest_score_wins_over_first_match`, `test_a_tie_goes_to_the_component_listed_first`; bileşen sırası da sabitlendi. Sözlük sırası eşitlikleri belirlediği için yukarıdaki dört çakışmanın da nedeni | **6E** (6E-2'nin 4. PR'ı; docstring o PR'da düzeltilir; K-E3) |
+
+---
+
+## 6E keşfinde bulunan küçük test boşlukları
+
+**Where:** aşağıdaki modüller. Kaynak: 6E keşfinin kapsam ölçümü
+(2026-11-09, `0d4e3c6`, pytest-cov 7.1.0, dal kapsamı açık). O tarihten bu
+yana `src/` değişmedi.
+
+Kullanıcı kararıyla (K-E5, 2026-11-11) JiraClient testleri 6E-2'nin 2.
+PR'ına alındı. Aşağıdakiler ise o PR'ların dışında kalan boşluklar; her biri
+bir test borcu. Sahipler K-E9 kuralıyla yazıldı (test borcu → 6E). Hangi
+6E paketinde kapanacakları 6E-5'e kadar belirlenir.
+
+| Borç | İşaret |
+|---|---|
+| `api.py`'nin HTTP davranışı test edilmiyor. Kapsam ölçümünde %0'dı: 137 satırın hiçbiri çalışmadı, çünkü testler modülü hiç import etmiyor. fastapi .venv'de kurulu (0.143.0) ve `TestClient` `tests/test_api_auth.py`'de kullanılıyor; engel, `api.py`'nin modül seviyesinde servis kurması. Ayrıntı: "`GET /blind-spots` sözleşmesi" bölümünün "Kalan borç"u | **6E** (test borcu; K-E9 kuralı; K-E5) |
+| `ui/service.call()`'ın hata dalları (`RateLimitError`, `LLMError`, `BugNotFoundError`, `ValueError`, genel `Exception`) hiç çalışmıyor: `ui/service.py:81–92`, 12 satır. 6E-2'nin 3. PR'ı (`OSError` hata sınırı, K-E4) bu fonksiyona bir dal ekleyecek | **6E** (test borcu; en geç 6E-2'nin 3. PR'ıyla birlikte değerlendirilir) |
+| `adapters/results_repository.py`'nin satır kapsamı %47.8, dal kapsamı %25'ti. Çalışmayan kısımlar:<br>• var olan bir dosyanın okunması: `_read_json`'ın `try` bloğu, bozuk JSON'da `_quarantine` ve `OSError` dalı;<br>• `upsert_result`, `append_webhook_result` ve `save_defect_density`;<br>• `_write_json`'ın tamamı.<br>Testler yalnız "dosya yok" yolundan geçiyor. "Failed result writes are logged, not surfaced" kaydının davranışı bu yolda | **6E** (test borcu; K-E9 kuralı) |
+| `ui/results.py`'nin satır kapsamı %12.9'du (`display_analysis_result`: 31 satırdan 27'si, 14 dalın hepsi çalışmıyor) | **6E** (test borcu; K-E9 kuralı) |
+| `cli.py` %0'dı: `main()` hiç çağrılmıyor; `tests/test_entry_points.py` dosyayı yalnız statik okuyor. `dra --version` Faz 7'de eklenecek (kullanıcı kararı, 2026-11-10); bu satır bugünkü `main()`'in testi | **6E** (test borcu; K-E9 kuralı) |
