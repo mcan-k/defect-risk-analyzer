@@ -218,3 +218,113 @@ def test_classify_bugs_works_in_place_and_returns_the_same_list():
     bugs = [{"key": "AP-3", "summary": "stok sayımı yanlış", "component": ""}]
     assert classify_bugs(bugs) is bugs
     assert bugs[0]["component"] == "Inventory"
+
+
+# --- guards: what is right today must stay right (6E-2 PR4) -----------------------
+#
+# Written BEFORE the matching rule changed, and green on the old rule too. The
+# old rule matched a long keyword anywhere inside a word, which happens to
+# accept Turkish suffixes ("ödemede" contains "ödeme") and English inflections
+# ("payments" contains "payment"). A stricter rule that fixes the word-fragment
+# defects must not lose these. In every case the suffixed keyword is the only
+# thing to classify by — measured: with whole-word matching each one is "Genel"
+# (6E-2 PR4 discovery, candidate C).
+
+SUFFIXED_TURKISH = [
+    ("Girişte hata alıyorum", "Authentication"),
+    ("Loginde takılıyor", "Authentication"),
+    ("Ödemede takılıyor", "Payment"),
+    ("Faturalar yanlış tutarla kesiliyor", "Payment"),
+    ("Sepete eklenmiyor", "Frontend"),
+    ("Formda alanlar kayıyor", "Frontend"),
+    ("Servise istek atınca zaman aşımı", "Backend API"),
+    ("Servislerde bağlantı kopuyor", "Backend API"),
+    ("Veritabanına bağlanamıyor", "Database"),
+    ("Kayıtlar iki kez ekleniyor", "Database"),
+    ("Raporda toplamlar yanlış", "Reporting"),
+    ("Grafikte eksen etiketleri kayıyor", "Reporting"),
+    ("Bildirimler gelmiyor", "Notifications"),
+    ("Mesajlarda Türkçe karakter bozuk", "Notifications"),
+    ("Stoklar eksi değere düşüyor", "Inventory"),
+    ("Ürünlerin miktarı güncellenmiyor", "Inventory"),
+    ("Önbellekteki veri bayat kalıyor", "Performance"),
+    ("Bellekte sızıntı var", "Performance"),
+    ("Güvenlikte açık bulundu", "Security"),
+    ("Sertifikası süresi dolmuş", "Security"),
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), SUFFIXED_TURKISH)
+def test_a_keyword_with_a_turkish_suffix_still_classifies(summary, expected):
+    assert classify(summary) == expected
+
+
+# The same titles as typed without Turkish letters and in capitals ("ş" → "S").
+ASCII_UPPERCASE_TURKISH = [
+    ("SIFREMI UNUTTUM BAGLANTISI CALISMIYOR", "Authentication"),
+    ("ODEMEDE TAKILIYOR", "Payment"),
+    ("MENUDE ALT BASLIKLAR GORUNMUYOR", "Frontend"),
+    ("SERVISE ISTEK ATINCA ZAMAN ASIMI", "Backend API"),
+    ("TABLODA EKSIK SUTUN VAR", "Database"),
+    ("ISTATISTIKLERDE GECEN AY EKSIK", "Reporting"),
+    ("UYARILAR IKI KEZ GOSTERILIYOR", "Notifications"),
+    ("STOKLAR EKSI DEGERE DUSUYOR", "Inventory"),
+    ("BELLEKTE SIZINTI VAR", "Performance"),
+    ("ZAFIYETLER KAPATILMADI", "Security"),
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), ASCII_UPPERCASE_TURKISH)
+def test_ascii_uppercase_turkish_still_classifies(summary, expected):
+    assert classify(summary) == expected
+
+
+ENGLISH_INFLECTIONS = [
+    ("Payments are processed twice", "Payment"),
+    ("Order refunded twice", "Payment"),
+    ("Tokens expire too early", "Authentication"),
+    ("Cached results are stale", "Performance"),
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), ENGLISH_INFLECTIONS)
+def test_english_inflections_still_classify(summary, expected):
+    assert classify(summary) == expected
+
+
+def test_a_short_keyword_is_not_a_prefix():
+    """"hiz" (Performance, the ASCII spelling of "hız") begins "Hizmet"
+    (service). Today a keyword of three characters or fewer must be a whole
+    word; a rule that matched keywords as prefixes would file this under
+    Performance."""
+    assert classify("Hizmet dışı kaldı") == "Genel"
+
+
+# The sample data's own labels as the answer key: summary and description of
+# every record, classified, against its `component`. One record is wrong today
+# and pinned as such: AP-501 in the English file scores Database 3 (database,
+# race condition, transaction) and Inventory 3 (stock twice, quantity), and the
+# tie goes to Database, listed first. Its Turkish twin scores Inventory higher
+# (stok, miktar, ürün) and is right. A change to this dict is a change in what
+# the classifier says about real-looking bugs — read the diff before updating it.
+@pytest.mark.parametrize(
+    ("file_name", "mismatches"),
+    [
+        ("sample_bugs.json", {}),
+        ("sample_bugs_en.json", {"AP-501": "Database"}),
+    ],
+)
+def test_sample_data_classifies_as_labelled(file_name, mismatches):
+    # Imported here so this guard section stays one block at the end of the file.
+    import json
+    from pathlib import Path
+
+    data = Path(__file__).resolve().parents[1] / "data"
+    bugs = json.loads((data / file_name).read_text(encoding="utf-8"))
+    assert len(bugs) == 20
+    got = {
+        bug["key"]: classify_component(bug)
+        for bug in bugs
+        if classify_component(bug) != bug["component"]
+    }
+    assert got == mismatches
