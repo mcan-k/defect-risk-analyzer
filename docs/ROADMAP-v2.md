@@ -54,36 +54,79 @@ pyproject.toml
 ### Faz 0 — Dürüstlük yaması (1 saat)
 Repo şu an public ve yanlış bilgi veriyor. Kod taşımadan:
 
-- [ ] `ci_analyzer.py`'daki `Kartall01` GitHub linkini `mcan-k` ile değiştir
-- [ ] README'deki `scripts/*.bat` referanslarını `BASLAT.bat` / `DURDUR.bat` ile hizala
-- [ ] README: 5 sayfa → 7, 9 endpoint → 13, risk formülüne `volume_factor` ekle
-- [ ] README proje yapısına eksik 3 modülü ekle, tamamlanmış roadmap maddelerini işaretle
-- [ ] `api.py`'daki `except (LLMError, Exception)` ifadesini düzelt
+*6E taraması (2026-11-10):* Faz 0'ın beş maddesi de `2c5c86c`'de
+(2026-08-11, "paket yapisina gecis ve dokumantasyon duzeltmeleri") yapılmış;
+kutular işaretlenmemişti. Her kutunun kanıtı yanında. README o tarihten sonra
+Faz 5'te yeniden yazıldı; aşağıdaki sayılar o günün README'sine aittir.
+
+- [x] `ci_analyzer.py`'daki `Kartall01` GitHub linkini `mcan-k` ile değiştir —
+      `2c5c86c`: `Kartall01` ebeveynde 1, sonrasında 0
+- [x] README'deki `scripts/*.bat` referanslarını `BASLAT.bat` / `DURDUR.bat` ile hizala —
+      `2c5c86c`: README'deki `scripts\` / `scripts/` 3 → 0
+- [x] README: 5 sayfa → 7, 9 endpoint → 13, risk formülüne `volume_factor` ekle —
+      `2c5c86c`: "7-Page Dashboard", `volume_factor` formülü ve tablosu; uç
+      sayısı 13 değil 14 yazıldı (commit mesajı: "14 endpoint")
+- [x] README proje yapısına eksik 3 modülü ekle, tamamlanmış roadmap maddelerini işaretle —
+      `2c5c86c`: `pattern_detector`, `blind_spot_detector`, `component_classifier`
+      eklendi; README'nin yol haritasında üç madde `[x]` oldu
+- [x] `api.py`'daki `except (LLMError, Exception)` ifadesini düzelt —
+      `2c5c86c`: ifade ebeveynde 1, sonrasında 0
 
 ### Faz 1 — Paket iskeleti (yarım gün)
 Import satırları burada bir kez değişsin, sonraki fazlarda tekrar dokunulmasın.
 
-- [ ] Tüm modülleri `src/defect_risk_analyzer/` altına taşı, `__init__.py` ekle
+*6E taraması (2026-11-10):* Faz 1 de `2c5c86c`'de (2026-08-11) yapılmış;
+iki kutu açık kalıyor, gerekçeleri yanlarında.
+
+- [x] Tüm modülleri `src/defect_risk_analyzer/` altına taşı, `__init__.py` ekle —
+      `2c5c86c`: 14 modül taşındı, `src/defect_risk_analyzer/__init__.py` eklendi
 - [ ] Tek `__version__` kaynağı; `api.py` ve CLI oradan okusun
-- [ ] `pyproject.toml` (PEP 621): `requires-python = ">=3.11"`, bağımlılıklar requirements.txt'ten
-- [ ] `[project.scripts]` ile `dra` konsol giriş noktası
-- [ ] `requirements-dev.txt`: pytest, pytest-cov, ruff, pip-audit — *pip-audit
+      *(6E taraması, 2026-11-10: açık. Tek kaynak var — `__init__.py:10`;
+      `api.py` onu okuyor, `pyproject.toml:35` `attr` ile okuyor. Ama
+      `cli.py` hiçbir sürüm göstermiyor, yani "CLI oradan okusun" yarısının
+      kanıtı yok. Kapatılması ya da `dra --version` olarak sahiplenmesi
+      kullanıcı kararı bekliyor.)*
+- [x] `pyproject.toml` (PEP 621): `requires-python = ">=3.11"`, bağımlılıklar requirements.txt'ten —
+      `2c5c86c`: `requires-python = ">=3.11"`, `dependencies = { file = ["requirements.txt"] }`
+- [x] `[project.scripts]` ile `dra` konsol giriş noktası —
+      `2c5c86c`: `dra = "defect_risk_analyzer.cli:main"`
+- [x] `requirements-dev.txt`: pytest, pytest-cov, ruff, pip-audit — *pip-audit
       6D-4d-2'de eklendi (`pip-audit==2.10.1`). Kutu işaretlenmedi: bu Faz 1
       listesinin yapılmış öteki maddeleri de işaretsiz, tek başına işaretlemek
-      listeyi tutarsız bırakırdı.*
+      listeyi tutarsız bırakırdı.* Kanıt (6E taraması, 2026-11-10): pytest,
+      pytest-cov ve ruff `2c5c86c`'de; pip-audit #48'de (`8b21c79`,
+      2026-10-07).
 - [ ] `BASLAT.bat` ve Dockerfile'ın hâlâ çalıştığını doğrula
+      *(6E taraması, 2026-11-10: açık. Dockerfile yarısının kanıtı var —
+      `a0d7109` ve `66b270e` (Faz 2, 2026-08-12): `docker build` tam çalıştı,
+      container'da dashboard yolu ve API uçları ölçüldü. `BASLAT.bat`'ın
+      gerçekten çalıştırıldığına dair kanıt bulunamadı;
+      `tests/test_installer_script.py` dosyayı yalnız okuyor. Sahibi **Faz 7**
+      (kurulum; temiz makinede "5 dakikada çalıştır" denemesi).)*
 
 ### Faz 2 — Servis katmanı (1-2 gün)
 Projenin en kritik adımı. `ui/` ile `server/` arasındaki HTTP bağımlılığı burada ölür.
 
-- [ ] `risk_analyzer.py`'ı böl: `vector_store` / `scoring` / `results_repository` / `analysis_service`
-- [ ] `dashboard.py`'daki `api_request()` çağrılarını doğrudan servis çağrısına çevir
+*6E taraması (2026-11-10):* Faz 2'nin beş maddesi de Faz 2 merge'ünde
+(`2a52585`, 2026-08-12) yapılmış; kanıt her kutunun yanında.
+
+- [x] `risk_analyzer.py`'ı böl: `vector_store` / `scoring` / `results_repository` / `analysis_service` —
+      `083576e` (`core/scoring`) ve `a5c3cfe` (servis katmanı, `risk_analyzer.py` silindi)
+- [x] `dashboard.py`'daki `api_request()` çağrılarını doğrudan servis çağrısına çevir
       (Faz 5B notu: **ölçülmedi**, muhtemelen bayat — `README.md` dashboard'un
       servisi doğrudan çağırdığını söylüyor ve `api_request` kaynakta yok.
-      Kapatmadan önce ayrı bir ölçüm gerekiyor.)
-- [ ] `config.py`'ın import anındaki yan etkisini kaldır (testler `.env`'i bozmasın)
-- [ ] LLM provider'ı `analysis_service` constructor'ından enjekte et
-- [ ] `docker-compose.yml`'ı tek servise indir; `API_URL` / paylaşılan `API_KEY` sorunu ortadan kalkar
+      Kapatmadan önce ayrı bir ölçüm gerekiyor.) **Ölçüldü (6E taraması,
+      2026-11-10):** `b541046` ("dashboard'daki HTTP katmanini kaldir");
+      bugün `src/` altında `api_request(` yalnız `ui/service.py`'nin bir
+      docstring'inde geçiyor ve `ui/` altında `requests`/`httpx`/`urllib`
+      import eden dosya 0.
+- [x] `config.py`'ın import anındaki yan etkisini kaldır (testler `.env`'i bozmasın) —
+      `824de72`
+- [x] LLM provider'ı `analysis_service` constructor'ından enjekte et —
+      `a5c3cfe`: `AnalysisService(..., llm: LLMProvider | None = None)`
+- [x] `docker-compose.yml`'ı tek servise indir; `API_URL` / paylaşılan `API_KEY` sorunu ortadan kalkar —
+      `7d614cd`: varsayılan `docker-compose up` yalnız `dashboard`'u başlatıyor;
+      `api` servisi `profiles: ["webhook"]` altında
 
 ### Faz 3 — Testler (tamamlandı)
 Kapsam bu bölümün ilk halinden dardı. Yapılanlar, yapılmayanlar ve nedenleri
@@ -438,6 +481,8 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
 
       363 → 440 test.
 - [ ] Renk sadece risk seviyesini kodlasın → 5B kapsamına alınmadı
+      *(6E taraması, 2026-11-10: açık. Yapıldığına dair kanıt yok ve sahibi
+      yok; Faz 7 mi, v1.1 mi, kullanıcı kararı bekliyor.)*
 - [x] `data/sample_bugs_en.json` (İngilizce demo için)
 
       Brifing "demo veri tamamen İngilizce" diyordu; ölçüm tersini gösterdi —
@@ -488,7 +533,14 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       açılış gerekmiyor. Seçiciye ayrıca yönlendirici bir `help` metni eklendi
       (moda göre iki cümle); daha önce hiç yoktu, yani vaat hiçbir kullanıcı
       yüzeyinde yazılı değildi. 440 → 445 test.
-- [ ] N+1 API çağrısı ve her render'daki `config.reload()` düzeltmesi
+- [x] N+1 API çağrısı ve her render'daki `config.reload()` düzeltmesi —
+      **ölçüldü (6E taraması, 2026-11-10)**, kaynak taramasıyla. `config.reload()`
+      `src/` altında yalnız iki yerde çağrılıyor: `ui/service.py:45`
+      (`save_multiple_env`) ve `api.py:167` (`/reload-config`). İkisi de render
+      yolunda değil. `ui/` altında HTTP istemcisi import eden dosya yok; HTTP
+      katmanı `b541046`'da kalktığı için N+1 API çağrısı da kalmadı.
+      `config.init()` `ui/shell.py:35`'te bir kez çağrılıyor ve
+      `_initialized` ile korunuyor (`config.py:788–790`).
 
       Faz 5B notu: **ölçülmedi**, muhtemelen bayat. `config.init()`
       `_initialized` bayrağıyla korunuyor (`config.py:295-319`) ve `reload()`
@@ -655,6 +707,12 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       force-push kapalı. İlk gerçek kullanım #68. Ayrıntı: `KNOWN-DEBT.md`,
       "Faz 6D-7 eki — K6".
 - [ ] `CONTRIBUTING.md`, issue şablonları
+      *(6E taraması, 2026-11-10: açık. `CONTRIBUTING.md` yarısı yapıldı —
+      #19, `354c12d` (2026-09-02). Issue şablonları bilerek yazılmadı; aynı
+      commit'in gövdesi: "ISSUE SABLONU YOK: sifir issue acilmis, 18 ogenin
+      hepsi PR". Kutunun
+      "yapılmayacak" diye mi kapanacağı, yoksa bir sahiple mi açık kalacağı
+      kullanıcı kararı bekliyor.)*
 
 ### Faz 6E — Doğrulama ve test borcu
 
@@ -670,11 +728,16 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
 - [ ] Bu dosyada işaretlenmemiş `[ ]` / `[~]` kutular — tamamlanmış fazlarda
       kalanlar dahil (2026-10-11'de Faz 0, 1, 2, 3, 5 ve 6'da var).
 - [ ] `KNOWN-DEBT.md`'de sahibi ya da tetikleyicisi olmayan satırlar.
-- [ ] `KNOWN-DEBT.md:1448`'in "ilk Dependabot PR'ı" tetikleyicisi çoktan
+- [x] `KNOWN-DEBT.md:1448`'in "ilk Dependabot PR'ı" tetikleyicisi çoktan
       çalışmış — #24'ten beri Dependabot PR'ları var — ama kayıt
       güncellenmemiş; tetikleyicisi çalışmış bir borç olarak ele alınır
       (denetleyici kararı, kullanıcı onaylı, 2026-10-15; 6D-3b-2c'de
-      görüldü).
+      görüldü). **Yapıldı (6E taraması, 2026-11-10).** Satır "ateşlendi
+      2026-09-08" notunu aldı. Kanıt: #24'ün head'inde "Analyze PR Risk"
+      `skipped`. Taramanın bulduğu öteki ateşlenmiş tetikleyiciler de aynı
+      commit'te işlendi: "ilk 'yeni bulgu' kırmızısı" satırı, dolaylı paket
+      satırının ikinci ateşleme işaretçisi, `save_multiple_env` `OSError`
+      satırı (K-E11) ve 6B'ye bağlı iki kayıt.
 - [ ] Depo genelinde "sahipsiz", "no phase owns" ve işaretsiz "Trigger:"
       ifadeleri.
 - [ ] Kullanıcının devir belgesindeki Faz 7 kuyruğunun her maddesinin depoda
@@ -684,34 +747,102 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       belgesi; denetleyici 2026-10-11'de aktardı). Tarama her maddenin depoda
       kaydı olup olmadığını ve sahibini belirler.
 
-      - [ ] `.gitattributes`
-      - [ ] `requirements-dev.txt`'in UTF-8 / cp1254 sorunu
-      - [ ] README'deki yerinde yükseltme adımı (CVE düzeltmesi getirmiyor)
-      - [ ] TLS mekanizmasının ayrışması (openai/httpx2 → işletim sistemi güven
-            deposu; groq/httpx → certifi)
-      - [ ] chromadb telemetrisi ("kazara kapalı" — 6E'nin b sorusuyla
-            bağlantılı)
-      - [ ] `module-map.json`'un genişliği (PR risk raporlarının çoğu "NOT
-            ASSESSED")
-      - [ ] kullanılmayan doğrudan pinler (numpy, pytest-cov)
-      - [ ] `.streamlit/config.toml` yorumu (6D-6b'de: kapanmış 6D-4a işinin
-            izi olduğu bulundu — taramada "kapandı" diye işaretlenebilir)
-      - [ ] masaüstü özelliğinin (`requirements-desktop.txt`, keyring) gerçek
-            ortamda doğrulanması
-      - [ ] README, CHANGELOG, v1.0.0, demo, temiz makinede "5 dakikada
+      *6E-1 taraması (2026-11-10).* Bir kutu "kaydı var" diye işaretlendiyse
+      maddenin kendisi bitmiş değildir; iş kayıttaki sahibinde sürer.
+
+      - [x] `.gitattributes` — kaydı: `KNOWN-DEBT.md`, "`.gitattributes` yok"
+            satırı; sahibi **Faz 7**
+      - [x] `requirements-dev.txt`'in UTF-8 / cp1254 sorunu — kaydı:
+            `KNOWN-DEBT.md`, "`requirements-dev.txt` UTF-8 olmayan yerelde"
+            satırı; sahibi **Faz 7**
+      - [x] README'deki yerinde yükseltme adımı (CVE düzeltmesi getirmiyor) —
+            kaydı: `KNOWN-DEBT.md`, "`README.md`'nin Development adımı" satırı;
+            sahibi **Faz 7**
+      - [x] TLS mekanizmasının ayrışması (openai/httpx2 → işletim sistemi güven
+            deposu; groq/httpx → certifi) — kaydı: `KNOWN-DEBT.md`, "httpx2
+            TLS'i işletim sistemi güven deposundan doğruluyor" bölümü; sahibi
+            **Faz 7**
+      - [x] chromadb telemetrisi ("kazara kapalı" — 6E'nin b sorusuyla
+            bağlantılı) — kaydı: aşağıda, Doğrulama soruları **b**; sahibi
+            **6E**
+      - [x] `module-map.json`'un genişliği (PR risk raporlarının çoğu "NOT
+            ASSESSED") — kaydı: `KNOWN-DEBT.md`, "Kapsamın iki katmanı var ve
+            boşluk ikisinde de" paragrafı ve tablo satırı. Satır kurala uygun:
+            tetikleyicisi "`module-map.json` bir daha genişletildiğinde".
+      - [x] kullanılmayan doğrudan pinler (numpy, pytest-cov) — iki ayrı kayıt:
+            - **numpy:** `src/` ve `tests/` altında import eden dosya 0
+              (2026-11-10). Kaydı yeni açıldı: `KNOWN-DEBT.md`, "Doğrudan
+              `numpy` pini — 6E-1 taraması" bölümü. Sahibi **Faz 7**
+              (temizlik).
+            - **pytest-cov:** kullanılmıyor değil, bilerek elle kullanılıyor.
+              Yukarıdaki Faz 3 bölümünde "Kapsam rozeti reddedildi, `pytest-cov`
+              kurulu, isteyen elle çalıştırır" kararı var. 6E keşfi 2026-11-09'da
+              onunla kapsam ölçtü.
+      - [x] `.streamlit/config.toml` yorumu (6D-6b'de: kapanmış 6D-4a işinin
+            izi olduğu bulundu — taramada "kapandı" diye işaretlenebilir) —
+            kaydı: `KNOWN-DEBT.md`, "Faz 6D-6 eki", gömülü CSS satırı; sahibi
+            **Faz 7**. Yoruma bu taramada dokunulmadı (kullanıcı kararı K-E8).
+      - [x] masaüstü özelliğinin (`requirements-desktop.txt`, keyring) gerçek
+            ortamda doğrulanması — kaydı: Faz 7, "`desktop` extra'sını bu
+            makineye kur" maddesi
+      - [x] README, CHANGELOG, v1.0.0, demo, temiz makinede "5 dakikada
             çalıştır", KNOWN-DEBT v1.1 gözden geçirmesi (ROADMAP Faz 7'de kaydı
-            var mı)
+            var mı) — var, hepsi Faz 7'de:
+            - "README sıfırdan"
+            - "`CHANGELOG.md` + `v1.0.0` git tag + GitHub Release"
+            - "Streamlit Cloud demo"
+            - Kalite kontrol listesindeki "Temiz bir makinede `pipx install`"
+            - v1.1 listesindeki "Faz 7'nin v1.1 değerlendirmesinden çıkacaklar"
 
       Denetleyici sohbetinde geçen sahipsiz küçük işler (2026-10-06 → 10-11):
 
-      - [ ] uzak `fix/secret-layer-i18n` dalı (#15'ten kalan, merge edilmiş)
+      - [x] uzak `fix/secret-layer-i18n` dalı (#15'ten kalan, merge edilmiş) —
+            Mustafa 2026-10-16'da sildi. 2026-11-10'da `git ls-remote origin`'de
+            yalnız `refs/heads/main` var.
       - [ ] Actions listesinde `active` görünen iki silinmiş ölçüm workflow'u
             (`olcum-pip-audit.yml`, `olcum-pip-audit-4d2.yml`) ve 6D-3b-1'in
             ekleyeceği üçüncüsü
-      - [ ] `%TEMP%`'teki eski `dra-*` klasörleri (conftest kum havuzu
-            temizliği ölçülecek)
-      - [ ] 6D-6c duman testindeki ayrıştırılamayan "-Infinity" konsol hatası
-            (kullanıcıda görülmedi)
+            *(6E-1 taraması, 2026-11-10: üçü de hâlâ `active` (GET
+            `actions/workflows`). Her birinde bir koşu var, hepsi `pull_request`
+            ve `success`:*
+            - *`olcum-pip-audit.yml`: 37003478350 (2026-10-02)*
+            - *`olcum-pip-audit-4d2.yml`: 37616218735 (2026-10-07)*
+            - *`olcum-6d3b-1.yml`: 38241498766 (2026-10-12)*
+
+            *Temizliği Mustafa GitHub arayüzünden yapacak (kullanıcı kararı
+            K-E10). Kutu 6E-5'te kapanır.)*
+      - [x] `%TEMP%`'teki eski `dra-*` klasörleri (conftest kum havuzu
+            temizliği ölçülecek) — **ölçüldü ve temizlendi (6E, 2026-11-10).**
+            - 2026-11-09'daki iki tam pytest koşusu yeni bir `dra-*` klasörü
+              bırakmadı; conftest kendi kum havuzunu temizliyor.
+            - Kalan 7 eski klasör tek tek silindi:
+              - `dra-tests-*` × 5 (2026-08-12 → 2026-10-06)
+              - `dra-wheel` ve `dra-wheel-control` (2026-08-29)
+            - Hepsi boştu; yalnız birinde boş bir `data/` alt klasörü vardı.
+            - Silmeden önce hiçbirini kullanan süreç yoktu. Silmeden sonra
+              `dra-*` sayısı 0.
+      - [x] 6D-6c duman testindeki ayrıştırılamayan "-Infinity" konsol hatası
+            (kullanıcıda görülmedi) — kaydı: `KNOWN-DEBT.md`, "Faz 6D-6 eki",
+            6D-6c bölümü, "Duman testinde ayrıştırılamayan bir gözlem". Borç
+            satırı bilerek açılmadı: hata yeniden üretilemedi.
+
+      *6E-1 taraması (2026-11-10), bu listenin dört üst kutusunun durumu.*
+      Hepsi tarandı ama işaretlenmedi:
+      - **İşaretsiz kutular.** Bitmiş fazlardaki 22 kutudan 15'i kanıtla
+        kapandı. Açık kalan 7'nin gerekçesi kutuların yanında. Üçü kullanıcı
+        kararı bekliyor: `__version__` / CLI, risk rengi, issue şablonları.
+      - **Sahipsiz KNOWN-DEBT satırları.**
+        - Tablolarda sahibi de tetikleyicisi de olmayan açık satır kalmadı.
+        - Düzyazıdaki sahipsiz kayıtlardan kurala uyanlar sahiplendi. Kurala
+          uymayan 9 kayda sahip yazılmadı; kullanıcı kararı bekliyor.
+      - **İfade taraması.** Depo genelinde "sahipsiz", "no phase owns" ve
+        işaretsiz "Trigger:" arandı. Tek işaretsiz "Trigger:"
+        `.streamlit/config.toml`'da; sahibi `KNOWN-DEBT.md`'deki gömülü CSS
+        satırında (Faz 7). Yoruma dokunulmadı. Öteki geçişler tarihsel
+        anlatım.
+      - **Kuyruk.** Her maddenin depoda kaydı var (yukarıda).
+
+      Bu dört kutu, kararlar işlenince en geç 6E-5'te işaretlenir.
 
 **Kapsam:**
 - [ ] Aşağıdaki **Doğrulama soruları** — her biri ölçülerek cevaplanır.
