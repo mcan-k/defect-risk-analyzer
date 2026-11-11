@@ -34,6 +34,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "2fa", "mfa", "two-factor", "iki faktör", "doğrulama", "dogrulama",
         "ldap", "authentication", "auth", "logout", "çıkış", "cikis",
         "brute force", "hesap kilitle", "account lock",
+        "authorization", "authenticate",
     ],
     "Payment": [
         "ödeme", "odeme", "payment", "kredi kartı", "kredi karti",
@@ -69,6 +70,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "grafik", "chart", "graph", "dashboard", "istatistik",
         "statistic", "analiz", "analysis", "filtre", "filter",
         "tarih aralığı", "date range", "timezone", "saat dilimi",
+        "filtreleme",
     ],
     "Notifications": [
         "bildirim", "notification", "push", "e-posta", "email",
@@ -84,6 +86,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "yavaş", "yavas", "slow", "performans", "performance",
         "hız", "hiz", "speed", "memory", "bellek", "cpu",
         "cache", "önbellek", "onbellek", "optimize", "lag",
+        "yavaşladı", "yavasladi", "slower",
     ],
     "Security": [
         "güvenlik", "guvenlik", "security", "xss", "csrf",

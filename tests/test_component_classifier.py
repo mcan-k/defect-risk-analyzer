@@ -54,19 +54,21 @@ SUBSTRING_COLLISIONS = {
 
 
 # Keyword counts per component, measured 2026-11-11 (218 in all, no keyword in
-# two components). The loop below reads the keywords from the module itself, so
-# without this a deleted keyword would simply drop out of the loop and nothing
-# would notice. Changing a list is a behaviour change: update this alongside it.
+# two components), then 224 after 6E-2 PR4 added six word forms (Authentication
+# +2, Reporting +1, Performance +3; each measured alone first). The loop below
+# reads the keywords from the module itself, so without this a deleted keyword
+# would simply drop out of the loop and nothing would notice. Changing a list is
+# a behaviour change: update this alongside it.
 KEYWORD_COUNTS = {
-    "Authentication": 28,
+    "Authentication": 30,
     "Payment": 28,
     "Frontend": 42,
     "Backend API": 22,
     "Database": 17,
-    "Reporting": 20,
+    "Reporting": 21,
     "Notifications": 15,
     "Inventory": 14,
-    "Performance": 16,
+    "Performance": 19,
     "Security": 16,
 }
 
@@ -242,6 +244,27 @@ def test_summary_and_description_are_read_together():
     still counts, and counts add up across both fields."""
     assert classify("Ekran donuyor", "veritabanı deadlock") == "Database"
     assert classify("login", "invoice invoice") == "Payment"
+
+
+# Word forms the inflection rule cannot reach from an existing keyword, added as
+# keywords of their own in 6E-2 PR4 (user decision S2(b)). The old substring
+# rule found them inside them ("filtre" in "filtreleme", "auth" in
+# "authorization", "slow" in "slower"); the word rule accepts only inflections,
+# not derivations, so without these each title below is "Genel". Each word was
+# measured alone before it went in: no corpus input it changed became wrong.
+DERIVED_FORMS = [
+    ("Filtreleme sonrası liste boş", "Reporting"),  # filtreleme
+    ("Uygulama çok yavaşladı", "Performance"),  # yavaşladı
+    ("Uygulama cok yavasladi", "Performance"),  # yavasladi
+    ("Authorization fails for admin users", "Authentication"),  # authorization
+    ("User cannot authenticate", "Authentication"),  # authenticate
+    ("Slower after update", "Performance"),  # slower
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), DERIVED_FORMS)
+def test_a_derived_form_added_as_a_keyword_classifies(summary, expected):
+    assert classify(summary) == expected
 
 
 @pytest.mark.parametrize(
