@@ -858,8 +858,11 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
 - [x] `component_classifier` testleri (yukarıda, Faz 3 maddesinin kalan
       yarısı). Yapıldı: 6E-2b, `7193e03` (2026-11-11). Kusurların düzeltmesi
       6E-2'nin 4. PR'ında, tam süreçle (kullanıcı kararı K-E3).
-- [ ] `save_multiple_env` yolunda `OSError`'ın UI'a ham traceback olarak
+- [x] `save_multiple_env` yolunda `OSError`'ın UI'a ham traceback olarak
       çıkması (`KNOWN-DEBT.md`, "`.env` yazıcısının 6A sonrası bıraktıkları").
+      Yapıldı: 6E-2 PR3, `1b25521` + `228d903` (2026-11-11; kullanıcı kararı
+      K-E4). Beş çağrı yeri `call()` sınırından geçiyor; kanıt AppTest ve
+      statik bekçi.
 
 #### Doğrulama soruları
 

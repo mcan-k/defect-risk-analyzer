@@ -7,7 +7,7 @@ import streamlit as st
 from defect_risk_analyzer import config
 from defect_risk_analyzer.ui.i18n import t
 from defect_risk_analyzer.ui.messages import format_secret_layer
-from defect_risk_analyzer.ui.service import get_service, save_multiple_env
+from defect_risk_analyzer.ui.service import call, get_service, save_multiple_env
 from defect_risk_analyzer.ui.shell import bootstrap
 
 bootstrap()
@@ -43,16 +43,19 @@ def render_settings():
                                  placeholder="AP", help=t("common.jira_project.help"))
 
     col1, col2 = st.columns(2)
+    # Every save goes through call(): a .env that cannot be written is reported
+    # on the page, and the success message and rerun run only after a real save
+    # (a rerun right after the error would wipe it off the screen).
     if col1.button(t("settings.jira.save"), use_container_width=True):
-        save_multiple_env({
+        if call(save_multiple_env, {
             "JIRA_URL": jira_url.rstrip("/"),
             "JIRA_EMAIL": jira_email,
             "JIRA_API_TOKEN": jira_token,
             "JIRA_PROJECT_KEY": jira_project,
-        })
-        st.success(t("settings.jira.saved"))
-        time.sleep(1)
-        st.rerun()
+        }):
+            st.success(t("settings.jira.saved"))
+            time.sleep(1)
+            st.rerun()
 
     if col2.button(t("settings.jira.test"), use_container_width=True):
         if all([jira_url, jira_email, jira_token]):
@@ -102,10 +105,10 @@ def render_settings():
             env_values["GROQ_API_KEY"] = llm_key
         else:
             env_values["OPENAI_API_KEY"] = llm_key
-        save_multiple_env(env_values)
-        st.success(t("settings.llm.saved"))
-        time.sleep(1)
-        st.rerun()
+        if call(save_multiple_env, env_values):
+            st.success(t("settings.llm.saved"))
+            time.sleep(1)
+            st.rerun()
 
     if col2.button(t("settings.llm.test"), use_container_width=True):
         if llm_key:
@@ -172,15 +175,15 @@ def render_settings():
     )
 
     if st.button(t("settings.app.save"), use_container_width=True):
-        save_multiple_env({
+        if call(save_multiple_env, {
             "MAX_DAILY_REQUESTS": str(max_daily),
             "GROQ_SLEEP": str(groq_sleep),
             "USE_MOCK_DATA": str(mock_mode),
             "ANONYMIZE_DATA": str(anonymize),
-        })
-        st.success(t("settings.app.saved"))
-        time.sleep(1)
-        st.rerun()
+        }):
+            st.success(t("settings.app.saved"))
+            time.sleep(1)
+            st.rerun()
 
     st.markdown("---")
 

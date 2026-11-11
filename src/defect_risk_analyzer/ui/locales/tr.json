@@ -90,6 +90,7 @@
   "common.openai_api_key": "OpenAI API Key",
   "common.provider": "Sağlayıcı",
   "error.llm": "⚠️ LLM hatası: {detail}",
+  "error.os": "⚠️ İşlem bir sistem hatası yüzünden tamamlanamadı (dosya izni, disk alanı ya da bağlantı). Ayrıntı uygulama günlüğünde.",
   "error.plain": "⚠️ {detail}",
   "error.quota": "⚠️ Kota doldu: {detail}",
   "error.unexpected": "⚠️ İşlem başarısız: {detail}",

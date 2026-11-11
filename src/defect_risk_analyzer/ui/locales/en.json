@@ -90,6 +90,7 @@
   "common.openai_api_key": "OpenAI API Key",
   "common.provider": "Provider",
   "error.llm": "⚠️ LLM error: {detail}",
+  "error.os": "⚠️ The operation could not be completed because of a system error (file permission, disk space or connection). Details are in the application log.",
   "error.plain": "⚠️ {detail}",
   "error.quota": "⚠️ Quota exhausted: {detail}",
   "error.unexpected": "⚠️ Operation failed: {detail}",
