@@ -86,6 +86,13 @@ def call(fn, *args, **kwargs):
         st.error(t("error.plain", detail=e))
     except ValueError as e:
         st.error(t("error.plain", detail=e))
+    except OSError:
+        # A file the app could not write (.env read-only, locked, disk full) or
+        # a system call that failed. The message deliberately carries no detail:
+        # an OSError's text usually names the path, and a path under the user's
+        # home directory is their account name. The log keeps the full story.
+        logger.exception("Service call %s failed", getattr(fn, "__name__", fn))
+        st.error(t("error.os"))
     except Exception as e:
         logger.exception("Service call %s failed", getattr(fn, "__name__", fn))
         st.error(t("error.unexpected", detail=e))
