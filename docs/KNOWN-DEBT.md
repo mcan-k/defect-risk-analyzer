@@ -3482,6 +3482,46 @@ kadar dokunulmuyor.
 
 ---
 
+## `JiraClient` kusurları — 6E-2 PR2 testleriyle belgelendi
+
+**Where:** [`jira_client.py`](../src/defect_risk_analyzer/jira_client.py)
+(`JiraClient.fetch_bugs`, `fetch_and_save`),
+testler: [`tests/test_jira_client.py`](../tests/test_jira_client.py)
+
+Canlı Jira yolunun ilk testleri 6E-2'nin 2. PR'ında yazıldı (`faa0901`,
+2026-11-11). Kapsam, tam pakette ve pytest-cov 7.1.0 ile ölçüldü:
+
+| `jira_client.py` | Satır | Dal |
+|---|---|---|
+| Önce (`c762a3d`, bu test dosyası hariç) | 101/171 (%59.1) | 48/66 (%72.7) |
+| Sonra | 171/171 (%100) | 66/66 (%100) |
+
+6E keşfinde (`0d4e3c6`) bu oran %17.5'ti. %59.1'in büyük kısmı 6E-2a'nın ADF
+testlerinden geliyor.
+
+**Nasıl sayfalıyor (kaynaktan).**
+- `POST /rest/api/3/search/jql`, gövdede `maxResults` (varsayılan 200) ve
+  ikinci sayfadan itibaren `nextPageToken`.
+- Döngü şu durumlarda biter: yanıt `isLast` diyorsa (alan yoksa doğru
+  sayılır), sonraki token yoksa, sayfa boşsa ya da `max_pages = 50`
+  dolduysa.
+- Sonuç: en çok 10.000 kayıt.
+- Bir sayfada `RequestException` (`raise_for_status`'un `HTTPError`'ı dahil)
+  döngüyü kırıyor ve o ana kadar gelen sayfalar dönüyor. Tekrar deneme yok,
+  çağırana sinyal yok.
+
+Testler K1 ve K2 için yalnız her düzeltmenin sağlaması gereken en küçük şartı
+doğruluyor: önceki `bugs.json` bayt bayt korunur. Çağrının dönmesi de
+fırlatması da kabul; yani düzeltmenin tasarımı dayatılmıyor.
+
+| Borç | İşaret |
+|---|---|
+| **K1 — Sonraki bir sayfa hata verince `bugs.json` kısmi listeyle eziliyor.** `fetch_bugs` hatayı yutup o ana kadarki sayfaları döndürüyor; `fetch_and_save` bunu tam bir sonuçtan ayıramıyor ve dosyanın üzerine yazıyor. Önceki tam veri kayboluyor. Kullanıcı yalnız log'da bir `ERROR` satırı görebilir | **6E** (6E-2'nin 5. PR'ı, tam süreç; kullanıcı kararı K-E5, 2026-11-11). Test: `test_a_failed_later_page_keeps_the_previous_bugs_file` (xfail strict) |
+| **K2 — İlk sayfa hata verince `bugs.json` `[]` oluyor.** Aynı yol: boş liste de "sonuç" sayılıyor ve yazılıyor. Ağ kesintisinde, süresi dolmuş bir token'da ya da 401'de önceki bütün veri siliniyor | **6E** (6E-2'nin 5. PR'ı, tam süreç; K-E5). Test: `test_a_failed_first_page_keeps_the_previous_bugs_file` (xfail strict) |
+| **K3 — 10.000 kayıt tavanına ulaşmak sessiz.** 50. sayfadan sonra döngü durur; yalnız "Fetched N bugs" INFO satırı yazılır. 10.000'den fazla bug'ı olan bir projede eski kayıtlar (sıra `created DESC`) uyarısız dışarıda kalır. Tavanın kendisi `test_paging_stops_after_fifty_pages` ile sabitlendi. **Sinyali test eden bir test YOK:** "çağırana ya da kullanıcıya bildirilir" şartı bir kanal seçmeden (uyarı log'u, dönüş değeri, istisna ya da arayüz uyarısı) test edilemiyor. Kanal 5. PR'ın tasarım sorusu | **6E** (6E-2'nin 5. PR'ı, tam süreç; K-E5). Tasarım sorusu kullanıcıya gidecek |
+
+---
+
 ## 6E keşfinde bulunan küçük test boşlukları
 
 **Where:** aşağıdaki modüller. Kaynak: 6E keşfinin kapsam ölçümü
@@ -3489,7 +3529,9 @@ kadar dokunulmuyor.
 yana `src/` değişmedi.
 
 Kullanıcı kararıyla (K-E5, 2026-11-11) JiraClient testleri 6E-2'nin 2.
-PR'ına alındı. Aşağıdakiler ise o PR'ların dışında kalan boşluklar; her biri
+PR'ına alındı ve yazıldı (`faa0901`; `jira_client.py` satır ve dalda %100;
+yukarıdaki "`JiraClient` kusurları" bölümü). Aşağıdakiler ise o PR'ların
+dışında kalan boşluklar; her biri
 bir test borcu. Sahipler K-E9 kuralıyla yazıldı (test borcu → 6E). Hangi
 6E paketinde kapanacakları 6E-5'e kadar belirlenir.
 
