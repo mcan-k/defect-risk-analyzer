@@ -23,8 +23,13 @@ from defect_risk_analyzer.ui.i18n import t
 logger = logging.getLogger(__name__)
 
 
-def save_multiple_env(values: dict[str, str]) -> None:
+def save_multiple_env(values: dict[str, str]) -> bool:
     """Save settings, and apply them to the running service.
+
+    Returns True, so a caller going through `call()` can tell a save from a
+    failure: `call()` returns None when it reports an error, and so did this
+    function on success. Every caller goes through `call()` (6E-2 PR3, K-E4);
+    tests/test_dashboard_pages.py holds that with a source-level guard.
 
     CREDENTIALS FOLLOW THE LAYER, everything else goes to `.env`. Without that
     split the first save after a migration would put the secret straight back
@@ -46,6 +51,7 @@ def save_multiple_env(values: dict[str, str]) -> None:
     # The service holds a provider built from the old credentials; drop it so
     # the next analysis picks up what was just saved.
     get_service().reset_llm()
+    return True
 
 @st.cache_resource(show_spinner="Analiz servisi hazırlanıyor...")
 def get_service() -> AnalysisService:

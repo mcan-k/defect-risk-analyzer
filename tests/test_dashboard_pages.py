@@ -926,6 +926,266 @@ def test_no_ui_module_writes_to_the_process_environment():
 
 
 # ---------------------------------------------------------------------------
+# 6E-2 PR3 (K-E4) — every settings save goes through the call() boundary
+# ---------------------------------------------------------------------------
+# The five places that write .env through save_multiple_env used to call it
+# directly, so a .env that could not be written (read-only, locked, disk full)
+# reached the user as a raw Streamlit traceback. They now go through
+# ui.service.call(), whose OSError branch shows a message instead. The guard
+# below keeps a sixth site from slipping back to a direct call; the AppTest
+# walks prove the message on the page, and that a successful save still ends
+# the way it did (success message, rerun, the wizard's connection tests).
+
+#: How many call(save_multiple_env, …) sites each file has. Pinned, so the
+#: guard cannot pass by finding nothing — moving or adding a site is a
+#: deliberate edit here.
+SAVE_SITES = {"ui/pages/ayarlar.py": 3, "ui/setup_wizard.py": 2}
+
+_TR = json.loads(
+    (Path(config.__file__).resolve().parent / "ui" / "locales" / "tr.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+def _is_named(node: ast.AST, name: str) -> bool:
+    if isinstance(node, ast.Name):
+        return node.id == name
+    return isinstance(node, ast.Attribute) and node.attr == name
+
+
+def _save_calls(tree: ast.AST) -> tuple[int, list[str]]:
+    """(sites wrapped in call(), every other use of save_multiple_env).
+
+    Only names count, not strings: the def, the imports and the docstrings
+    that mention it are not uses. Any other reference — a direct call, an
+    attribute call, an alias that could be called later — is an offender.
+    """
+    wrapped = 0
+    allowed: set[int] = set()
+    for node in ast.walk(tree):
+        if (
+            isinstance(node, ast.Call)
+            and _is_named(node.func, "call")
+            and node.args
+            and _is_named(node.args[0], "save_multiple_env")
+        ):
+            wrapped += 1
+            allowed.add(id(node.args[0]))
+
+    offenders = sorted(
+        (node.lineno, f"line {node.lineno}: save_multiple_env used outside call()")
+        for node in ast.walk(tree)
+        if _is_named(node, "save_multiple_env") and id(node) not in allowed
+    )
+    return wrapped, [message for _, message in offenders]
+
+
+def test_every_save_multiple_env_call_goes_through_call():
+    package_root = Path(config.__file__).resolve().parent
+
+    wrapped_by_file = {}
+    offenders = {}
+    for path in sorted(package_root.rglob("*.py")):
+        wrapped, direct = _save_calls(ast.parse(path.read_text(encoding="utf-8")))
+        relative = path.relative_to(package_root).as_posix()
+        if wrapped:
+            wrapped_by_file[relative] = wrapped
+        if direct:
+            offenders[relative] = direct
+
+    assert not offenders, f"save_multiple_env reached around call(): {offenders}"
+    assert wrapped_by_file == SAVE_SITES
+
+
+def test_the_save_guard_flags_every_unwrapped_use():
+    source = (
+        "call(save_multiple_env, {'A': '1'})\n"
+        "save_multiple_env({'B': '2'})\n"
+        "service.save_multiple_env({'C': '3'})\n"
+        "fn = save_multiple_env\n"
+        "ui_service.call(ui_service.save_multiple_env, {'D': '4'})\n"
+    )
+
+    wrapped, offenders = _save_calls(ast.parse(source))
+
+    assert wrapped == 2
+    assert [o.split(":")[0] for o in offenders] == ["line 2", "line 3", "line 4"]
+
+
+def _unwritable_env(key, value):
+    raise PermissionError(13, "Permission denied", str(config.ENV_FILE))
+
+
+def _on_screen(key: str) -> str:
+    """A message as AppTest reports it: Streamlit moves a leading emoji to the
+    element's icon, so the body comes back without the "⚠️ " the catalog has."""
+    return _TR[key].removeprefix("⚠️ ")
+
+
+def _record_success(monkeypatch) -> list[str]:
+    """Every st.success body, passed through to the real call.
+
+    Needed because a successful save ends in st.rerun(), and the tree AppTest
+    returns after a rerun holds only the final run — measured: the wizard's
+    "Kurulum tamamlandı" is not in at.success afterwards. Recording the call is
+    the only way to see that the success branch ran.
+    """
+    import streamlit
+
+    bodies: list[str] = []
+    original = streamlit.success
+
+    def recording(body, *args, **kwargs):
+        bodies.append(body)
+        return original(body, *args, **kwargs)
+
+    monkeypatch.setattr(streamlit, "success", recording)
+    return bodies
+
+
+def _stub_connection_tests(monkeypatch) -> list[str]:
+    """Replace the wizard's two connection tests; return the calls they get."""
+    from defect_risk_analyzer import jira_client, llm_provider
+
+    calls: list[str] = []
+
+    class _Client:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def test_connection(self):
+            calls.append("jira")
+            return True
+
+    class _Llm:
+        def test_connection(self):
+            calls.append("llm")
+            return True
+
+    monkeypatch.setattr(jira_client, "JiraClient", _Client)
+    monkeypatch.setattr(llm_provider, "create_llm_provider", lambda *a, **k: _Llm())
+    return calls
+
+
+def _button(at: AppTest, label: str):
+    found = [b for b in at.button if b.label == label]
+    assert found, f"button {label!r} missing: {[b.label for b in at.button]}"
+    return found[0]
+
+
+def _type(at: AppTest, label: str, value: str) -> None:
+    found = [box for box in at.text_input if box.label == label]
+    assert found, f"text input {label!r} missing: {[b.label for b in at.text_input]}"
+    found[0].set_value(value)
+
+
+def _fill_live_wizard(at: AppTest) -> None:
+    at.radio[0].set_value(_TR["wizard.mode.live"]).run()
+    _type(at, _TR["common.groq_api_key"], "dummy-key-not-a-real-credential")
+    _type(at, _TR["common.jira_url"], "https://example.atlassian.net")
+    _type(at, _TR["common.jira_email"], "tests@example.com")
+    _type(at, _TR["common.jira_token"], "dummy-token-not-a-real-credential")
+    _type(at, _TR["common.jira_project"], "TEST")
+
+
+def _nothing(at: AppTest) -> None:
+    pass
+
+
+# (id, env fixture, script, prepare, save button key, success message key)
+_SAVES = [
+    ("settings-jira", "restorable_env", "pages/ayarlar.py", _nothing,
+     "settings.jira.save", "settings.jira.saved"),
+    ("settings-llm", "restorable_env", "pages/ayarlar.py", _nothing,
+     "settings.llm.save", "settings.llm.saved"),
+    ("settings-app", "restorable_env", "pages/ayarlar.py", _nothing,
+     "settings.app.save", "settings.app.saved"),
+    ("wizard-demo", "unconfigured", "app.py", _nothing,
+     "wizard.demo.button", "wizard.demo.saved"),
+    ("wizard-live", "unconfigured", "app.py", _fill_live_wizard,
+     "wizard.save", "wizard.done"),
+]
+
+
+@pytest.mark.parametrize(
+    "env_fixture,script,prepare,button,saved",
+    [case[1:] for case in _SAVES],
+    ids=[case[0] for case in _SAVES],
+)
+def test_a_save_that_cannot_write_env_shows_the_error_and_raises_nothing(
+    env_fixture, script, prepare, button, saved, request, monkeypatch
+):
+    request.getfixturevalue(env_fixture)
+    calls = _stub_connection_tests(monkeypatch)
+    at = _open(script)
+    prepare(at)
+    before = config.ENV_FILE.read_bytes()
+
+    monkeypatch.setattr(config, "set_env_value", _unwritable_env)
+    successes = _record_success(monkeypatch)
+    _button(at, _TR[button]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _on_screen("error.os") in [e.value for e in at.error]
+    assert _TR[saved] not in successes
+    assert config.ENV_FILE.read_bytes() == before
+    # The wizard stops at the failed save: no connection tests behind it.
+    assert _TR["wizard.testing"] not in [e.value for e in at.info]
+    assert calls == []
+
+
+# (id, save button key, success message key, edit, the .env line it must write)
+_SETTINGS_EDITS = [
+    ("jira", "settings.jira.save", "settings.jira.saved",
+     lambda at: _type(at, _TR["common.jira_project"], "YENI"), "JIRA_PROJECT_KEY=YENI"),
+    ("llm", "settings.llm.save", "settings.llm.saved",
+     lambda at: _type(at, _TR["common.groq_api_key"], "dummy-new-key-not-a-real-credential"),
+     "GROQ_API_KEY=dummy-new-key-not-a-real-credential"),
+    ("app", "settings.app.save", "settings.app.saved",
+     lambda at: [n for n in at.number_input if n.label == _TR["settings.max_daily"]][0]
+     .set_value(77),
+     "MAX_DAILY_REQUESTS=77"),
+]
+
+
+@pytest.mark.parametrize(
+    "button,saved,edit,line",
+    [case[1:] for case in _SETTINGS_EDITS],
+    ids=[case[0] for case in _SETTINGS_EDITS],
+)
+def test_a_settings_save_still_writes_and_confirms(
+    button, saved, edit, line, restorable_env, monkeypatch
+):
+    at = _open("pages/ayarlar.py")
+    edit(at)
+    successes = _record_success(monkeypatch)
+
+    _button(at, _TR[button]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert line in config.ENV_FILE.read_text(encoding="utf-8")
+    assert _TR[saved] in successes
+    assert _on_screen("error.os") not in [e.value for e in at.error]
+
+
+def test_the_wizard_live_save_still_writes_and_tests_both_connections(unconfigured, monkeypatch):
+    calls = _stub_connection_tests(monkeypatch)
+    at = _open()
+    _fill_live_wizard(at)
+    successes = _record_success(monkeypatch)
+
+    _button(at, _TR["wizard.save"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    env = config.ENV_FILE.read_text(encoding="utf-8")
+    for line in ("LLM_PROVIDER=groq", "USE_MOCK_DATA=False", "JIRA_PROJECT_KEY=TEST"):
+        assert line in env
+    assert calls == ["jira", "llm"]
+    assert _TR["wizard.done"] in successes
+
+
+# ---------------------------------------------------------------------------
 # Faz 6B — the credential migration, and its notice sharing a boot with D4's
 # ---------------------------------------------------------------------------
 

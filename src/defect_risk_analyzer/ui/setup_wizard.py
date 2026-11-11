@@ -12,7 +12,7 @@ import streamlit as st
 
 from defect_risk_analyzer.ui import language
 from defect_risk_analyzer.ui.i18n import t
-from defect_risk_analyzer.ui.service import save_multiple_env
+from defect_risk_analyzer.ui.service import call, save_multiple_env
 
 
 def render_setup_wizard():
@@ -50,10 +50,12 @@ def render_setup_wizard():
     if mode == demo_label:
         st.info(t("wizard.demo.info"))
         if st.button(t("wizard.demo.button"), type="primary", use_container_width=True):
-            save_multiple_env({"USE_MOCK_DATA": "True"})
-            st.success(t("wizard.demo.saved"))
-            time.sleep(1)
-            st.rerun()
+            # Through call(), like every save: an unwritable .env is reported
+            # here instead of as a traceback, and only a real save reruns.
+            if call(save_multiple_env, {"USE_MOCK_DATA": "True"}):
+                st.success(t("wizard.demo.saved"))
+                time.sleep(1)
+                st.rerun()
         return
 
     # Step 2: LLM Provider
@@ -137,7 +139,10 @@ def render_setup_wizard():
         else:
             env_values["OPENAI_API_KEY"] = llm_key
 
-        save_multiple_env(env_values)
+        # A failed save stops here with the error on screen — the connection
+        # tests and the rerun below would only bury it.
+        if not call(save_multiple_env, env_values):
+            return
 
         # Test connections
         st.info(t("wizard.testing"))
