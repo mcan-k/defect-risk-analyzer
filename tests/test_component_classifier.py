@@ -60,17 +60,19 @@ SUBSTRING_COLLISIONS = {
 
 # Keyword counts per component, measured 2026-11-11 (218 in all, no keyword in
 # two components), then 224 after 6E-2 PR4 added six word forms (Authentication
-# +2, Reporting +1, Performance +3; each measured alone first). The loop below
+# +2, Reporting +1, Performance +3; each measured alone first), then 227 after
+# 6E-2 PR4b added the last three ASCII spellings (Authentication, Database,
+# Reporting +1 each). Verb stems live apart and are pinned at the end. The loop below
 # reads the keywords from the module itself, so without this a deleted keyword
 # would simply drop out of the loop and nothing would notice. Changing a list is
 # a behaviour change: update this alongside it.
 KEYWORD_COUNTS = {
-    "Authentication": 30,
+    "Authentication": 31,
     "Payment": 28,
     "Frontend": 42,
     "Backend API": 22,
-    "Database": 17,
-    "Reporting": 21,
+    "Database": 18,
+    "Reporting": 22,
     "Notifications": 15,
     "Inventory": 14,
     "Performance": 19,
@@ -269,6 +271,24 @@ DERIVED_FORMS = [
 
 @pytest.mark.parametrize(("summary", "expected"), DERIVED_FORMS)
 def test_a_derived_form_added_as_a_keyword_classifies(summary, expected):
+    assert classify(summary) == expected
+
+
+# Every Turkish keyword with a letter other than ı/İ has an ASCII spelling in its
+# list; these three had none until 6E-2 PR4b, so typed without Turkish letters
+# each title below was "Genel". The two-word phrase must be whole: half of it
+# is nothing.
+ASCII_SPELLINGS = [
+    ("Iki faktor kodu gelmiyor", "Authentication"),  # iki faktör
+    ("Baglanti havuzu doldu", "Database"),  # bağlantı havuzu
+    ("TARIH ARALIGI SECILEMIYOR", "Reporting"),  # tarih aralığı
+    ("Baglanti koptu", "Genel"),
+    ("Tarih alani bos", "Genel"),
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), ASCII_SPELLINGS)
+def test_the_last_three_ascii_spellings(summary, expected):
     assert classify(summary) == expected
 
 

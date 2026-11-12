@@ -36,6 +36,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "ldap", "authentication", "auth", "logout", "çıkış", "cikis",
         "brute force", "hesap kilitle", "account lock",
         "authorization", "authenticate",
+        "iki faktor",
     ],
     "Payment": [
         "ödeme", "odeme", "payment", "kredi kartı", "kredi karti",
@@ -65,6 +66,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "migration", "index", "tablo", "table", "kayıt", "kayit",
         "record", "transaction", "deadlock", "race condition",
         "connection pool", "bağlantı havuzu",
+        "baglanti havuzu",
     ],
     "Reporting": [
         "rapor", "report", "export", "excel", "csv", "pdf",
@@ -72,6 +74,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "statistic", "analiz", "analysis", "filtre", "filter",
         "tarih aralığı", "date range", "timezone", "saat dilimi",
         "filtreleme",
+        "tarih araligi",
     ],
     "Notifications": [
         "bildirim", "notification", "push", "e-posta", "email",
