@@ -179,6 +179,9 @@ sahiplendirildi** (gerekçeleri `KNOWN-DEBT.md`'de):
       `tests/test_component_classifier.py`'de 38 test var; 9'u bilinen kusur
       olarak xfail(strict=True). Kusurlar `KNOWN-DEBT.md`'de,
       "`component_classifier` kusurları" bölümünde.
+      *6E-2 PR4 (2026-11-11):* 9 kusur düzeltildi (`7f47a81`, `6b91f99`);
+      dosyada 104 test, xfail yok. Kalan bilinen sınırlar aynı bölümde
+      (sahibi v1.1).
 
       *Not (2026-10-11):* `pattern_detector` yarısı karşılandı —
       `tests/test_pattern_detector.py` 2026-08-22'den beri var (`f7c33f7`)
