@@ -23,10 +23,15 @@ component's keyword ("performans" contains "form") — were fixed in 6E-2 PR4
 and are plain tests now. The guards at the end of the file were written before
 that fix and were green on the old rule too: what was right must stay right.
 The new rule's known limits: KNOWN-DEBT.md, 'component_classifier kusurları'.
+
+VERB STEMS (6E-2 PR4b). The word rule cannot reach a verb made from a keyword
+("yavaşlıyor" from "yavaş"); VERB_STEMS adds narrow word-start prefixes for
+those, used only in words no keyword matched. Their tests are at the end.
 """
 
 import pytest
 
+import defect_risk_analyzer.component_classifier as cc
 from defect_risk_analyzer.component_classifier import (
     COMPONENT_KEYWORDS,
     classify_bugs,
@@ -423,3 +428,107 @@ def test_sample_data_classifies_as_labelled(file_name, mismatches):
         if classify_component(bug) != bug["component"]
     }
     assert got == mismatches
+
+
+# --- verb stems (6E-2 PR4b) ----------------------------------------------------------
+#
+# The word rule accepts inflections only, so a verb made from a keyword
+# ("yavaşla-" from "yavaş") is "Genel" under it. The old substring rule found
+# the keyword inside the verb: "Uygulama yavaşlıyor" and "Liste filtrelenmiyor"
+# were right before 6E-2 PR4 and "Genel" after it (measured). VERB_STEMS fixes
+# that with narrow word-start prefixes, each measured alone first: it rescued
+# at least one input the old rule got right, and changed nothing else on the
+# discovery corpora or the full suite (user decision, 2026-11-11).
+
+# The table, pinned. A stem is a prefix, so every one is a deliberate, measured
+# choice; adding, widening or dropping one is a behaviour change — measure it,
+# then update this.
+VERB_STEMS_MEASURED = {
+    "Authentication": ["authoriz"],
+    "Payment": ["faturala"],
+    "Frontend": ["sayfala"],
+    "Reporting": ["filtrele", "filtreliyor", "raporla", "raporluyor"],
+    "Notifications": ["mesajlaş", "mesajlas", "uyarıl"],
+    "Inventory": ["stokla", "transferre", "transferring"],
+    "Performance": ["yavaşl", "yavasl", "önbellekl", "onbellekl"],
+}
+
+
+def test_verb_stems_are_the_measured_ones():
+    assert cc.VERB_STEMS == VERB_STEMS_MEASURED
+
+
+@pytest.mark.parametrize("component", list(VERB_STEMS_MEASURED))
+def test_every_verb_stem_classifies_to_its_component(component):
+    """Each stem, as the whole summary, is a word that starts with itself."""
+    wrong = {
+        stem: classify(stem)
+        for stem in cc.VERB_STEMS[component]
+        if classify(stem) != component
+    }
+    assert wrong == {}
+
+
+# One verb form per stem; each was "Genel" before VERB_STEMS.
+VERB_FORMS = [
+    ("User is not authorized", "Authentication"),  # authoriz
+    ("Siparişler faturalanmadı", "Payment"),  # faturala
+    ("Sonuçlar sayfalanmıyor", "Frontend"),  # sayfala
+    ("Liste filtrelenmiyor", "Reporting"),  # filtrele
+    ("LİSTE FİLTRELENMİYOR", "Reporting"),  # filtrele, Turkish capitals
+    ("Arama sonuçları yanlış filtreliyor", "Reporting"),  # filtreliyor
+    ("Satışlar raporlanmıyor", "Reporting"),  # raporla
+    ("Aylık satışları raporluyor ama toplam yanlış", "Reporting"),  # raporluyor
+    ("Mesajlaşma ekranı donuyor", "Notifications"),  # mesajlaş
+    ("Kullanicilar mesajlasamiyor", "Notifications"),  # mesajlas
+    ("Kullanıcı uyarılmadı", "Notifications"),  # uyarıl (ı folds: also "uyarilmadi")
+    ("Stoklama yapılamıyor", "Inventory"),  # stokla
+    ("Items transferred twice", "Inventory"),  # transferre
+    ("Transferring goods hangs", "Inventory"),  # transferring
+    ("Uygulama yavaşlıyor", "Performance"),  # yavaşl
+    ("Sistem yavaslamis", "Performance"),  # yavasl
+    ("Sonuçlar önbelleklenmiyor", "Performance"),  # önbellekl
+    ("Onbellekleme kapali kaliyor", "Performance"),  # onbellekl
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), VERB_FORMS)
+def test_a_verb_made_from_a_keyword_classifies(summary, expected):
+    assert classify(summary) == expected
+
+
+# Words that share the start of a stem — or would, were the stem one letter
+# shorter — and are not that verb. Each is today's answer, and a wider or
+# unanchored stem would change it.
+VERB_STEM_TRAPS = [
+    ("Animasyon yavaşça kayboluyor", "Genel"),  # yavaş+ça, an adverb: the stem is "yavaşl"
+    ("Mikrofiltreleme ünitesi arızalı", "Genel"),  # a stem starts a word, never inside one
+    ("Filtreli kahve makinesi siparişi", "Genel"),  # filtre+li, an adjective: not "filtrel"
+    ("Raporlu personel listesi açılmıyor", "Genel"),  # raporlu = on sick leave: not "raporl"
+    ("Faturalı hatlarda arama kesiliyor", "Genel"),  # faturalı hat = postpaid line
+    ("Sayfalık rapor eksik çıkıyor", "Reporting"),  # sayfa+lık: not "sayfal"
+    ("Uyarıcı ilaç listesi eksik", "Genel"),  # uyarıcı = stimulant: not "uyarı"
+    ("Authority certificate expired", "Security"),  # authority: not "author"
+    ("Authorship field is empty", "Genel"),
+    ("Transferrin value missing in lab results", "Genel"),  # a protein: not "transferr"
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), VERB_STEM_TRAPS)
+def test_a_word_sharing_a_stems_start_is_not_that_verb(summary, expected):
+    assert classify(summary) == expected
+
+
+def test_a_word_a_keyword_matched_is_not_counted_again_by_a_stem():
+    """"raporlarda" is "rapor" + inflection — a keyword match — and also starts
+    with the stem "raporla". Counted once, Reporting 1 ties Payment 1 (ödeme)
+    and Payment, listed first, wins. Counted twice, Reporting would win 2–1."""
+    assert classify("Ödeme raporlarda eksik") == "Payment"
+
+
+def test_a_stem_of_a_component_without_keywords_is_ignored(monkeypatch):
+    """Stems are walked in COMPONENT_KEYWORDS order, so a stem filed under a
+    component that has no keywords scores nothing — rather than a score the
+    tie-break never sees, which would leave max() an empty sequence."""
+    monkeypatch.setitem(cc.VERB_STEMS, "Nowhere", ["zzyzx"])
+    assert classify("zzyzxing fails") == "Genel"
