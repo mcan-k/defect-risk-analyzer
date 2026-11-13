@@ -26,7 +26,8 @@ The new rule's known limits: KNOWN-DEBT.md, 'component_classifier kusurları'.
 
 VERB STEMS (6E-2 PR4b). The word rule cannot reach a verb made from a keyword
 ("yavaşlıyor" from "yavaş"); VERB_STEMS adds narrow word-start prefixes for
-those, used only in words no keyword matched. Their tests are at the end.
+those, used only in words no keyword matched. Their tests are at the end,
+followed by those of four non-verb derivations added as keywords (6E-2 PR4c).
 """
 
 import pytest
@@ -62,20 +63,21 @@ SUBSTRING_COLLISIONS = {
 # two components), then 224 after 6E-2 PR4 added six word forms (Authentication
 # +2, Reporting +1, Performance +3; each measured alone first), then 227 after
 # 6E-2 PR4b added the last three ASCII spellings (Authentication, Database,
-# Reporting +1 each). Verb stems live apart and are pinned at the end. The loop below
+# Reporting +1 each), then 233 after 6E-2 PR4c added six derived words (Payment
+# +4, Reporting +1, Performance +1). Verb stems live apart and are pinned at the end. The loop below
 # reads the keywords from the module itself, so without this a deleted keyword
 # would simply drop out of the loop and nothing would notice. Changing a list is
 # a behaviour change: update this alongside it.
 KEYWORD_COUNTS = {
     "Authentication": 31,
-    "Payment": 28,
+    "Payment": 32,
     "Frontend": 42,
     "Backend API": 22,
     "Database": 18,
-    "Reporting": 22,
+    "Reporting": 23,
     "Notifications": 15,
     "Inventory": 14,
-    "Performance": 19,
+    "Performance": 20,
     "Security": 16,
 }
 
@@ -552,3 +554,76 @@ def test_a_stem_of_a_component_without_keywords_is_ignored(monkeypatch):
     tie-break never sees, which would leave max() an empty sequence."""
     monkeypatch.setitem(cc.VERB_STEMS, "Nowhere", ["zzyzx"])
     assert classify("zzyzxing fails") == "Genel"
+
+
+# --- non-verb derivations (6E-2 PR4c) ------------------------------------------------
+
+# The last of the measured regression: four words made from a keyword by a
+# derivational suffix that is not a verb — banka+cılık, grafik+sel, ödeme+li,
+# slow+ly. The old substring rule found the keyword inside each and was right;
+# the word rule left them "Genel" (6E-2 PR4b discovery corpus, 15 checks). Each
+# is a keyword of its own now, measured alone first: it rescued its titles and
+# broke no unrelated word (user decision, 2026-11-12: the whole regression is
+# fixed, not left to v1.1). "bankacılık" and "bankacilik" fold to the same
+# word; the ASCII copy follows the lists' convention. A keyword cannot tell two
+# senses of one word apart — "ödemeli arama" (a collect call), "slowly changing
+# dimension" — so those two land where the old rule put them: a known limit in
+# KNOWN-DEBT.md, deliberately without a test that would pin a wrong answer.
+NON_VERB_DERIVATIONS = [
+    ("Bankacılık modülü hata veriyor", "Payment"),
+    ("BANKACILIK MODÜLÜ HATA VERİYOR", "Payment"),
+    ("Bankacilik modulu hata veriyor", "Payment"),
+    ("Grafiksel gösterim bozuk", "Reporting"),
+    ("GRAFİKSEL GÖSTERİM BOZUK", "Reporting"),  # "Genel" under the old rule too (İ)
+    ("Ödemeli siparişler iptal oluyor", "Payment"),
+    ("ÖDEMELİ SİPARİŞLER İPTAL OLUYOR", "Payment"),
+    ("Odemeli siparisler iptal oluyor", "Payment"),  # odemeli
+    ("App responds slowly", "Performance"),
+    ("APP RESPONDS SLOWLY", "Performance"),
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), NON_VERB_DERIVATIONS)
+def test_a_non_verb_derivation_added_as_a_keyword_classifies(summary, expected):
+    assert classify(summary) == expected
+
+
+# Titles that are not in the measured corpus: the words in other sentences.
+# "Grafiksel rapor" was right before ("rapor") and stays right; the others
+# were "Genel". ("Page loads slowly" is not here: "page" is Frontend's, and a
+# 1–1 tie goes to Frontend — under the old rule as well.)
+NON_VERB_DERIVATIONS_ELSEWHERE = [
+    ("Kapıda ödemeli seçeneği görünmüyor", "Payment"),
+    ("Kapida odemeli secenegi gorunmuyor", "Payment"),
+    ("Bankacılık entegrasyonu zaman aşımına düşüyor", "Payment"),
+    ("Search results load slowly", "Performance"),
+    ("Grafiksel rapor boş geliyor", "Reporting"),
+    ("Grafiksel özet ekranı açılmıyor", "Reporting"),
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), NON_VERB_DERIVATIONS_ELSEWHERE)
+def test_a_non_verb_derivation_classifies_in_another_title(summary, expected):
+    assert classify(summary) == expected
+
+
+# Words that start like one of the four and are not it. Each is today's
+# answer; a keyword read as a prefix would change it.
+NON_VERB_DERIVATION_TRAPS = [
+    ("Bankacı rolü atanamıyor", "Genel"),  # bankacı: not bankacılık
+    ("İnternet bankacılığı şifresi sıfırlanmıyor", "Authentication"),  # k→ğ: not reached
+    ("Grafiker rolü eklenemiyor", "Genel"),  # grafiker: not grafiksel
+    ("Ödemelerim görünmüyor", "Payment"),  # ödeme+ler+im, the keyword "ödeme"
+]
+
+
+@pytest.mark.parametrize(("summary", "expected"), NON_VERB_DERIVATION_TRAPS)
+def test_a_word_starting_like_a_derivation_is_not_it(summary, expected):
+    assert classify(summary) == expected
+
+
+def test_slowloris_is_not_slowly():
+    """A denial-of-service attack, so Security — but no Security keyword is in
+    the title, so today it is "Genel". Asserted as "not Performance" to keep
+    "slowly" whole-word without pinning that "Genel"."""
+    assert classify("Slowloris attack drops connections") != "Performance"
