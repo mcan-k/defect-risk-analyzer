@@ -26,6 +26,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from defect_risk_analyzer.jira_client import JiraFetchError
 from defect_risk_analyzer.llm_provider import LLMError, RateLimitError
 from defect_risk_analyzer.services.analysis_service import BugNotFoundError
 from defect_risk_analyzer.ui import i18n
@@ -138,6 +139,36 @@ def test_an_oserror_is_reported_without_its_text_and_logged(shown, caplog, exc):
     assert "save_settings" in caplog.text
     assert str(exc) in caplog.text
     assert caplog.records[-1].exc_info is not None
+
+
+def test_a_failed_jira_fetch_says_the_data_was_kept_and_is_logged(shown, caplog):
+    """6E-2 PR5 (K1/K2): its own message, not the disk-error one. JiraFetchError
+    is not an OSError on purpose — the request error it chains is."""
+    exc = JiraFetchError(2)
+
+    def refresh():
+        raise exc
+
+    with caplog.at_level(logging.ERROR, logger=ui_service.__name__):
+        result = ui_service.call(refresh)
+
+    assert result is None
+    assert shown == [t("error.jira_fetch")]
+    assert str(exc) not in shown[0]
+    assert "refresh" in caplog.text
+    assert str(exc) in caplog.text
+    assert caplog.records[-1].exc_info is not None
+
+
+@pytest.mark.parametrize("language", ["tr", "en"])
+def test_the_jira_fetch_message_has_no_placeholder(language):
+    """No `{detail}`: the request error behind it can name the Jira host."""
+    catalog = json.loads((LOCALES / f"{language}.json").read_text(encoding="utf-8"))
+
+    message = catalog["error.jira_fetch"]
+
+    assert message.strip()
+    assert "{" not in message and "}" not in message
 
 
 @pytest.mark.parametrize("language", ["tr", "en"])
