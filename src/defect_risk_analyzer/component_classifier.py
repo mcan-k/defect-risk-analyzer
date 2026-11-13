@@ -23,9 +23,10 @@ logger = logging.getLogger(__name__)
 # same letter. A keyword matches as a whole word, optionally followed by ONE
 # inflection — a Turkish suffix chain ("girişte", "ödemede", "ürünlerin") or an
 # English -s/-es/-d/-ed/-ing ("payments") — and never inside another word
-# ("Author" is not "auth", "Parametre" is not "para"). Each match scores one
-# point; the highest-scoring component wins, and a tie goes to the component
-# listed first. Turkish and English keywords are both included.
+# ("Author" is not "auth", "Parametre" is not "para"). A verb made from a
+# keyword ("yavaşlıyor") is reached through VERB_STEMS below. Each match
+# scores one point; the highest-scoring component wins, and a tie goes to the
+# component listed first. Turkish and English keywords are both included.
 
 COMPONENT_KEYWORDS: dict[str, list[str]] = {
     "Authentication": [
@@ -35,6 +36,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "ldap", "authentication", "auth", "logout", "çıkış", "cikis",
         "brute force", "hesap kilitle", "account lock",
         "authorization", "authenticate",
+        "iki faktor",
     ],
     "Payment": [
         "ödeme", "odeme", "payment", "kredi kartı", "kredi karti",
@@ -64,6 +66,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "migration", "index", "tablo", "table", "kayıt", "kayit",
         "record", "transaction", "deadlock", "race condition",
         "connection pool", "bağlantı havuzu",
+        "baglanti havuzu",
     ],
     "Reporting": [
         "rapor", "report", "export", "excel", "csv", "pdf",
@@ -71,6 +74,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "statistic", "analiz", "analysis", "filtre", "filter",
         "tarih aralığı", "date range", "timezone", "saat dilimi",
         "filtreleme",
+        "tarih araligi",
     ],
     "Notifications": [
         "bildirim", "notification", "push", "e-posta", "email",
@@ -94,6 +98,27 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "encryption", "şifreleme", "sifreleme", "ssl", "tls",
         "certificate", "sertifika",
     ],
+}
+
+
+# Verb stems. A keyword takes an inflection, not a derivation, so a verb made
+# from it does not match: "Uygulama yavaşlıyor" (yavaş + -la- + -ıyor) and
+# "Liste filtrelenmiyor" would be "Genel". A stem matches at the START of a
+# word, whatever follows ("yavaşl" covers "yavaşlıyor", "yavaşlamış"), and only
+# in a word no keyword matched: a word counts once, keywords first. A prefix
+# is wide by nature, so each stem is as narrow as its verb allows and was
+# measured alone before it went in — "filtrele", not "filtrel" ("filtreli" is
+# an adjective); "raporla", not "raporl" ("raporlu" is on sick leave);
+# "transferre", not "transferr" ("transferrin"). Spelled like keywords (one
+# ASCII copy where Turkish letters other than ı/İ occur); İ/I/ı/i fold alike.
+VERB_STEMS: dict[str, list[str]] = {
+    "Authentication": ["authoriz"],
+    "Payment": ["faturala"],
+    "Frontend": ["sayfala"],
+    "Reporting": ["filtrele", "filtreliyor", "raporla", "raporluyor"],
+    "Notifications": ["mesajlaş", "mesajlas", "uyarıl"],
+    "Inventory": ["stokla", "transferre", "transferring"],
+    "Performance": ["yavaşl", "yavasl", "önbellekl", "onbellekl"],
 }
 
 
@@ -145,16 +170,24 @@ def _pattern(keyword: str) -> re.Pattern[str]:
     return re.compile(rf"(?<!\w)({re.escape(keyword)}){_SUFFIX}(?!\w)")
 
 
-def _matches(text: str) -> list[tuple[int, int, str]]:
-    """Every keyword match in normalized `text`, as (start, end, component)
-    spanning the keyword itself.
+@cache
+def _stem_pattern(stem: str) -> re.Pattern[str]:
+    """A normalized verb stem at the start of a word, and the rest of the word."""
+    return re.compile(rf"(?<!\w){re.escape(stem)}\w*")
 
-    A match that lies inside a LONGER match of ANOTHER component is dropped:
-    "sql injection" is Security's and must not also count as Database's
-    "sql", nor "z-index" as Database's "index". Nesting within one component
-    still counts, as it always has.
+
+def _matches(text: str) -> list[tuple[int, int, str]]:
+    """Every match in normalized `text`, as (start, end, component): a
+    keyword spanning itself, a verb stem spanning its whole word.
+
+    A keyword match that lies inside a LONGER match of ANOTHER component is
+    dropped: "sql injection" is Security's and must not also count as
+    Database's "sql", nor "z-index" as Database's "index". Nesting within one
+    component still counts, as it always has. A verb stem counts only in a
+    word no keyword (and no earlier stem) matched.
     """
     found = []
+    words = []  # every matched word, inflection included
     for component, keywords in COMPONENT_KEYWORDS.items():
         # "kayıt" and "kayit" normalize to the same keyword: count it once.
         for keyword in dict.fromkeys(_normalize(k) for k in keywords):
@@ -162,13 +195,26 @@ def _matches(text: str) -> list[tuple[int, int, str]]:
                 continue
             for m in _pattern(keyword).finditer(text):
                 found.append((*m.span(1), component))
-    return [
+                words.append(m.span())
+    kept = [
         (s, e, c) for s, e, c in found
         if not any(
             c2 != c and s2 <= s and e <= e2 and e2 - s2 > e - s
             for s2, e2, c2 in found
         )
     ]
+    # Walked in COMPONENT_KEYWORDS order: a stem filed under a component that
+    # is not there has no score to add to.
+    for component in COMPONENT_KEYWORDS:
+        for stem in dict.fromkeys(_normalize(v) for v in VERB_STEMS.get(component, ())):
+            if stem not in text:
+                continue
+            for m in _stem_pattern(stem).finditer(text):
+                start, end = m.span()
+                if not any(start < e2 and s2 < end for s2, e2 in words):
+                    kept.append((start, end, component))
+                    words.append((start, end))
+    return kept
 
 
 # =============================================================================
@@ -180,7 +226,8 @@ def classify_component(bug: dict[str, Any]) -> str:
     Classify a bug into a component based on keyword matching.
 
     Searches bug summary and description for keywords from COMPONENT_KEYWORDS
-    and scores each component by its number of matches. Returns the
+    (and verb stems from VERB_STEMS) and scores each component by its number
+    of matches. Returns the
     highest-scoring component — on a tie, the one listed first in
     COMPONENT_KEYWORDS — or "Genel" if nothing matches.
 

@@ -182,6 +182,9 @@ sahiplendirildi** (gerekçeleri `KNOWN-DEBT.md`'de):
       *6E-2 PR4 (2026-11-11):* 9 kusur düzeltildi (`7f47a81`, `6b91f99`);
       dosyada 104 test, xfail yok. Kalan bilinen sınırlar aynı bölümde
       (sahibi v1.1).
+      *6E-2 PR4b (2026-11-12):* PR4'ün ölçtüğü fiil biçimi gerilemesi
+      (`9af9371`, 17 ölçülmüş kök) ve ASCII kopyası olmayan üç anahtar
+      (`3bb8293`) kapandı; dosyada 147 test. Kalan sınırlar aynı bölümde.
 
       *Not (2026-10-11):* `pattern_detector` yarısı karşılandı —
       `tests/test_pattern_detector.py` 2026-08-22'den beri var (`f7c33f7`)
