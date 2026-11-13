@@ -185,6 +185,10 @@ sahiplendirildi** (gerekçeleri `KNOWN-DEBT.md`'de):
       *6E-2 PR4b (2026-11-12):* PR4'ün ölçtüğü fiil biçimi gerilemesi
       (`9af9371`, 17 ölçülmüş kök) ve ASCII kopyası olmayan üç anahtar
       (`3bb8293`) kapandı; dosyada 147 test. Kalan sınırlar aynı bölümde.
+      *6E-2 PR4c (2026-11-13):* PR4 gerilemesinin kalanı, fiil olmayan dört
+      türetme (`80ddf41`) kapandı; 27e45db'nin doğru bulduğu girdilerden
+      yanlışa dönen 0. Dosyada 168 test. İki anlam çakışması bilinen sınır
+      (v1.1), aynı bölümde.
 
       *Not (2026-10-11):* `pattern_detector` yarısı karşılandı —
       `tests/test_pattern_detector.py` 2026-08-22'den beri var (`f7c33f7`)

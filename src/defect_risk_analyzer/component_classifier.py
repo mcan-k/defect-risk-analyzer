@@ -24,7 +24,9 @@ logger = logging.getLogger(__name__)
 # inflection — a Turkish suffix chain ("girişte", "ödemede", "ürünlerin") or an
 # English -s/-es/-d/-ed/-ing ("payments") — and never inside another word
 # ("Author" is not "auth", "Parametre" is not "para"). A verb made from a
-# keyword ("yavaşlıyor") is reached through VERB_STEMS below. Each match
+# keyword ("yavaşlıyor") is reached through VERB_STEMS below; a few other
+# derived words ("filtreleme", "bankacılık", "slowly") are keywords of their
+# own, each measured before it went in. Each match
 # scores one point; the highest-scoring component wins, and a tie goes to the
 # component listed first. Turkish and English keywords are both included.
 
@@ -44,6 +46,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "fatura", "invoice", "billing", "havale", "eft", "banka",
         "bank", "checkout", "satın al", "satin al", "purchase",
         "kdv", "vat", "tax", "para", "money", "tutar", "amount",
+        "bankacılık", "bankacilik", "ödemeli", "odemeli",
     ],
     "Frontend": [
         "ui", "arayüz", "arayuz", "frontend", "css", "responsive",
@@ -75,6 +78,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "tarih aralığı", "date range", "timezone", "saat dilimi",
         "filtreleme",
         "tarih araligi",
+        "grafiksel",
     ],
     "Notifications": [
         "bildirim", "notification", "push", "e-posta", "email",
@@ -91,6 +95,7 @@ COMPONENT_KEYWORDS: dict[str, list[str]] = {
         "hız", "hiz", "speed", "memory", "bellek", "cpu",
         "cache", "önbellek", "onbellek", "optimize", "lag",
         "yavaşladı", "yavasladi", "slower",
+        "slowly",
     ],
     "Security": [
         "güvenlik", "guvenlik", "security", "xss", "csrf",
