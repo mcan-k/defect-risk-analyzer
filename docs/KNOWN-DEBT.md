@@ -3560,16 +3560,48 @@ testlerinden geliyor.
 - Bir sayfada `RequestException` (`raise_for_status`'un `HTTPError`'ı dahil)
   döngüyü kırıyor ve o ana kadar gelen sayfalar dönüyor. Tekrar deneme yok,
   çağırana sinyal yok.
+  *Bayat (2026-11-13, 6E-2 PR5):* artık `JiraFetchError` yükseliyor; aşağıda.
 
 Testler K1 ve K2 için yalnız her düzeltmenin sağlaması gereken en küçük şartı
 doğruluyor: önceki `bugs.json` bayt bayt korunur. Çağrının dönmesi de
 fırlatması da kabul; yani düzeltmenin tasarımı dayatılmıyor.
+*Bayat (2026-11-13, 6E-2 PR5):* xfail'ler kalktı, testler seçilen tasarımı
+tam doğruluyor; aşağıda.
+
+**6E-2 PR5 (2026-11-13; `24fc2a6` çekirdek, `4f43ffd` arayüz) bölümün dört
+kusurunu kapattı.** Kullanıcı kararları (2026-11-13): K1/K2(a), K3(a), K4(a);
+ortak ilke "kullanıcı başarısız bir işlemi başarılı sanmamalı".
+- **K1/K2:** herhangi bir sayfada `RequestException` → `JiraFetchError(page)`;
+  istek hatası `__cause__`, `ERROR` satırı günlükte. `fetch_and_save` dosyaya
+  dokunmadan önce yükseliyor. `JiraFetchError` bilerek `OSError` alt sınıfı
+  değil: `requests.RequestException` öyle (requests 2.34.2'de ölçüldü) ve
+  `call()` `OSError`'ı dosya/disk hatası diye bildiriyor. Arayüz:
+  `error.jira_fetch` ("Jira'dan veri çekilemedi; mevcut veriler korundu").
+- **K3:** `FetchResult(bugs, truncated)`; tavan `JiraClient.MAX_PAGES = 50`
+  (sınıf sabiti, ayar değil). Tavana ulaşınca çekilenler kaydediliyor,
+  `truncated` True, bir `WARNING` satırı. Servis sözlüğüne `"truncated"`;
+  yan çubukta `sidebar.sync.truncated` uyarısı, `st.rerun()`'dan sonraki
+  koşuda. Kullanıcı notu: bu kadar kayıt beklenmiyor, bu yüzden en küçük
+  uygulama.
+- **K4:** `fetch_and_save`'deki `except OSError` kalktı; hata `call()`'ın
+  `OSError` dalına (`error.os`, #75) ulaşıyor.
+- **Atomik yazım:** aynı dizinde benzersiz geçici dosya, `fsync`,
+  `os.replace`. Yarıda kalan yazım eski dosyayı bozmuyor.
+- **`POST /refresh`:** `api.py`'nin kodu değişmedi. Başarısız sayfa artık 200
+  "ok" değil, mevcut 500 biçimi; kesik çekimde ek `"truncated"` alanı. Webhook
+  Jira'dan çekmiyor, etkilenmedi.
 
 | Borç | İşaret |
 |---|---|
-| **K1 — Sonraki bir sayfa hata verince `bugs.json` kısmi listeyle eziliyor.** `fetch_bugs` hatayı yutup o ana kadarki sayfaları döndürüyor; `fetch_and_save` bunu tam bir sonuçtan ayıramıyor ve dosyanın üzerine yazıyor. Önceki tam veri kayboluyor. Kullanıcı yalnız log'da bir `ERROR` satırı görebilir | **6E** (6E-2'nin 5. PR'ı, tam süreç; kullanıcı kararı K-E5, 2026-11-11). Test: `test_a_failed_later_page_keeps_the_previous_bugs_file` (xfail strict) |
-| **K2 — İlk sayfa hata verince `bugs.json` `[]` oluyor.** Aynı yol: boş liste de "sonuç" sayılıyor ve yazılıyor. Ağ kesintisinde, süresi dolmuş bir token'da ya da 401'de önceki bütün veri siliniyor | **6E** (6E-2'nin 5. PR'ı, tam süreç; K-E5). Test: `test_a_failed_first_page_keeps_the_previous_bugs_file` (xfail strict) |
-| **K3 — 10.000 kayıt tavanına ulaşmak sessiz.** 50. sayfadan sonra döngü durur; yalnız "Fetched N bugs" INFO satırı yazılır. 10.000'den fazla bug'ı olan bir projede eski kayıtlar (sıra `created DESC`) uyarısız dışarıda kalır. Tavanın kendisi `test_paging_stops_after_fifty_pages` ile sabitlendi. **Sinyali test eden bir test YOK:** "çağırana ya da kullanıcıya bildirilir" şartı bir kanal seçmeden (uyarı log'u, dönüş değeri, istisna ya da arayüz uyarısı) test edilemiyor. Kanal 5. PR'ın tasarım sorusu | **6E** (6E-2'nin 5. PR'ı, tam süreç; K-E5). Tasarım sorusu kullanıcıya gidecek |
+| ~~**K1 — Sonraki bir sayfa hata verince `bugs.json` kısmi listeyle eziliyor.** `fetch_bugs` hatayı yutup o ana kadarki sayfaları döndürüyor; `fetch_and_save` bunu tam bir sonuçtan ayıramıyor ve dosyanın üzerine yazıyor. Önceki tam veri kayboluyor. Kullanıcı yalnız log'da bir `ERROR` satırı görebilir~~ | **Kapandı (6E-2 PR5, `24fc2a6`, 2026-11-13;** kullanıcı kararı K1/K2(a)). `JiraFetchError(2)`, dosya bayt bayt aynı, geçici dosya yok. Test: `test_a_failed_later_page_keeps_the_previous_bugs_file` (xfail kalktı) ve `test_an_http_error_on_a_later_page_raises_jira_fetch_error`; arayüz `test_a_sync_that_fails_says_so_and_raises_nothing` |
+| ~~**K2 — İlk sayfa hata verince `bugs.json` `[]` oluyor.** Aynı yol: boş liste de "sonuç" sayılıyor ve yazılıyor. Ağ kesintisinde, süresi dolmuş bir token'da ya da 401'de önceki bütün veri siliniyor~~ | **Kapandı (6E-2 PR5, `24fc2a6`, 2026-11-13;** K1/K2(a)). `JiraFetchError(1)`, dosya `[]` olmuyor. Test: `test_a_failed_first_page_keeps_the_previous_bugs_file` (xfail kalktı), `test_a_request_exception_on_the_first_page_raises_jira_fetch_error`, `test_a_page_that_is_not_json_raises_jira_fetch_error` |
+| ~~**K3 — 10.000 kayıt tavanına ulaşmak sessiz.** 50. sayfadan sonra döngü durur; yalnız "Fetched N bugs" INFO satırı yazılır. 10.000'den fazla bug'ı olan bir projede eski kayıtlar (sıra `created DESC`) uyarısız dışarıda kalır. Tavanın kendisi `test_paging_stops_after_fifty_pages` ile sabitlendi. **Sinyali test eden bir test YOK:** "çağırana ya da kullanıcıya bildirilir" şartı bir kanal seçmeden (uyarı log'u, dönüş değeri, istisna ya da arayüz uyarısı) test edilemiyor. Kanal 5. PR'ın tasarım sorusu~~ | **Kapandı (6E-2 PR5, `24fc2a6` + `4f43ffd`, 2026-11-13;** kullanıcı kararı K3(a): kaydedilir + arayüz uyarısı + günlük satırı + çağırana işaret). Testler (tavan `MAX_PAGES = 2`'ye indirilerek): `test_hitting_the_page_cap_is_flagged_and_logged`, `test_a_last_page_exactly_at_the_cap_is_not_flagged`, `test_a_fetch_cut_by_the_cap_is_saved_and_flagged`, servis ve `POST /refresh` testleri, `test_a_sync_cut_by_the_page_cap_warns_after_the_rerun` |
+| ~~**K4 — `bugs.json` yazılamayınca hata yutuluyor.** `fetch_and_save` `OSError`'ı günlüğe yazıp bug'ları döndürüyordu; arayüz "✅ N bug yüklendi!" diyordu, disk eskisinde kalıyordu. 6E-2 PR2'nin `test_fetch_and_save_survives_a_write_error`'ı bunu doğru diye sabitliyordu. Bu bölüme PR2'de yazılmamıştı (denetleyici notu, 2026-11-11)~~ | **Kapandı (6E-2 PR5, `24fc2a6`, 2026-11-13;** kullanıcı kararı K4(a)). `OSError` çağırana ulaşıyor, arayüzde `error.os`. Test: `test_fetch_and_save_raises_when_the_file_cannot_be_written` (eski testin yerine), `test_a_failed_replace_keeps_the_previous_file_and_raises`, `test_a_write_that_fails_part_way_leaves_the_old_file_whole` |
+
+**Q-A ("5. Ölçek ve dayanıklılık", karar bekliyor) için not (2026-11-13):**
+6E keşif raporunun bu başlık altında topladığı ilk iki madde, 10.000 kayıt
+sınırı ve sayfa hatası, bu PR'la cevaplandı (K3 ve K1/K2). Başlığın kendisi
+hâlâ kullanıcı kararı bekliyor (ROADMAP, 6E "Bekleyenler").
 
 ---
 
@@ -3588,7 +3620,7 @@ bir test borcu. Sahipler K-E9 kuralıyla yazıldı (test borcu → 6E). Hangi
 
 | Borç | İşaret |
 |---|---|
-| `api.py`'nin HTTP davranışı test edilmiyor. Kapsam ölçümünde %0'dı: 137 satırın hiçbiri çalışmadı, çünkü testler modülü hiç import etmiyor. fastapi .venv'de kurulu (0.143.0) ve `TestClient` `tests/test_api_auth.py`'de kullanılıyor; engel, `api.py`'nin modül seviyesinde servis kurması. Ayrıntı: "`GET /blind-spots` sözleşmesi" bölümünün "Kalan borç"u | **6E** (test borcu; K-E9 kuralı; K-E5) |
+| `api.py`'nin HTTP davranışı test edilmiyor. Kapsam ölçümünde %0'dı: 137 satırın hiçbiri çalışmadı, çünkü testler modülü hiç import etmiyor. fastapi .venv'de kurulu (0.143.0) ve `TestClient` `tests/test_api_auth.py`'de kullanılıyor; engel, `api.py`'nin modül seviyesinde servis kurması. Ayrıntı: "`GET /blind-spots` sözleşmesi" bölümünün "Kalan borç"u. *Kısmen (2026-11-13, 6E-2 PR5):* ilk HTTP testi `tests/test_api_refresh.py`, yalnız `POST /refresh` (2 test); engel `monkeypatch` ile `api.analyzer` ve `dependency_overrides` ile aşıldı. Öteki 13 uç açık | **6E** (test borcu; K-E9 kuralı; K-E5) |
 | ~~`ui/service.call()`'ın hata dalları (`RateLimitError`, `LLMError`, `BugNotFoundError`, `ValueError`, genel `Exception`) hiç çalışmıyor: `ui/service.py:81–92`, 12 satır. 6E-2'nin 3. PR'ı (`OSError` hata sınırı, K-E4) bu fonksiyona bir dal ekleyecek~~ — **Kapandı (6E-2 PR3, 2026-11-11):** `tests/test_ui_service_call.py` her dalı ayrı sınıyor (`1b25521`): başarı, `RateLimitError`, `LLMError`, `BugNotFoundError`, `ValueError`, genel `Exception` ve yeni `OSError` dalı (iki istisnayla); hangi mesaj anahtarının gösterildiğini, dönüşün `None` olduğunu ve günlüğe yazan iki dalda ayrıntının günlükte kaldığını | ~~**6E** (test borcu; en geç 6E-2'nin 3. PR'ıyla birlikte değerlendirilir)~~ |
 | `adapters/results_repository.py`'nin satır kapsamı %47.8, dal kapsamı %25'ti. Çalışmayan kısımlar:<br>• var olan bir dosyanın okunması: `_read_json`'ın `try` bloğu, bozuk JSON'da `_quarantine` ve `OSError` dalı;<br>• `upsert_result`, `append_webhook_result` ve `save_defect_density`;<br>• `_write_json`'ın tamamı.<br>Testler yalnız "dosya yok" yolundan geçiyor. "Failed result writes are logged, not surfaced" kaydının davranışı bu yolda | **6E** (test borcu; K-E9 kuralı) |
 | `ui/results.py`'nin satır kapsamı %12.9'du (`display_analysis_result`: 31 satırdan 27'si, 14 dalın hepsi çalışmıyor) | **6E** (test borcu; K-E9 kuralı) |
