@@ -27,6 +27,7 @@ from typing import Any
 import pytest
 
 from defect_risk_analyzer import jira_client
+from defect_risk_analyzer.jira_client import FetchResult, JiraFetchError
 from defect_risk_analyzer.services.analysis_service import AnalysisService
 
 BUGS = [
@@ -104,7 +105,7 @@ def test_an_empty_fetch_leaves_the_index_and_the_bug_list_alone(service, monkeyp
     """
     svc, store = service
     preload(svc, BUGS)
-    monkeypatch.setattr(jira_client, "refresh_data", lambda: [])
+    monkeypatch.setattr(jira_client, "refresh_data", lambda: FetchResult([]))
 
     result = svc.refresh()
 
@@ -121,7 +122,7 @@ def test_a_successful_fetch_still_reindexes(service, monkeypatch):
     Without this, deleting the body of refresh() entirely would leave A4 green.
     """
     svc, store = service
-    monkeypatch.setattr(jira_client, "refresh_data", lambda: [dict(b) for b in BUGS])
+    monkeypatch.setattr(jira_client, "refresh_data", lambda: FetchResult([dict(b) for b in BUGS]))
 
     result = svc.refresh()
 
@@ -142,12 +143,45 @@ def test_reindexed_distinguishes_a_skip_from_a_genuinely_empty_result(service, m
     reading have to ask for it explicitly, via reset().
     """
     svc, _ = service
-    monkeypatch.setattr(jira_client, "refresh_data", lambda: [])
+    monkeypatch.setattr(jira_client, "refresh_data", lambda: FetchResult([]))
 
     skipped = svc.refresh()
 
     assert skipped["bugs_loaded"] == 0
     assert skipped["reindexed"] is False
+
+
+def test_a_fetch_cut_by_the_page_cap_is_loaded_and_reported(service, monkeypatch):
+    """K3 (6E-2 PR5): the bugs are loaded, and `truncated` tells the caller —
+    the dashboard and POST /refresh — that they are not all of them."""
+    svc, store = service
+    monkeypatch.setattr(
+        jira_client, "refresh_data", lambda: FetchResult([dict(b) for b in BUGS], True)
+    )
+
+    result = svc.refresh()
+
+    assert len(store.upsert_calls) == 1
+    assert result["bugs_fetched"] == 2
+    assert result["truncated"] is True
+
+
+def test_a_failed_fetch_raises_and_leaves_the_bugs_and_the_index_alone(service, monkeypatch):
+    """K1/K2 (6E-2 PR5): a failed page is not an empty result. The error reaches
+    the caller, and nothing in memory or in the index has changed."""
+    svc, store = service
+    preload(svc, BUGS)
+
+    def failed_fetch():
+        raise JiraFetchError(2)
+
+    monkeypatch.setattr(jira_client, "refresh_data", failed_fetch)
+
+    with pytest.raises(JiraFetchError):
+        svc.refresh()
+
+    assert store.upsert_calls == []
+    assert [bug["key"] for bug in svc.get_bugs()] == ["AP-1", "AP-2"]
 
 
 # =============================================================================

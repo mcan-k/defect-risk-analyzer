@@ -122,20 +122,25 @@ class AnalysisService:
         """Fetch fresh data from Jira (or mock data) and reindex it.
 
         A fetch that comes back empty changes nothing: not the index, not the
-        bugs already in memory. refresh_data() returns [] for a missing
+        bugs already in memory. refresh_data() returns no bugs for a missing
         bugs.json, an unreadable one and an unconfigured Jira alike
-        (jira_client.py:329-334), so an empty result is far more often a broken
+        (load_bugs_from_file), so an empty result is far more often a broken
         setup than an empty backlog, and this layer cannot tell which. It takes
         the conservative reading and reports which one it took, rather than
         guessing — `bugs_loaded` is 0 either way, so `reindexed` is what
         separates "skipped" from "there was genuinely nothing".
 
+        A failed fetch is not an empty one: JiraFetchError (a page failed) and
+        OSError (bugs.json could not be written) propagate, and nothing in
+        memory or in the index has changed by then.
+
         Returns:
-            Dict with `bugs_fetched`, `bugs_loaded`, `reindexed` and `mock_mode`.
+            Dict with `bugs_fetched`, `bugs_loaded`, `reindexed`, `mock_mode`
+            and `truncated` (the Jira page cap cut the fetch short).
         """
         from defect_risk_analyzer.jira_client import refresh_data
 
-        bugs = refresh_data()
+        bugs, truncated = refresh_data()
 
         if not bugs:
             # The same guard api.py and ui/service.py's get_service() have
@@ -146,6 +151,7 @@ class AnalysisService:
                 "bugs_loaded": 0,
                 "reindexed": False,
                 "mock_mode": config.USE_MOCK_DATA,
+                "truncated": truncated,
             }
 
         loaded = self.load_bugs(bugs)
@@ -154,6 +160,7 @@ class AnalysisService:
             "bugs_loaded": loaded,
             "reindexed": True,
             "mock_mode": config.USE_MOCK_DATA,
+            "truncated": truncated,
         }
 
     def get_risk_summary(self) -> dict[str, Any]:
