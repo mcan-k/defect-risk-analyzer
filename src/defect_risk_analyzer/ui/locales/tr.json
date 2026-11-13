@@ -229,7 +229,7 @@
   "sidebar.sync": "🔄 Jira'dan Senkronize Et",
   "sidebar.sync.done": "✅ {count} bug yüklendi!",
   "sidebar.sync.running": "Veriler senkronize ediliyor...",
-  "sidebar.sync.truncated": "⚠️ Yalnız ilk {count} kayıt alındı; JQL'i daraltın.",
+  "sidebar.sync.truncated": "10.000 kayıt sınırına ulaşıldı; kayıtların bir kısmı yüklenmedi.",
   "sidebar.title": "🔍 Defect Risk Analyzer",
   "webhook.count": "**{count}** webhook analiz sonucu",
   "webhook.howto.body": "1. Jira'da **Settings → System → Webhooks** bölümüne gidin\n2. Yeni webhook oluşturun:\n   - **URL:** `http://YOUR_SERVER:{port}/webhook/jira`\n   - **Events:** Issue created, Issue updated\n   - **JQL Filter:** `project = {project} AND issuetype = Bug`\n3. Header ekleyin: `X-API-Key: {api_key}...`",

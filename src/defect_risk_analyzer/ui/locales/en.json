@@ -229,7 +229,7 @@
   "sidebar.sync": "🔄 Sync from Jira",
   "sidebar.sync.done": "✅ {count} bugs loaded!",
   "sidebar.sync.running": "Syncing data...",
-  "sidebar.sync.truncated": "⚠️ Only the first {count} issues were fetched; narrow the JQL.",
+  "sidebar.sync.truncated": "The 10,000-issue limit was reached; some issues were not loaded.",
   "sidebar.title": "🔍 Defect Risk Analyzer",
   "webhook.count": "**{count}** webhook analysis results",
   "webhook.howto.body": "1. In Jira, go to **Settings → System → Webhooks**\n2. Create a new webhook:\n   - **URL:** `http://YOUR_SERVER:{port}/webhook/jira`\n   - **Events:** Issue created, Issue updated\n   - **JQL Filter:** `project = {project} AND issuetype = Bug`\n3. Add a header: `X-API-Key: {api_key}...`",
