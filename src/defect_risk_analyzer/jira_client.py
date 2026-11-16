@@ -6,16 +6,67 @@ Parses Atlassian Document Format (ADF) descriptions to plain text.
 Supports mock data mode for demo/evaluation without Jira credentials.
 """
 
+import contextlib
 import json
 import logging
+import os
+import uuid
 from datetime import datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, NamedTuple
 
 import requests
 
 from defect_risk_analyzer import config
 
 logger = logging.getLogger(__name__)
+
+
+class JiraFetchError(Exception):
+    """A page of the Jira search failed, so the fetch was abandoned.
+
+    Nothing was saved: fetch_and_save() raises this before bugs.json is touched,
+    so the previous file survives byte for byte. The request error is chained
+    as `__cause__` and logged; the message itself carries no URL or credential.
+
+    Deliberately NOT a subclass of OSError. requests.RequestException is one,
+    and the dashboard's error boundary (ui/service.call) reports OSError as a
+    file or disk problem — the wrong message for an unreachable Jira.
+    """
+
+    def __init__(self, page: int) -> None:
+        super().__init__(f"Jira search failed on page {page}; nothing was saved.")
+        self.page = page
+
+
+class FetchResult(NamedTuple):
+    """The bugs a fetch returned, and whether the page cap cut it short."""
+
+    bugs: list[dict[str, Any]]
+    truncated: bool = False
+
+
+def _write_json_atomically(path: Path, data: Any) -> None:
+    """Write `data` as JSON to `path` so a failed write never damages the old file.
+
+    The JSON goes to a temporary file next to `path` and replaces it in one step
+    (os.replace). A write that fails part way — disk full, a killed process —
+    leaves the previous file exactly as it was, and the temporary file is
+    removed. The temporary name is unique, so two writers cannot share one, and
+    plain open() gives the new file the same permissions a direct write did.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(f"{path.name}.{uuid.uuid4().hex}.tmp")
+    try:
+        with open(tmp, "x", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+        raise
 
 
 # =============================================================================
@@ -100,6 +151,12 @@ def parse_adf_to_text(adf_node: dict | list | str | None) -> str:
 class JiraClient:
     """Jira REST API v3 client for fetching bug issues."""
 
+    # Safety cap against endless pagination: with the default page size of 200,
+    # at most 10,000 issues. Reaching it is reported (FetchResult.truncated and a
+    # WARNING line), not silent. A class constant so tests can lower it; it is
+    # not a setting.
+    MAX_PAGES = 50
+
     def __init__(
         self,
         url: str | None = None,
@@ -141,18 +198,24 @@ class JiraClient:
             logger.error("Jira connection error: %s", e)
             return False
 
-    def fetch_bugs(self, max_results: int = 200) -> list[dict[str, Any]]:
+    def fetch_bugs(self, max_results: int = 200) -> FetchResult:
         """
         Fetch all bug issues from the configured Jira project.
 
         Uses JQL: project = {KEY} AND issuetype = Bug ORDER BY created DESC
-        Paginates automatically if there are more than `max_results` per page.
+        Paginates automatically if there are more than `max_results` per page,
+        up to MAX_PAGES pages.
 
         Args:
             max_results: Maximum results per API call (Jira paginates).
 
         Returns:
-            List of normalized bug dictionaries.
+            FetchResult: the normalized bugs, and `truncated` = True when the
+            page cap stopped the fetch while Jira still had more.
+
+        Raises:
+            JiraFetchError: any page failed. The pages fetched before it are
+                dropped: a partial list must not pass for the whole project.
         """
         jql = (
             f"project = {self._project_key} "
@@ -177,9 +240,9 @@ class JiraClient:
         all_bugs: list[dict[str, Any]] = []
         next_page_token: str | None = None
         page_count = 0
-        max_pages = 50  # Safety cap to prevent infinite pagination
+        truncated = False
 
-        while page_count < max_pages:
+        while page_count < self.MAX_PAGES:
             page_count += 1
             body: dict[str, Any] = {
                 "jql": jql,
@@ -200,7 +263,7 @@ class JiraClient:
 
             except requests.RequestException as e:
                 logger.error("Jira API error on page %d: %s", page_count, e)
-                break
+                raise JiraFetchError(page_count) from e
 
             issues = data.get("issues", [])
             if not issues:
@@ -218,28 +281,37 @@ class JiraClient:
             next_page_token = data.get("nextPageToken")
             if not next_page_token:
                 break
+        else:
+            # The loop ran out of pages, not out of issues: Jira still had more.
+            truncated = True
+            logger.warning(
+                "Jira page cap reached: %d pages of %d issues; %d bugs fetched and older "
+                "issues left out. Narrow the JQL.",
+                self.MAX_PAGES, max_results, len(all_bugs),
+            )
 
         logger.info("Fetched %d bugs from Jira project %s.", len(all_bugs), self._project_key)
-        return all_bugs
+        return FetchResult(all_bugs, truncated)
 
-    def fetch_and_save(self) -> list[dict[str, Any]]:
+    def fetch_and_save(self) -> FetchResult:
         """
-        Fetch bugs from Jira and save to data/bugs.json.
+        Fetch bugs from Jira and save them to data/bugs.json.
+
+        Nothing is written unless every page came back: a failed page raises
+        before the file is touched. A fetch cut short by the page cap is saved,
+        and says so in `truncated`. The write is atomic.
 
         Returns:
-            List of fetched bug dictionaries.
+            FetchResult from fetch_bugs().
+
+        Raises:
+            JiraFetchError: a page failed; the previous bugs.json is unchanged.
+            OSError: bugs.json could not be written; the previous file is intact.
         """
-        bugs = self.fetch_bugs()
-
-        try:
-            config.BUGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-            with open(config.BUGS_FILE, "w", encoding="utf-8") as f:
-                json.dump(bugs, f, ensure_ascii=False, indent=2)
-            logger.info("Saved %d bugs to %s.", len(bugs), config.BUGS_FILE)
-        except OSError as e:
-            logger.error("Failed to save bugs: %s", e)
-
-        return bugs
+        result = self.fetch_bugs()
+        _write_json_atomically(config.BUGS_FILE, result.bugs)
+        logger.info("Saved %d bugs to %s.", len(result.bugs), config.BUGS_FILE)
+        return result
 
     # ------------------------------------------------------------------
     # Issue Normalization
@@ -369,21 +441,24 @@ def get_webhook_issue_type(issue: dict[str, Any]) -> str:
     return issue.get("fields", {}).get("issuetype", {}).get("name", "")
 
 
-def refresh_data() -> list[dict[str, Any]]:
+def refresh_data() -> FetchResult:
     """
     Refresh bug data: fetch from Jira (or load mock data) and return.
 
     Returns:
-        List of bug dictionaries.
+        FetchResult. `truncated` can only be True for a live Jira fetch.
+
+    Raises:
+        JiraFetchError, OSError: from JiraClient.fetch_and_save().
     """
     if config.USE_MOCK_DATA:
         sample = config.sample_bugs_file()
         logger.info("Mock mode active — loading %s.", sample.name)
-        return load_bugs_from_file(sample)
+        return FetchResult(load_bugs_from_file(sample))
 
     if not config.is_jira_configured():
         logger.warning("Jira not configured. Attempting to load existing bugs.json.")
-        return load_bugs_from_file(config.BUGS_FILE)
+        return FetchResult(load_bugs_from_file(config.BUGS_FILE))
 
     client = JiraClient()
     return client.fetch_and_save()

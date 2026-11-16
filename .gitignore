@@ -23,6 +23,9 @@ dist/
 
 # Runtime data (user-specific, regenerated at runtime)
 data/bugs.json
+# Atomic-write temporaries (jira_client._write_json_atomically); one is left
+# behind only if the process dies between writing it and renaming it.
+data/*.tmp
 data/chroma_db/
 data/anon_map.json
 data/analysis_results.json

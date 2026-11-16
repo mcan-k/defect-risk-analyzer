@@ -873,6 +873,12 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       Yapıldı: 6E-2 PR3, `1b25521` + `228d903` (2026-11-11; kullanıcı kararı
       K-E4). Beş çağrı yeri `call()` sınırından geçiyor; kanıt AppTest ve
       statik bekçi.
+- [x] Jira çekiminin sessiz veri kaybı: sayfa hatasında `bugs.json`'un
+      kısmi listeyle ya da `[]` ile ezilmesi (K1/K2), 10.000 kayıt tavanının
+      sessizliği (K3), yazma hatasının yutulması (K4) (`KNOWN-DEBT.md`,
+      "`JiraClient` kusurları"). Yapıldı: 6E-2 PR5, `24fc2a6` + `4f43ffd`
+      (2026-11-13; kullanıcı kararları K1/K2(a), K3(a), K4(a)). Yazım atomik;
+      kanıt iki xfail'in kalkması, sıkılaştırılmış testler ve AppTest.
 
 #### Doğrulama soruları
 
@@ -920,7 +926,9 @@ Soruların toplandığı başlıklar (aynı gün):
 Bekleyenler:
 
 - [ ] "5. Ölçek ve dayanıklılık" başlığı — önerildi, kullanıcı kararı
-      bekliyor.
+      bekliyor. *2026-11-13:* 6E keşif raporunun bu başlıktaki ilk iki
+      maddesi (10.000 kayıt sınırı, sayfa hatası) 6E-2 PR5'le cevaplandı;
+      `KNOWN-DEBT.md`, "`JiraClient` kusurları".
 - [ ] Elle etiketlenmiş bir "altın veri seti" — kullanıcı: sonra
       konuşulacak.
 

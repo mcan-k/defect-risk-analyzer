@@ -59,6 +59,10 @@ def bootstrap() -> None:
 # st.session_state key. Named once so the read and the write cannot drift.
 _LEGACY_NOTICE_SHOWN = "_dra_legacy_anon_map_notice_shown"
 
+# st.session_state key: the bug count of a sync the Jira page cap cut short,
+# carried over the sync's st.rerun() to the run that shows the warning.
+_SYNC_TRUNCATED = "_dra_sync_truncated_count"
+
 
 def _report_removed_legacy_files() -> None:
     """Tell the user that `data/anon_map.json` was deleted at startup.
@@ -189,6 +193,12 @@ def render_status() -> None:
 
     st.sidebar.markdown("---")
 
+    # A sync cut short by the Jira page cap, reported here on the run AFTER the
+    # sync: anything drawn before st.rerun() is gone once the rerun renders.
+    truncated_count = st.session_state.pop(_SYNC_TRUNCATED, None)
+    if truncated_count is not None:
+        st.sidebar.warning(t("sidebar.sync.truncated", count=truncated_count))
+
     # Refresh button — unconditional. It used to be gated behind a reachable
     # backend; with the service in-process there is nothing to be unreachable,
     # and a hidden button would leave the user unable to load any data.
@@ -197,4 +207,6 @@ def render_status() -> None:
             result = call(get_service().refresh)
         if result:
             st.sidebar.success(t("sidebar.sync.done", count=result.get("bugs_fetched", 0)))
+            if result.get("truncated"):
+                st.session_state[_SYNC_TRUNCATED] = result.get("bugs_fetched", 0)
             st.rerun()

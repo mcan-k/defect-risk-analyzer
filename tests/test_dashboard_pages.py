@@ -474,6 +474,64 @@ def test_sync_button_is_present_and_works():
     assert not at.exception, [f"{e.value}" for e in at.exception]
 
 
+def _sync(at: AppTest) -> None:
+    [b for b in at.sidebar.button if b.label == _TR["sidebar.sync"]][0].click().run()
+
+
+def _failed_page():
+    from defect_risk_analyzer.jira_client import JiraFetchError
+
+    raise JiraFetchError(2)
+
+
+def _unwritable_bugs_file():
+    raise PermissionError(13, "Permission denied")
+
+
+@pytest.mark.parametrize(
+    "fetch,message",
+    [(_failed_page, "error.jira_fetch"), (_unwritable_bugs_file, "error.os")],
+    ids=["jira-page-failed", "bugs-json-unwritable"],
+)
+def test_a_sync_that_fails_says_so_and_raises_nothing(fetch, message, monkeypatch):
+    """6E-2 PR5, K1/K2 and K4: the sync used to report "✅ N bugs loaded!" over a
+    partial, an emptied or an unsaved bugs.json. Now the user sees the failure,
+    no traceback, and no success line."""
+    from defect_risk_analyzer import jira_client
+
+    at = _open()
+    monkeypatch.setattr(jira_client, "refresh_data", fetch)
+    _sync(at)
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _on_screen(message) in [e.value for e in at.error]
+    done = _TR["sidebar.sync.done"].removeprefix("✅ ").split("{count}")[1]
+    assert not [s.value for s in at.success if s.value.endswith(done)]
+
+
+def test_a_sync_cut_by_the_page_cap_warns_after_the_rerun(monkeypatch):
+    """6E-2 PR5, K3: the bugs are loaded and the sidebar says only the first N
+    came. The warning has to survive the sync's st.rerun(), which discards
+    everything the sync run drew — so it is checked on the final tree."""
+    from defect_risk_analyzer import jira_client
+
+    fetched = []
+
+    def capped():
+        bugs = jira_client.load_bugs_from_file(config.sample_bugs_file())
+        fetched.append(len(bugs))
+        return jira_client.FetchResult(bugs, True)
+
+    at = _open()
+    monkeypatch.setattr(jira_client, "refresh_data", capped)
+    _sync(at)
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert fetched and fetched[0] > 0
+    expected = _on_screen("sidebar.sync.truncated").format(count=fetched[0])
+    assert expected in [w.value for w in at.sidebar.warning]
+
+
 # ---------------------------------------------------------------------------
 # Navigation
 # ---------------------------------------------------------------------------

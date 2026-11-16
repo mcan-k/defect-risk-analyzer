@@ -12,7 +12,7 @@ import logging
 import streamlit as st
 
 from defect_risk_analyzer import config
-from defect_risk_analyzer.jira_client import load_bugs_from_file
+from defect_risk_analyzer.jira_client import JiraFetchError, load_bugs_from_file
 from defect_risk_analyzer.llm_provider import LLMError, RateLimitError
 from defect_risk_analyzer.services.analysis_service import (
     AnalysisService,
@@ -90,6 +90,12 @@ def call(fn, *args, **kwargs):
         st.error(t("error.llm", detail=e))
     except BugNotFoundError as e:
         st.error(t("error.plain", detail=e))
+    except JiraFetchError:
+        # A page of the Jira search failed; nothing was saved, so the data the
+        # user had is still there and the message says so. No detail on screen:
+        # the request error can name the Jira host. The log keeps it.
+        logger.exception("Service call %s failed", getattr(fn, "__name__", fn))
+        st.error(t("error.jira_fetch"))
     except ValueError as e:
         st.error(t("error.plain", detail=e))
     except OSError:
