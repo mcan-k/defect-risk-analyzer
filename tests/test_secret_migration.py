@@ -40,7 +40,7 @@ LLM_KEY = "synthetic-groq-key-1111"
 class FakeStore:
     """Records every write, and can be told to fail in specific ways."""
 
-    def __init__(self, *, refuse=(), lose=(), stuck=(), unreadable=()):
+    def __init__(self, *, refuse=(), lose=(), stuck=(), unreadable=(), ghost=()):
         self.values: dict[str, str] = {}
         self.writes: list[str] = []
         self.deletes: list[str] = []
@@ -48,6 +48,7 @@ class FakeStore:
         self._lose = set(lose)       # set() succeeds but nothing is stored
         self._stuck = set(stuck)     # delete() returns False, the value stays
         self._unreadable = set(unreadable)  # get() returns None, the value stays
+        self._ghost = set(ghost)     # delete() returns True, the value stays
 
     def get(self, name):
         if name in self._unreadable:
@@ -67,6 +68,8 @@ class FakeStore:
         self.deletes.append(name)
         if name in self._stuck:
             return False
+        if name in self._ghost:
+            return True
         self.values.pop(name, None)
         return True
 
@@ -492,6 +495,23 @@ def test_a_delete_the_store_refuses_undoes_the_whole_save(settings_save):
     assert "JIRA_API_TOKEN" in str(raised.value)
     assert TOKEN not in str(raised.value), "the message carried the value"
     assert store.values == {"GROQ_API_KEY": "old-groq-6666", "JIRA_API_TOKEN": TOKEN}
+    assert env_file.read_bytes() == before
+
+
+def test_a_store_that_reports_a_delete_it_did_not_do_undoes_the_save(settings_save):
+    """The read-back after delete, for the same reason as the one after set:
+    a backend's "done" is not the value being gone, and a credential that is
+    still there would be back in use on the next reload."""
+    migration, save = settings_save
+    store = FakeStore(ghost={"JIRA_API_TOKEN"})
+    store.values["JIRA_API_TOKEN"] = TOKEN
+    env_file = migration(store, "JIRA_API_TOKEN=\nJIRA_URL=https://old\n")
+    before = env_file.read_bytes()
+
+    with pytest.raises(config.CredentialStoreError):
+        save({"JIRA_API_TOKEN": "", "JIRA_URL": "https://new"})
+
+    assert store.values == {"JIRA_API_TOKEN": TOKEN}
     assert env_file.read_bytes() == before
 
 
