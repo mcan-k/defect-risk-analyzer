@@ -532,6 +532,48 @@ def test_a_sync_cut_by_the_page_cap_warns_after_the_rerun(monkeypatch):
     assert expected in [w.value for w in at.sidebar.warning]
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Bilinen kusur: başarılı senkronun başarı satırı st.rerun() ile kayboluyor "
+        "(KNOWN-DEBT.md, '6E-2 PR6 keşfinde belgelenen kusurlar')"
+    ),
+)
+def test_a_successful_sync_shows_its_success_line_after_the_rerun(monkeypatch):
+    """6E-2 PR6 measurement (KNOWN-DEBT, 6E-2 PR5 row): shell.py draws
+    "✅ N bug yüklendi!" and calls st.rerun() straight after, with no pause.
+    The line is recorded as DRAWN, so a red here means it was drawn and then
+    lost to the rerun — not that the success branch never ran. Measured red
+    2026-11-17: drawn, and the final sidebar holds only the two connection
+    lines. Documented first (K-E3); the fix is a separate PR."""
+    from streamlit.delta_generator import DeltaGenerator
+
+    from defect_risk_analyzer import jira_client
+
+    fetched, drawn = [], []
+
+    def full():
+        bugs = jira_client.load_bugs_from_file(config.sample_bugs_file())
+        fetched.append(len(bugs))
+        return jira_client.FetchResult(bugs, False)
+
+    original = DeltaGenerator.success
+
+    def recording(self, body, *args, **kwargs):
+        drawn.append(body)
+        return original(self, body, *args, **kwargs)
+
+    at = _open()
+    monkeypatch.setattr(jira_client, "refresh_data", full)
+    monkeypatch.setattr(DeltaGenerator, "success", recording)
+    _sync(at)
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    line = _TR["sidebar.sync.done"].format(count=fetched[0])
+    assert line in drawn, "the success branch did not run"
+    assert line.removeprefix("✅ ") in [s.value for s in at.sidebar.success]
+
+
 # ---------------------------------------------------------------------------
 # Navigation
 # ---------------------------------------------------------------------------
@@ -654,6 +696,34 @@ def test_choosing_a_language_persists_it_to_env(restorable_env):
 
     assert "DRA_LANGUAGE=en" in config.ENV_FILE.read_text(encoding="utf-8")
     assert not at.exception, [f"{e.value}" for e in at.exception]
+
+
+def test_a_language_env_cannot_take_applies_now_and_says_it_was_not_saved(
+    restorable_env, monkeypatch
+):
+    """6E-2 PR6: the picker writes .env from a widget callback, outside call(),
+    so an unwritable .env used to surface as a raw exception. The choice now
+    applies to this session, and the sidebar says it was not saved."""
+    monkeypatch.setattr(config, "LANGUAGE", config.LANGUAGE)
+    at = _open()
+    before = config.ENV_FILE.read_bytes()
+
+    def unwritable(lines):
+        raise PermissionError(13, "Permission denied", str(config.ENV_FILE))
+
+    monkeypatch.setattr(config, "_atomic_write_lines", unwritable)
+    [s for s in at.sidebar.selectbox if s.label == "Dil"][0].set_value("en").run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    en = json.loads(
+        (Path(config.__file__).resolve().parent / "ui" / "locales" / "en.json")
+        .read_text(encoding="utf-8")
+    )
+    assert en["sidebar.language.not_saved"].removeprefix("⚠️ ") in [
+        w.value for w in at.sidebar.warning
+    ]
+    assert config.LANGUAGE == "en", "the choice must still apply to this session"
+    assert config.ENV_FILE.read_bytes() == before
 
 
 class _Recorder:
@@ -968,7 +1038,8 @@ def test_no_ui_module_writes_to_the_process_environment():
     left the credential in the process environment for as long as the process
     lived. A test that clicked the button would have shown neither half.
 
-    `config.set_env_value` remains the single writer: it goes through the atomic
+    `config.set_env_value` (since 6E-2 PR6 a one-key `set_env_values`) remains
+    the single writer: it goes through the atomic
     `.env` path and updates `os.environ` as one deliberate step. The rule here is
     that the UI layer asks config, and never reaches around it.
     """
@@ -1071,7 +1142,9 @@ def test_the_save_guard_flags_every_unwrapped_use():
     assert [o.split(":")[0] for o in offenders] == ["line 2", "line 3", "line 4"]
 
 
-def _unwritable_env(key, value):
+def _unwritable_env(lines):
+    """Stands in for config._atomic_write_lines: every .env write goes through
+    it, the per-key writer of PR3's time and the batch writer of PR6 alike."""
     raise PermissionError(13, "Permission denied", str(config.ENV_FILE))
 
 
@@ -1180,7 +1253,7 @@ def test_a_save_that_cannot_write_env_shows_the_error_and_raises_nothing(
     prepare(at)
     before = config.ENV_FILE.read_bytes()
 
-    monkeypatch.setattr(config, "set_env_value", _unwritable_env)
+    monkeypatch.setattr(config, "_atomic_write_lines", _unwritable_env)
     successes = _record_success(monkeypatch)
     _button(at, _TR[button]).click().run()
 
@@ -1241,6 +1314,60 @@ def test_the_wizard_live_save_still_writes_and_tests_both_connections(unconfigur
         assert line in env
     assert calls == ["jira", "llm"]
     assert _TR["wizard.done"] in successes
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR6, T2(a) — the API key button, when .env will not take the key
+# ---------------------------------------------------------------------------
+
+
+def _api_key_button(at: AppTest):
+    labels = (_TR["settings.apikey.create"], _TR["settings.apikey.rotate"])
+    found = [b for b in at.button if b.label in labels]
+    assert found, f"API key button missing: {[b.label for b in at.button]}"
+    return found[0]
+
+
+def _isolate_api_key(monkeypatch) -> None:
+    """The button writes API_KEY to os.environ and config; undo both after."""
+    monkeypatch.setenv("API_KEY", "")
+    monkeypatch.setattr(config, "API_KEY", config.API_KEY)
+
+
+def test_an_api_key_env_cannot_take_is_reported_after_the_rerun(restorable_env, monkeypatch):
+    """The page used to say "✅ API key kaydedildi" for a key that lived in this
+    process only. Now it says the key was not saved — on the run after the
+    button's st.rerun(), the only place a message survives."""
+    _isolate_api_key(monkeypatch)
+    at = _open("pages/ayarlar.py")
+    before = config.ENV_FILE.read_bytes()
+
+    def unwritable(lines):
+        raise PermissionError(13, "Permission denied", str(config.ENV_FILE))
+
+    monkeypatch.setattr(config, "_atomic_write_lines", unwritable)
+    successes = _record_success(monkeypatch)
+    _api_key_button(at).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _on_screen("settings.apikey.not_saved") in [w.value for w in at.warning]
+    saved = _TR["settings.apikey.saved"].split("{key}")[0]
+    assert not [s for s in successes if s.startswith(saved)]
+    assert config.ENV_FILE.read_bytes() == before
+    assert config.API_KEY, "the key must still work in this process"
+
+
+def test_an_api_key_env_takes_is_still_confirmed(restorable_env, monkeypatch):
+    _isolate_api_key(monkeypatch)
+    at = _open("pages/ayarlar.py")
+    successes = _record_success(monkeypatch)
+
+    _api_key_button(at).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert f"API_KEY={config.API_KEY}" in config.ENV_FILE.read_text(encoding="utf-8")
+    assert _TR["settings.apikey.saved"].format(key=config.API_KEY[:8]) in successes
+    assert _on_screen("settings.apikey.not_saved") not in [w.value for w in at.warning]
 
 
 # ---------------------------------------------------------------------------

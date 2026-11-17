@@ -27,11 +27,13 @@ NO REAL SECRETS and no real credential store: `conftest._KeyringBlocker` refuses
 the keyring import for the whole session, and these tests inject a fake.
 """
 
+import os
+
 import pytest
 
 from defect_risk_analyzer import config
 
-TOKEN = "synthetic-jira-token-0000"
+TOKEN ="synthetic-jira-token-0000"
 LLM_KEY = "synthetic-groq-key-1111"
 
 
@@ -293,6 +295,32 @@ def test_save_secret_falls_back_rather_than_losing_the_value(migration):
     assert LLM_KEY in _text(env_file)
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Bilinen kusur: depodaki bir sırrı boşaltmak işe yaramıyor, reload eskisini "
+        "geri getiriyor (KNOWN-DEBT.md, '6E-2 PR6 keşfinde belgelenen kusurlar')"
+    ),
+)
+def test_emptying_a_stored_secret_empties_it(migration):
+    """6E-2 PR6 discovery, documented first (K-E3); the fix is a separate PR.
+
+    Clearing the token field on the Settings page saves "". An empty value
+    never reaches the store, so only `.env` is emptied — it was empty already
+    — and `_get_secret` falls through to the store, which still holds the old
+    credential. The field comes back filled after the save. PR6's T1 rewrite
+    keeps this behaviour on purpose; this test is what keeps it visible.
+    """
+    store = FakeStore()
+    store.values["JIRA_API_TOKEN"] = TOKEN
+    migration(store, "JIRA_API_TOKEN=\n")
+
+    config.save_secret("JIRA_API_TOKEN", "")
+    config.reload()
+
+    assert config.JIRA_API_TOKEN == "", "the cleared credential came back from the store"
+
+
 def test_the_settings_page_routes_secrets_and_settings_differently(migration, monkeypatch):
     """The routing itself, at the call site the Settings page actually uses."""
     from defect_risk_analyzer.ui import service as ui_service
@@ -314,3 +342,107 @@ def test_the_settings_page_routes_secrets_and_settings_differently(migration, mo
     assert TOKEN not in _text(env_file), "the credential was written to .env as well"
     assert "MAX_DAILY_REQUESTS=99" in _text(env_file), "a plain setting was diverted"
     assert store.get("MAX_DAILY_REQUESTS") is None, "a plain setting went to the store"
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR6, T1(a) — a settings save is all of it or none of it
+# ---------------------------------------------------------------------------
+# The Settings page saves several keys at once. Each used to get its own
+# atomic file write, so a failure on the third key left the first two saved —
+# in .env and in os.environ — with no reload() and no reset_llm() behind them.
+# And a secret went to the store BEFORE its .env line was blanked: when the
+# blanking failed, the store held the new value while .env kept the old plain
+# text, which _get_secret prefers — the old value shadowing the new one.
+
+PLAIN_KEYS = ("JIRA_URL", "JIRA_EMAIL", "JIRA_PROJECT_KEY")
+
+
+@pytest.fixture
+def settings_save(migration, monkeypatch):
+    """The migration fixture plus the plain keys these tests write, and the
+    Settings page's own entry point with the service stubbed out."""
+    from defect_risk_analyzer.ui import service as ui_service
+
+    for key in PLAIN_KEYS:
+        monkeypatch.setenv(key, "")
+        monkeypatch.setattr(config, key, getattr(config, key))
+
+    class _StubService:
+        def reset_llm(self):
+            pass
+
+    monkeypatch.setattr(ui_service, "get_service", _StubService)
+    return migration, ui_service.save_multiple_env
+
+
+def _write_fails_when(monkeypatch, predicate):
+    """Make every .env replace whose content matches `predicate` fail."""
+    real = config._atomic_write_lines
+
+    def guarded(lines):
+        if predicate("".join(lines)):
+            raise PermissionError(13, "Permission denied", ".env")
+        real(lines)
+
+    monkeypatch.setattr(config, "_atomic_write_lines", guarded)
+
+
+def test_a_save_that_fails_part_way_writes_none_of_it(settings_save, monkeypatch):
+    migration, save = settings_save
+    env_file = migration(None, "JIRA_URL=https://old\nJIRA_EMAIL=old@x\nJIRA_PROJECT_KEY=OLD\n")
+    before = env_file.read_bytes()
+    # Only the write that carries the last key fails: under a per-key writer
+    # the first two are on disk by then.
+    _write_fails_when(monkeypatch, lambda text: "JIRA_PROJECT_KEY=NEW" in text)
+
+    with pytest.raises(PermissionError):
+        save({"JIRA_URL": "https://new", "JIRA_EMAIL": "new@x", "JIRA_PROJECT_KEY": "NEW"})
+
+    assert env_file.read_bytes() == before, "part of the save reached .env"
+    assert [os.environ[k] for k in PLAIN_KEYS] == ["https://old", "old@x", "OLD"]
+
+
+@pytest.mark.parametrize("previous", ["old-stored-token", None], ids=["replaced", "new"])
+def test_a_secret_stored_before_the_file_failed_is_put_back(settings_save, monkeypatch, previous):
+    """No shadowing: after a failed save the store holds what it held before,
+    so the old plain-text .env line and the store agree on the old value."""
+    migration, save = settings_save
+    store = FakeStore()
+    if previous is not None:
+        store.values["JIRA_API_TOKEN"] = previous
+    env_file = migration(store, "JIRA_API_TOKEN=old-plain-token\nJIRA_URL=https://old\n")
+    before = env_file.read_bytes()
+    _write_fails_when(monkeypatch, lambda text: True)
+
+    with pytest.raises(PermissionError):
+        save({"JIRA_API_TOKEN": "new-token-3333", "JIRA_URL": "https://new"})
+
+    assert store.get("JIRA_API_TOKEN") == previous
+    assert env_file.read_bytes() == before
+
+
+def test_a_failed_put_back_is_logged_and_the_save_error_still_raised(
+    settings_save, monkeypatch, caplog
+):
+    """If the store cannot take the old value back, that is the one state a
+    user cannot see from the screen — so it has to be in the log by key name.
+    The save's own error is what call() reports, not the put-back's."""
+    migration, save = settings_save
+
+    class _CannotPutBack(FakeStore):
+        def set(self, name, value):
+            if value == "old-stored-token":
+                raise RuntimeError("store went away")
+            return super().set(name, value)
+
+    store = _CannotPutBack()
+    store.values["JIRA_API_TOKEN"] = "old-stored-token"
+    migration(store, "JIRA_API_TOKEN=old-plain-token\n")
+    _write_fails_when(monkeypatch, lambda text: True)
+
+    with caplog.at_level("ERROR", logger="defect_risk_analyzer.config"):
+        with pytest.raises(PermissionError):
+            save({"JIRA_API_TOKEN": "new-token-4444"})
+
+    assert "JIRA_API_TOKEN" in caplog.text
+    assert "could not be put back" in caplog.text

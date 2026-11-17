@@ -252,3 +252,30 @@ def test_the_cache_holds_no_secret_value(env_and_store):
     cached = getattr(config, "_secret_store", None)
     assert cached is store, "the handle should be the cached thing"
     assert SYNTHETIC_STORE not in repr(config._secret_store_resolved)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Bilinen kusur: ensure_api_key depodaki API key'i görmüyor, yenisini .env'e "
+        "düz metin yazıyor (KNOWN-DEBT.md, '6E-2 PR6 keşfinde belgelenen kusurlar')"
+    ),
+)
+def test_the_api_server_start_keeps_a_key_that_lives_in_the_store(env_and_store):
+    """6E-2 PR6 discovery, documented first (K-E3); the fix is a separate PR.
+
+    After the migration the webhook key lives in the store and its `.env` line
+    is empty. `config.init(generate_api_key=True)` — the API server's start —
+    calls ensure_api_key(), which checks `.env`/os.environ only: it finds
+    nothing, generates a NEW key and writes it to `.env` in plain text. The
+    stored key is then shadowed, and a Jira webhook holding it stops working.
+    Measured on M10 outside the repo (2026-11-17) before this test existed.
+    """
+    store = FakeStore({"API_KEY": SYNTHETIC_STORE})
+    env_file = env_and_store(store, "API_KEY=\n")
+    config.reload()
+
+    config.ensure_api_key()
+
+    assert config.API_KEY == SYNTHETIC_STORE, "the stored key was replaced"
+    assert env_file.read_text(encoding="utf-8") == "API_KEY=\n", "a key went to .env"

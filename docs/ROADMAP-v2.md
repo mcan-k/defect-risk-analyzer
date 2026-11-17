@@ -879,6 +879,16 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       "`JiraClient` kusurları"). Yapıldı: 6E-2 PR5, `24fc2a6` + `4f43ffd`
       (2026-11-13; kullanıcı kararları K1/K2(a), K3(a), K4(a)). Yazım atomik;
       kanıt iki xfail'in kalkması, sıkılaştırılmış testler ve AppTest.
+- [x] Ayar kaydının hata yolları: çok anahtarlı kaydın bütün olarak
+      tutarlılığı ve sır gölgelenmesi (T1), `.env`'e yazılamayan API key'in
+      sessizliği (T2), dil seçicinin ham `OSError`'ı, `POST /refresh`'in 500
+      `detail`'indeki istisna metni (`KNOWN-DEBT.md`, "`.env` yazıcısının 6A
+      sonrası bıraktıkları" ve "`JiraClient` kusurları"). Yapıldı: 6E-2 PR6,
+      `a8d0411` + `09452a7` + `b6a690e` + `0ac7e84` (2026-11-17; kullanıcı
+      kararları T1(a)/T2(a) 2026-11-11, `/refresh` 2026-11-17). Kanıt: T1'in
+      beş testi ve dil seçicinin AppTest'i M10 kodunda kırmızı ölçüldü, bu
+      PR'la yeşil. Keşifte ölçülen üç kusur xfail(strict) ile belgelendi
+      ("6E-2 PR6 keşfinde belgelenen kusurlar").
 
 #### Doğrulama soruları
 

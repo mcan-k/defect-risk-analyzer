@@ -60,9 +60,31 @@ def test_a_failed_jira_page_is_a_500_not_an_ok(client, monkeypatch):
     response = client.post("/refresh")
 
     assert response.status_code == 500
-    assert response.json() == {
-        "detail": "Refresh failed: Jira search failed on page 1; nothing was saved."
-    }
+    assert response.json() == {"detail": "Refresh failed; see server log."}
+
+
+def test_a_failure_keeps_its_details_in_the_log_not_the_response(client, monkeypatch, caplog):
+    """6E-2 PR6 (user decision, 2026-11-17): the 500 detail is a fixed sentence.
+
+    It used to be f"Refresh failed: {e}". Since PR5 an unwritable bugs.json
+    reaches the endpoint as an OSError, and its text is the file's full path —
+    under a Windows home directory, the account name. The path is spelled out
+    here so the assertion can look for it on both sides.
+    """
+    path = r"C:\Users\someone-private\defect-risk-analyzer\data\bugs.json"
+
+    def unwritable():
+        raise PermissionError(13, "Permission denied", path)
+
+    monkeypatch.setattr(jira_client, "refresh_data", unwritable)
+
+    with caplog.at_level("ERROR", logger="defect_risk_analyzer.api"):
+        response = client.post("/refresh")
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Refresh failed; see server log."}
+    assert "someone-private" not in response.text
+    assert "someone-private" in caplog.text, "the details must still reach the log"
 
 
 def test_a_fetch_cut_by_the_page_cap_says_so(client, monkeypatch):

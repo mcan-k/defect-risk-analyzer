@@ -15,6 +15,7 @@ init(). Rather than depend on that, each test reconstructs the pre-init() state
 explicitly in its fixture — so the file passes alone and in a full run alike.
 """
 
+import os
 from pathlib import Path
 
 import pytest
@@ -217,7 +218,7 @@ def test_persist_language_writes_the_file_and_the_global(uninitialized_config):
         encoding="utf-8",
     )
 
-    cfg.persist_language("tr")
+    assert cfg.persist_language("tr") is True
 
     assert cfg.LANGUAGE == "tr"
     assert "DRA_LANGUAGE=tr" in cfg.ENV_FILE.read_text(encoding="utf-8")
@@ -239,6 +240,28 @@ def test_persist_language_normalizes_the_code(uninitialized_config):
 
     assert cfg.LANGUAGE == "en"
     assert "DRA_LANGUAGE=en" in cfg.ENV_FILE.read_text(encoding="utf-8")
+
+
+def test_a_language_env_cannot_take_still_applies_and_is_reported(
+    uninitialized_config, monkeypatch, caplog
+):
+    """6E-2 PR6: the choice holds for this process, the caller is told it was
+    not saved, and the reason goes to the log — not to the screen."""
+    cfg = uninitialized_config
+    cfg.init()
+    before = cfg.ENV_FILE.read_bytes()
+
+    def unwritable(lines):
+        raise PermissionError(13, "Permission denied", ".env")
+
+    monkeypatch.setattr(cfg, "_atomic_write_lines", unwritable)
+
+    with caplog.at_level("WARNING", logger="defect_risk_analyzer.config"):
+        assert cfg.persist_language("TR") is False
+
+    assert cfg.LANGUAGE == "tr"
+    assert cfg.ENV_FILE.read_bytes() == before
+    assert "PermissionError" in caplog.text, "the reason must reach the log"
 
 
 # ===========================================================================
@@ -336,3 +359,41 @@ def test_the_purge_never_reads_what_it_deletes(uninitialized_config, monkeypatch
     cfg.init()
 
     assert str(legacy) not in opened, "the purge opened the file it was deleting"
+
+
+# ===========================================================================
+# 6E-2 PR6, T2(a) — an API key .env would not take is reported, not hidden
+# ===========================================================================
+
+def _unwritable(lines):
+    raise PermissionError(13, "Permission denied", ".env")
+
+
+def test_an_api_key_env_cannot_take_is_kept_for_the_process_and_reported(
+    uninitialized_config, monkeypatch, caplog
+):
+    """The design is kept: the key still works in this process. What changed is
+    that the caller learns it was not saved, and the log says why."""
+    cfg = uninitialized_config
+    monkeypatch.setenv("API_KEY", "")
+    monkeypatch.setattr(cfg, "_atomic_write_lines", _unwritable)
+    before = cfg.ENV_FILE.read_bytes()
+
+    with caplog.at_level("WARNING", logger="defect_risk_analyzer.config"):
+        result = cfg.ensure_api_key(rotate=True)
+
+    assert result.saved is False
+    assert result.key and cfg.API_KEY == result.key == os.environ["API_KEY"]
+    assert cfg.ENV_FILE.read_bytes() == before
+    assert "could not be saved" in caplog.text
+    assert "PermissionError" in caplog.text, "the reason must reach the log"
+
+
+def test_an_api_key_env_takes_is_reported_as_saved(uninitialized_config, monkeypatch):
+    cfg = uninitialized_config
+    monkeypatch.setenv("API_KEY", "")
+
+    result = cfg.ensure_api_key(rotate=True)
+
+    assert result.saved is True
+    assert f"API_KEY={result.key}" in cfg.ENV_FILE.read_text(encoding="utf-8")

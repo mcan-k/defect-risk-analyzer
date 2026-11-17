@@ -75,6 +75,9 @@ analyzer = AnalysisService()
 # Semaphore: max 1 concurrent LLM request (protects against parallel cost explosion)
 llm_semaphore = asyncio.Semaphore(1)
 
+#: What a failed POST /refresh answers. Fixed text: see the endpoint.
+REFRESH_FAILED_DETAIL = "Refresh failed; see server log."
+
 
 # ---------------------------------------------------------------------------
 # Lifespan — startup / shutdown
@@ -300,11 +303,16 @@ async def refresh():
     try:
         summary = await asyncio.to_thread(analyzer.refresh)
         return {"status": "ok", **summary}
-    except Exception as e:
-        logger.error("Refresh failed: %s", e, exc_info=True)
+    except Exception:
+        # The detail is a fixed sentence, for every exception (user decision,
+        # 2026-11-17). It used to carry the exception's text, and since 6E-2
+        # PR5 an unwritable bugs.json reaches this branch as an OSError whose
+        # text is the file's full path — on Windows, the account name. The
+        # status code is unchanged; the full story goes to the server log.
+        logger.exception("Refresh failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Refresh failed: {e}",
+            detail=REFRESH_FAILED_DETAIL,
         )
 
 

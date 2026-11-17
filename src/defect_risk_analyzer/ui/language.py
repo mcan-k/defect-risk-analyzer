@@ -40,6 +40,10 @@ SESSION_KEY = "dra_lang"
 # The .env key itself (DRA_LANGUAGE) is not named here any more: config both
 # reads and writes it now, so a copy on this side could only ever drift.
 
+#: Session key set by the callback when .env did not take the choice, and
+#: consumed by the selector on the same run (callbacks run before the script).
+_NOT_SAVED = "_dra_lang_not_saved"
+
 
 def apply() -> str:
     """Make this session's language active for i18n. Returns what was set.
@@ -87,6 +91,8 @@ def render_selector(container=st) -> None:
         on_change=_persist,
         help=help_text,
     )
+    if st.session_state.pop(_NOT_SAVED, False):
+        container.warning(i18n.t("sidebar.language.not_saved"))
 
 
 def _persist() -> None:
@@ -99,5 +105,9 @@ def _persist() -> None:
     Not config.set_env_value: that updates the file and os.environ but leaves
     the module global behind, and config.init() is guarded so it never catches
     up. See config.persist_language.
+
+    A .env that cannot be written leaves the choice live for this session;
+    the flag below makes the selector say it was not saved (6E-2 PR6).
     """
-    config.persist_language(st.session_state[SESSION_KEY])
+    if not config.persist_language(st.session_state[SESSION_KEY]):
+        st.session_state[_NOT_SAVED] = True
