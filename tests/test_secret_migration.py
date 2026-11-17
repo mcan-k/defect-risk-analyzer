@@ -40,13 +40,18 @@ LLM_KEY = "synthetic-groq-key-1111"
 class FakeStore:
     """Records every write, and can be told to fail in specific ways."""
 
-    def __init__(self, *, refuse=(), lose=()):
+    def __init__(self, *, refuse=(), lose=(), stuck=(), unreadable=()):
         self.values: dict[str, str] = {}
         self.writes: list[str] = []
+        self.deletes: list[str] = []
         self._refuse = set(refuse)   # set() returns False
         self._lose = set(lose)       # set() succeeds but nothing is stored
+        self._stuck = set(stuck)     # delete() returns False, the value stays
+        self._unreadable = set(unreadable)  # get() returns None, the value stays
 
     def get(self, name):
+        if name in self._unreadable:
+            return None
         return self.values.get(name)
 
     def set(self, name, value):
@@ -59,6 +64,9 @@ class FakeStore:
         return True
 
     def delete(self, name):
+        self.deletes.append(name)
+        if name in self._stuck:
+            return False
         self.values.pop(name, None)
         return True
 
@@ -295,21 +303,15 @@ def test_save_secret_falls_back_rather_than_losing_the_value(migration):
     assert LLM_KEY in _text(env_file)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Bilinen kusur: depodaki bir sırrı boşaltmak işe yaramıyor, reload eskisini "
-        "geri getiriyor (KNOWN-DEBT.md, '6E-2 PR6 keşfinde belgelenen kusurlar')"
-    ),
-)
 def test_emptying_a_stored_secret_empties_it(migration):
-    """6E-2 PR6 discovery, documented first (K-E3); the fix is a separate PR.
+    """6E-2 PR6 measured this red (K-E3, the xfail(strict) step); 6E-2 PR8
+    fixed it (user decision 2a, 2026-11-17) and this is an ordinary test now.
 
     Clearing the token field on the Settings page saves "". An empty value
-    never reaches the store, so only `.env` is emptied — it was empty already
-    — and `_get_secret` falls through to the store, which still holds the old
-    credential. The field comes back filled after the save. PR6's T1 rewrite
-    keeps this behaviour on purpose; this test is what keeps it visible.
+    never reached the store, so only `.env` was emptied — it was empty already
+    — and `_get_secret` fell through to the store, which still held the old
+    credential. PR8 also asks the store itself: the copy must be gone, not
+    merely hidden.
     """
     store = FakeStore()
     store.values["JIRA_API_TOKEN"] = TOKEN
@@ -319,6 +321,7 @@ def test_emptying_a_stored_secret_empties_it(migration):
     config.reload()
 
     assert config.JIRA_API_TOKEN == "", "the cleared credential came back from the store"
+    assert "JIRA_API_TOKEN" not in store.values, "the store still holds the credential"
 
 
 def test_the_settings_page_routes_secrets_and_settings_differently(migration, monkeypatch):
@@ -446,3 +449,77 @@ def test_a_failed_put_back_is_logged_and_the_save_error_still_raised(
 
     assert "JIRA_API_TOKEN" in caplog.text
     assert "could not be put back" in caplog.text
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR8, Y2 — a cleared credential is removed from the store as well
+# ---------------------------------------------------------------------------
+# Emptying `.env` alone cannot remove a credential that lives in the store:
+# `_get_secret` falls through to it. A delete the store refuses has no
+# fallback, so it undoes the whole save, like any other failed save (T1(a)).
+
+
+def test_emptying_removes_a_stored_copy_that_env_was_shadowing(migration):
+    """`.env` held one value and the store another; the field showed the
+    `.env` one. Clearing it must leave neither behind."""
+    store = FakeStore()
+    store.values["JIRA_API_TOKEN"] = "stored-token-5555"
+    env_file = migration(store, f"JIRA_API_TOKEN={TOKEN}\n")
+    config.reload()
+
+    config.save_secret("JIRA_API_TOKEN", "")
+    config.reload()
+
+    assert config.JIRA_API_TOKEN == ""
+    assert "JIRA_API_TOKEN" not in store.values
+    assert _text(env_file) == "JIRA_API_TOKEN=\n"
+
+
+def test_a_delete_the_store_refuses_undoes_the_whole_save(settings_save):
+    """No half-saved batch: the other credential in the same save goes back to
+    what the store held, `.env` is not touched, and the error is an OSError so
+    call() reports it as a system error with nothing sensitive on screen."""
+    migration, save = settings_save
+    store = FakeStore(stuck={"JIRA_API_TOKEN"})
+    store.values.update({"GROQ_API_KEY": "old-groq-6666", "JIRA_API_TOKEN": TOKEN})
+    env_file = migration(store, "GROQ_API_KEY=\nJIRA_API_TOKEN=\nJIRA_URL=https://old\n")
+    before = env_file.read_bytes()
+
+    with pytest.raises(config.CredentialStoreError) as raised:
+        save({"GROQ_API_KEY": LLM_KEY, "JIRA_API_TOKEN": "", "JIRA_URL": "https://new"})
+
+    assert isinstance(raised.value, OSError)
+    assert "JIRA_API_TOKEN" in str(raised.value)
+    assert TOKEN not in str(raised.value), "the message carried the value"
+    assert store.values == {"GROQ_API_KEY": "old-groq-6666", "JIRA_API_TOKEN": TOKEN}
+    assert env_file.read_bytes() == before
+
+
+def test_a_deleted_credential_is_put_back_when_env_cannot_be_written(
+    settings_save, monkeypatch
+):
+    migration, save = settings_save
+    store = FakeStore()
+    store.values["JIRA_API_TOKEN"] = TOKEN
+    env_file = migration(store, "JIRA_API_TOKEN=\nJIRA_URL=https://old\n")
+    before = env_file.read_bytes()
+    _write_fails_when(monkeypatch, lambda text: True)
+
+    with pytest.raises(PermissionError):
+        save({"JIRA_API_TOKEN": "", "JIRA_URL": "https://new"})
+
+    assert store.values == {"JIRA_API_TOKEN": TOKEN}, "the cleared credential was lost"
+    assert env_file.read_bytes() == before
+
+
+def test_a_credential_the_store_cannot_read_is_not_deleted(migration):
+    """What cannot be read cannot be put back if the save fails later, and the
+    Settings page showed the field empty already — so nothing is deleted."""
+    store = FakeStore(unreadable={"JIRA_API_TOKEN"})
+    store.values["JIRA_API_TOKEN"] = TOKEN
+    migration(store, "JIRA_API_TOKEN=\n")
+
+    config.save_secret("JIRA_API_TOKEN", "")
+
+    assert store.deletes == []
+    assert store.values == {"JIRA_API_TOKEN": TOKEN}

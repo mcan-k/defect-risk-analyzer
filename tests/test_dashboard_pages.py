@@ -1539,3 +1539,108 @@ def test_the_credential_layer_caption_is_translated():
     assert "is not installed" not in rendered, (
         f"the adapter's English leaked to the page: {rendered!r}"
     )
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR8, Y2 — the Settings page with credentials in the store
+# ---------------------------------------------------------------------------
+# After the migration the token and the LLM key live in the store and their
+# `.env` lines are empty. Each credential field starts with the value in use
+# (`value=config.JIRA_API_TOKEN`), so an empty field is one the user cleared —
+# measured at 9757edf: both fields start equal to the stored values. That is
+# what makes "empty means delete" safe, and the regression test below is what
+# holds it: saving any section must leave the stored credentials alone.
+
+_STORED_TOKEN = "dummy-stored-token-not-a-real-credential"
+_STORED_GROQ = "dummy-stored-groq-not-a-real-credential"
+
+
+class _StuckStore(_RecordingStore):
+    """A store that will not delete anything."""
+
+    def delete(self, name):
+        return False
+
+
+def _settings_with_store(monkeypatch, store) -> _RecordingStore:
+    store.values.update({"JIRA_API_TOKEN": _STORED_TOKEN, "GROQ_API_KEY": _STORED_GROQ})
+    monkeypatch.setattr(config, "_secret_store", store)
+    monkeypatch.setattr(config, "_secret_store_code", "store_active")
+    monkeypatch.setattr(config, "_secret_store_params", {"backend": "fake.Backend"})
+    monkeypatch.setattr(config, "_secret_store_resolved", True)
+    config.ENV_FILE.write_text(
+        CONFIGURED_ENV.replace(
+            "JIRA_API_TOKEN=dummy-token-not-a-real-credential\n", "JIRA_API_TOKEN=\n"
+        ).replace("GROQ_API_KEY=dummy-key-not-a-real-credential\n", "GROQ_API_KEY=\n"),
+        encoding="utf-8",
+    )
+    return store
+
+
+def _field(at: AppTest, key: str) -> str:
+    return [box for box in at.text_input if box.label == _TR[key]][0].value
+
+
+@pytest.mark.parametrize(
+    "button,saved,edit",
+    [case[1:4] for case in _SETTINGS_EDITS if case[0] != "llm"]
+    + [("settings.llm.save", "settings.llm.saved", _nothing)],
+    ids=["jira", "app", "llm"],
+)
+def test_saving_a_section_leaves_the_stored_credentials_alone(
+    button, saved, edit, restorable_env, monkeypatch
+):
+    """REGRESSION (6E-2 PR8, required by the brief): a cleared credential is
+    now deleted from the store, so a save that sent "" for a field the user
+    never touched would delete it. Green at 9757edf too — there was no delete
+    path — and kept for the day a field stops starting with its value."""
+    store = _settings_with_store(monkeypatch, _RecordingStore())
+    at = _open("pages/ayarlar.py")
+    edit(at)
+    successes = _record_success(monkeypatch)
+
+    _button(at, _TR[button]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _TR[saved] in successes, "the save did not run"
+    assert store.values == {"JIRA_API_TOKEN": _STORED_TOKEN, "GROQ_API_KEY": _STORED_GROQ}
+
+
+def test_clearing_a_stored_token_deletes_it(restorable_env, monkeypatch):
+    """Measured at 9757edf: the token stayed in the store and in use, while the
+    field showed empty for the rest of the session (Streamlit kept the typed
+    ""), so the page looked as if it had worked."""
+    store = _settings_with_store(monkeypatch, _RecordingStore())
+    at = _open("pages/ayarlar.py")
+    _type(at, _TR["common.jira_token"], "")
+    successes = _record_success(monkeypatch)
+
+    _button(at, _TR["settings.jira.save"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _TR["settings.jira.saved"] in successes
+    assert "JIRA_API_TOKEN" not in store.values, "the token is still in the store"
+    assert store.values == {"GROQ_API_KEY": _STORED_GROQ}
+    assert config.JIRA_API_TOKEN == ""
+    assert _field(_open("pages/ayarlar.py"), "common.jira_token") == "", (
+        "a fresh session shows the token again"
+    )
+
+
+def test_a_delete_the_store_refuses_is_reported_and_nothing_is_saved(
+    restorable_env, monkeypatch
+):
+    store = _settings_with_store(monkeypatch, _StuckStore())
+    at = _open("pages/ayarlar.py")
+    before = config.ENV_FILE.read_bytes()
+    _type(at, _TR["common.jira_token"], "")
+    _type(at, _TR["common.jira_project"], "YENI")
+    successes = _record_success(monkeypatch)
+
+    _button(at, _TR["settings.jira.save"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _on_screen("error.os") in [e.value for e in at.error]
+    assert _TR["settings.jira.saved"] not in successes
+    assert store.values["JIRA_API_TOKEN"] == _STORED_TOKEN
+    assert config.ENV_FILE.read_bytes() == before
