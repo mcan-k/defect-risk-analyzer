@@ -900,6 +900,14 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       ve iki AppTest M11 kodunda kırmızı ölçüldü, bu PR'la yeşil; PR6'nın
       xfail(strict) testi normal teste döndü. 4xx/429 dalları v1.1 (karar
       4a); sır deposunun iki kusuru 6E, PR8 (kararlar 1a/2a).
+- [x] Sır deposunun iki kusuru: API sunucusunun başlangıcı depodaki API
+      key'i görmeyip yenisini `.env`'e düz metin yazıyordu (Y1); Ayarlar'da
+      silinen bir sır depoda ve kullanımda kalıyordu (Y2) (`KNOWN-DEBT.md`,
+      "6E-2 PR6 keşfinde belgelenen kusurlar"). Yapıldı: 6E-2 PR8, `b60337a`
+      + `7ef26b4` (2026-11-17; kullanıcı kararları 1a/2a). Kanıt: PR6'nın iki
+      xfail(strict) testi normal teste döndü; dört Y1 ve beş Y2 testi 9757edf
+      kodunda kırmızı ölçüldü, bu PR'la yeşil. Ayarlar'ın dört başarı satırı
+      ölçüldü ve xfail(strict) ile belgelendi (düzeltme 6E, ayrı PR).
 
 #### Doğrulama soruları
 

@@ -36,7 +36,11 @@ go back to the stored value.
 **Saving from the Settings page** writes credentials to whichever layer is in
 use, and clears the `.env` line when the store took the value — otherwise the
 file would shadow what you just saved. If the store refuses, the value goes to
-`.env` rather than being lost.
+`.env` rather than being lost. Clearing a credential field and saving removes
+the value from both places; if the store will not delete it, nothing in that
+save is kept and the page reports an error. The webhook `API_KEY` is saved the
+same way, whether the Settings page or the API server's first start generates
+it, and an existing key — in `.env` or in the store — is reused, not replaced.
 
 `.env` is excluded from git (`.gitignore`) and from the Docker build context
 (`.dockerignore`). Writes go through a temp file and `os.replace`, and POSIX
