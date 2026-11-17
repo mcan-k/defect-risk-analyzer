@@ -532,20 +532,16 @@ def test_a_sync_cut_by_the_page_cap_warns_after_the_rerun(monkeypatch):
     assert expected in [w.value for w in at.sidebar.warning]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Bilinen kusur: başarılı senkronun başarı satırı st.rerun() ile kayboluyor "
-        "(KNOWN-DEBT.md, '6E-2 PR6 keşfinde belgelenen kusurlar')"
-    ),
-)
 def test_a_successful_sync_shows_its_success_line_after_the_rerun(monkeypatch):
-    """6E-2 PR6 measurement (KNOWN-DEBT, 6E-2 PR5 row): shell.py draws
-    "✅ N bug yüklendi!" and calls st.rerun() straight after, with no pause.
-    The line is recorded as DRAWN, so a red here means it was drawn and then
-    lost to the rerun — not that the success branch never ran. Measured red
-    2026-11-17: drawn, and the final sidebar holds only the two connection
-    lines. Documented first (K-E3); the fix is a separate PR."""
+    """6E-2 PR6 measured this red (KNOWN-DEBT, "6E-2 PR6 keşfinde belgelenen
+    kusurlar"): shell.py drew "✅ N bug yüklendi!" and called st.rerun()
+    straight after, so the final sidebar held only the two connection lines.
+    6E-2 PR7 (K-E3's second step) carries the count across the rerun in
+    session_state, the way PR5 carries the page-cap warning; this was the
+    xfail(strict) test and is now an ordinary one.
+
+    The line is recorded as DRAWN, so a red on the last assert means it was
+    drawn and then lost — not that the success branch never ran."""
     from streamlit.delta_generator import DeltaGenerator
 
     from defect_risk_analyzer import jira_client
@@ -572,6 +568,49 @@ def test_a_successful_sync_shows_its_success_line_after_the_rerun(monkeypatch):
     line = _TR["sidebar.sync.done"].format(count=fetched[0])
     assert line in drawn, "the success branch did not run"
     assert line.removeprefix("✅ ") in [s.value for s in at.sidebar.success]
+
+
+def _capped_sync(monkeypatch) -> tuple[AppTest, int]:
+    """A sync cut short by the page cap; returns the app and the bug count."""
+    from defect_risk_analyzer import jira_client
+
+    fetched = []
+
+    def capped():
+        bugs = jira_client.load_bugs_from_file(config.sample_bugs_file())
+        fetched.append(len(bugs))
+        return jira_client.FetchResult(bugs, True)
+
+    at = _open()
+    monkeypatch.setattr(jira_client, "refresh_data", capped)
+    _sync(at)
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert fetched and fetched[0] > 0
+    return at, fetched[0]
+
+
+def test_a_sync_cut_by_the_page_cap_shows_both_lines_after_the_rerun(monkeypatch):
+    """6E-2 PR7: a capped sync still loaded bugs, so it gets the success line
+    AND the page-cap warning — both on the final tree, after the rerun."""
+    at, count = _capped_sync(monkeypatch)
+
+    done = _TR["sidebar.sync.done"].format(count=count).removeprefix("✅ ")
+    truncated = _on_screen("sidebar.sync.truncated").format(count=count)
+    assert done in [s.value for s in at.sidebar.success]
+    assert truncated in [w.value for w in at.sidebar.warning]
+
+
+def test_the_sync_lines_are_shown_once(monkeypatch):
+    """6E-2 PR7: the two lines report one sync. The run after the one that
+    shows them must not show them again."""
+    at, count = _capped_sync(monkeypatch)
+    at.run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    done = _TR["sidebar.sync.done"].format(count=count).removeprefix("✅ ")
+    truncated = _on_screen("sidebar.sync.truncated").format(count=count)
+    assert done not in [s.value for s in at.sidebar.success]
+    assert truncated not in [w.value for w in at.sidebar.warning]
 
 
 # ---------------------------------------------------------------------------
