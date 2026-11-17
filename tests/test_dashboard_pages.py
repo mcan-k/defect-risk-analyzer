@@ -532,6 +532,48 @@ def test_a_sync_cut_by_the_page_cap_warns_after_the_rerun(monkeypatch):
     assert expected in [w.value for w in at.sidebar.warning]
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Bilinen kusur: başarılı senkronun başarı satırı st.rerun() ile kayboluyor "
+        "(KNOWN-DEBT.md, '6E-2 PR6 keşfinde belgelenen kusurlar')"
+    ),
+)
+def test_a_successful_sync_shows_its_success_line_after_the_rerun(monkeypatch):
+    """6E-2 PR6 measurement (KNOWN-DEBT, 6E-2 PR5 row): shell.py draws
+    "✅ N bug yüklendi!" and calls st.rerun() straight after, with no pause.
+    The line is recorded as DRAWN, so a red here means it was drawn and then
+    lost to the rerun — not that the success branch never ran. Measured red
+    2026-11-17: drawn, and the final sidebar holds only the two connection
+    lines. Documented first (K-E3); the fix is a separate PR."""
+    from streamlit.delta_generator import DeltaGenerator
+
+    from defect_risk_analyzer import jira_client
+
+    fetched, drawn = [], []
+
+    def full():
+        bugs = jira_client.load_bugs_from_file(config.sample_bugs_file())
+        fetched.append(len(bugs))
+        return jira_client.FetchResult(bugs, False)
+
+    original = DeltaGenerator.success
+
+    def recording(self, body, *args, **kwargs):
+        drawn.append(body)
+        return original(self, body, *args, **kwargs)
+
+    at = _open()
+    monkeypatch.setattr(jira_client, "refresh_data", full)
+    monkeypatch.setattr(DeltaGenerator, "success", recording)
+    _sync(at)
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    line = _TR["sidebar.sync.done"].format(count=fetched[0])
+    assert line in drawn, "the success branch did not run"
+    assert line.removeprefix("✅ ") in [s.value for s in at.sidebar.success]
+
+
 # ---------------------------------------------------------------------------
 # Navigation
 # ---------------------------------------------------------------------------

@@ -295,6 +295,32 @@ def test_save_secret_falls_back_rather_than_losing_the_value(migration):
     assert LLM_KEY in _text(env_file)
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Bilinen kusur: depodaki bir sırrı boşaltmak işe yaramıyor, reload eskisini "
+        "geri getiriyor (KNOWN-DEBT.md, '6E-2 PR6 keşfinde belgelenen kusurlar')"
+    ),
+)
+def test_emptying_a_stored_secret_empties_it(migration):
+    """6E-2 PR6 discovery, documented first (K-E3); the fix is a separate PR.
+
+    Clearing the token field on the Settings page saves "". An empty value
+    never reaches the store, so only `.env` is emptied — it was empty already
+    — and `_get_secret` falls through to the store, which still holds the old
+    credential. The field comes back filled after the save. PR6's T1 rewrite
+    keeps this behaviour on purpose; this test is what keeps it visible.
+    """
+    store = FakeStore()
+    store.values["JIRA_API_TOKEN"] = TOKEN
+    migration(store, "JIRA_API_TOKEN=\n")
+
+    config.save_secret("JIRA_API_TOKEN", "")
+    config.reload()
+
+    assert config.JIRA_API_TOKEN == "", "the cleared credential came back from the store"
+
+
 def test_the_settings_page_routes_secrets_and_settings_differently(migration, monkeypatch):
     """The routing itself, at the call site the Settings page actually uses."""
     from defect_risk_analyzer.ui import service as ui_service
