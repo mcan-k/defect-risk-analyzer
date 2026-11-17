@@ -333,11 +333,46 @@ def set_env_value(key: str, value: str) -> None:
     Also updates `os.environ` so the new value is visible immediately, before
     any `reload()`.
     """
+    set_env_values({key: value})
+
+
+def set_env_values(values: dict[str, str]) -> None:
+    """Write several keys to `.env` in ONE atomic replace (6E-2 PR6, T1(a)).
+
+    Each key is applied exactly as `set_env_value` applies it — the last
+    assignment is the target, duplicates are retired, emptying blanks — but to
+    one in-memory copy of the file, which then replaces `.env` once. So a
+    failure leaves `.env` as it was for EVERY key. The Settings page saves
+    several keys at a time, and the per-key write this replaced left the first
+    keys on disk when a later one failed.
+
+    `os.environ` follows only after the replace succeeded, for the same reason:
+    the process must not run on values the file does not hold. An empty dict
+    writes nothing.
+    """
+    if not values:
+        return
+
     lines: list[str] = []
     if ENV_FILE.exists():
         with open(ENV_FILE, encoding=_ENV_ENCODING, newline="") as f:
             lines = f.readlines()
 
+    for key, value in values.items():
+        _apply_assignment(lines, key, value)
+
+    _atomic_write_lines(lines)
+
+    for key, value in values.items():
+        os.environ[key] = str(value)
+
+
+def _apply_assignment(lines: list[str], key: str, value: str) -> None:
+    """Apply one `key=value` to the file's lines, in place.
+
+    The rules are `set_env_value`'s; they live here so a batch can apply them
+    to a single copy of the file.
+    """
     matches = [i for i, line in enumerate(lines) if _is_assignment_line(line, key)]
 
     # EMPTYING IS NOT AN ORDINARY WRITE. Retiring a duplicate by commenting it
@@ -375,10 +410,6 @@ def set_env_value(key: str, value: str) -> None:
         if lines and not lines[-1].endswith(("\n", "\r")):
             lines[-1] += terminator
         lines.append(f"{key}={value}{terminator}")
-
-    _atomic_write_lines(lines)
-
-    os.environ[key] = str(value)
 
 
 def migrate_secrets_to_store() -> dict[str, object]:
@@ -466,6 +497,86 @@ def migrate_secrets_to_store() -> dict[str, object]:
     return report
 
 
+def save_settings(values: dict[str, str]) -> dict[str, str]:
+    """Save several settings as one: all of them, or none (6E-2 PR6, T1(a)).
+
+    Returns the layer each key went to, "store" or "env".
+
+    CREDENTIALS FOLLOW THE LAYER, everything else goes to `.env` — see
+    `save_secret`. A credential goes to the store when there is one, is read
+    back, and its `.env` line is emptied; otherwise the file would shadow what
+    was just stored, because `_get_secret` lets a non-empty `.env` win.
+
+    THE ORDER IS THE CONTRACT. Credentials go to the store first. Then `.env`
+    is replaced ONCE, with every plain setting, every credential that fell back
+    to the file, and an emptied line for every credential the store took. One
+    replace means the file is either wholly the new settings or wholly the old
+    ones — the per-key writes this replaced left the first keys saved when a
+    later key failed.
+
+    WHEN THAT REPLACE FAILS, the store is put back as it was — the previous
+    value, or nothing — and the error is raised for `call()` to report. Without
+    the put-back a failed save could still change which credential is used: the
+    store would hold the new value next to the old `.env` line, and whichever
+    of the two `_get_secret` reached would decide, not the user. That is the
+    shadowing T1(a) names.
+
+    WHAT THIS CANNOT COVER: the process dying between the store writes and the
+    file replace. The store and the file share no transaction, so that window
+    leaves the store ahead of the file.
+    """
+    store, _, _ = secret_store()
+    file_values: dict[str, str] = {}
+    layers: dict[str, str] = {}
+    previous: dict[str, str | None] = {}
+
+    for key, value in values.items():
+        if key in STORED_SECRET_KEYS and store is not None and value:
+            previous[key] = store.get(key)
+            if store.set(key, value) and store.get(key) == value:
+                file_values[key] = ""
+                layers[key] = "store"
+                continue
+            logger.warning(
+                "Could not store %s in the credential store; falling back to .env.", key
+            )
+        file_values[key] = value
+        layers[key] = "env"
+
+    try:
+        set_env_values(file_values)
+    except BaseException:
+        _put_back(store, previous)
+        raise
+
+    return layers
+
+
+def _put_back(store, previous: dict[str, str | None]) -> None:
+    """Return the store to what it held before a failed save.
+
+    Best effort, and never allowed to replace the save's own error. A put-back
+    that fails is the one state the screen cannot show — the store may now hold
+    a value the user was told was not saved — so it is logged by key name. Only
+    the exception's type: a credential backend's message is not ours to word.
+    """
+    for key, value in previous.items():
+        try:
+            restored = store.delete(key) if value is None else store.set(key, value)
+        except Exception as exc:
+            restored = False
+            reason = type(exc).__name__
+        else:
+            reason = "refused"
+        if not restored:
+            logger.error(
+                "%s could not be put back in the credential store after a failed "
+                "save (%s); the store may hold the value that was not saved.",
+                key,
+                reason,
+            )
+
+
 def save_secret(key: str, value: str) -> str:
     """Store one credential in whichever layer is in use. Returns the layer.
 
@@ -477,19 +588,11 @@ def save_secret(key: str, value: str) -> str:
     FALLS BACK RATHER THAN FAILING. If the store refuses the write or loses it,
     the value goes to `.env`: a credential the user typed is not something to
     drop because the preferred layer misbehaved.
+
+    A one-key `save_settings`, so a failed `.env` write puts the store back
+    here too (6E-2 PR6).
     """
-    store, _, _ = secret_store()
-
-    if store is not None and value:
-        if store.set(key, value) and store.get(key) == value:
-            set_env_value(key, "")
-            return "store"
-        logger.warning(
-            "Could not store %s in the credential store; falling back to .env.", key
-        )
-
-    set_env_value(key, value)
-    return "env"
+    return save_settings({key: value})[key]
 
 
 def persist_language(code: str) -> bool:

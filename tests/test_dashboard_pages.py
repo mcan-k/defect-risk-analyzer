@@ -996,7 +996,8 @@ def test_no_ui_module_writes_to_the_process_environment():
     left the credential in the process environment for as long as the process
     lived. A test that clicked the button would have shown neither half.
 
-    `config.set_env_value` remains the single writer: it goes through the atomic
+    `config.set_env_value` (since 6E-2 PR6 a one-key `set_env_values`) remains
+    the single writer: it goes through the atomic
     `.env` path and updates `os.environ` as one deliberate step. The rule here is
     that the UI layer asks config, and never reaches around it.
     """
@@ -1099,7 +1100,9 @@ def test_the_save_guard_flags_every_unwrapped_use():
     assert [o.split(":")[0] for o in offenders] == ["line 2", "line 3", "line 4"]
 
 
-def _unwritable_env(key, value):
+def _unwritable_env(lines):
+    """Stands in for config._atomic_write_lines: every .env write goes through
+    it, the per-key writer of PR3's time and the batch writer of PR6 alike."""
     raise PermissionError(13, "Permission denied", str(config.ENV_FILE))
 
 
@@ -1208,7 +1211,7 @@ def test_a_save_that_cannot_write_env_shows_the_error_and_raises_nothing(
     prepare(at)
     before = config.ENV_FILE.read_bytes()
 
-    monkeypatch.setattr(config, "set_env_value", _unwritable_env)
+    monkeypatch.setattr(config, "_atomic_write_lines", _unwritable_env)
     successes = _record_success(monkeypatch)
     _button(at, _TR[button]).click().run()
 

@@ -664,3 +664,31 @@ def test_t18_emptying_leaves_another_keys_retired_line_alone(env_file):
     text = "\n".join(content_lines(env_file))
     assert "other-secret" in text, "another key's retired line was touched"
     assert "other-rotated" in text
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR6, T1(a) — several keys, one file replace
+# ---------------------------------------------------------------------------
+
+def test_several_keys_are_written_with_one_replace(env_file, monkeypatch):
+    """One atomic replace for the whole batch: that is what makes a failed
+    save leave nothing behind. os.environ follows only once the file is on
+    disk, so the process never runs on values .env does not hold."""
+    write_env(env_file, "JIRA_URL=a\nAPI_KEY=x\nAPI_KEY=y")
+    replaces: list[list[str]] = []
+    real = config._atomic_write_lines
+
+    def counting(lines):
+        assert os.environ["JIRA_URL"] != "b", "os.environ moved before the file did"
+        replaces.append(list(lines))
+        real(lines)
+
+    monkeypatch.setattr(config, "_atomic_write_lines", counting)
+
+    config.set_env_values({"JIRA_URL": "b", "API_KEY": "z", "OTHER_KEY": "new"})
+
+    assert len(replaces) == 1
+    assert live_lines(env_file, "JIRA_URL") == ["JIRA_URL=b"]
+    assert live_lines(env_file, "API_KEY") == ["API_KEY=z"], "duplicates follow set_env_value"
+    assert live_lines(env_file, "OTHER_KEY") == ["OTHER_KEY=new"]
+    assert [os.environ[k] for k in ("JIRA_URL", "API_KEY", "OTHER_KEY")] == ["b", "z", "new"]

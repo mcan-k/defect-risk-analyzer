@@ -37,15 +37,16 @@ def save_multiple_env(values: dict[str, str]) -> bool:
     credential written to the file would shadow the one in the store and the
     migration would be undone by the user's next visit to this page.
 
-    `save_secret` falls back to `.env` when there is no store, which is the same
+    `save_settings` falls back to `.env` when there is no store, which is the same
     thing `set_env_value` did before — so on Docker, on CI, and on a desktop
     without the extra this path is unchanged.
+
+    ALL OR NOTHING (6E-2 PR6, T1(a)): `save_settings` writes the batch with one
+    `.env` replace and puts the store back if that fails, so a failed save
+    leaves neither half-saved settings nor a credential shadowed by its old
+    plain-text line. The reload and reset below run only after a save.
     """
-    for key, value in values.items():
-        if key in config.STORED_SECRET_KEYS:
-            config.save_secret(key, value)
-        else:
-            config.set_env_value(key, value)
+    config.save_settings(values)
     # The one place a re-read is still needed: .env just changed underneath us.
     config.reload()
     # The service holds a provider built from the old credentials; drop it so
