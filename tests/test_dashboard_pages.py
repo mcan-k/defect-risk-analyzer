@@ -1339,6 +1339,44 @@ def test_a_settings_save_still_writes_and_confirms(
     assert _on_screen("error.os") not in [e.value for e in at.error]
 
 
+@pytest.mark.xfail(
+    strict=True,
+    reason=(
+        "Bilinen kusur: Ayarlar'ın dört başarı satırı time.sleep(1) + st.rerun() ile "
+        "son ağaçta yok (KNOWN-DEBT.md, '6E-2 PR6 keşfinde belgelenen kusurlar')"
+    ),
+)
+@pytest.mark.parametrize("case", ["jira", "llm", "app", "apikey"])
+def test_a_settings_save_shows_its_success_line_after_the_rerun(
+    case, restorable_env, monkeypatch
+):
+    """6E-2 PR8 measurement, documented first (K-E3); the fix is a separate PR.
+
+    Each of the Settings page's four success lines is drawn, then
+    `time.sleep(1)` and `st.rerun()`: the rerun's tree is the one that stays,
+    and it does not hold the line. The sync line had the same shape without
+    the sleep and was fixed in 6E-2 PR7 by carrying it across the rerun in
+    session_state. Recorded as DRAWN first, so a red on the last assert means
+    drawn and then lost — not that the success branch never ran."""
+    if case == "apikey":
+        _isolate_api_key(monkeypatch)
+    at = _open("pages/ayarlar.py")
+    successes = _record_success(monkeypatch)
+
+    if case == "apikey":
+        _api_key_button(at).click().run()
+        line = _TR["settings.apikey.saved"].format(key=config.API_KEY[:8])
+    else:
+        _, button, saved, edit, _ = next(c for c in _SETTINGS_EDITS if c[0] == case)
+        edit(at)
+        _button(at, _TR[button]).click().run()
+        line = _TR[saved]
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert line in successes, "the success branch did not run"
+    assert line.removeprefix("✅ ") in [s.value for s in at.success]
+
+
 def test_the_wizard_live_save_still_writes_and_tests_both_connections(unconfigured, monkeypatch):
     calls = _stub_connection_tests(monkeypatch)
     at = _open()
