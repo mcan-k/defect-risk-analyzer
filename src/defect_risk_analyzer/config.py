@@ -16,7 +16,7 @@ call `init()` in it.
 
 `reload()` re-reads `.env` on demand; the Settings page calls it after saving so
 changes take effect without a restart. API key generation is explicit via
-`ensure_api_key()` — it writes to `.env`, so it never happens implicitly.
+`ensure_api_key()` — it saves a credential, so it never happens implicitly.
 """
 
 import logging
@@ -645,9 +645,10 @@ def persist_language(code: str) -> bool:
 class ApiKeyResult(NamedTuple):
     """What `ensure_api_key()` hands back.
 
-    `saved` is False only when this call generated a key and `.env` could not
-    be written: the key then works for this process alone. A key that already
-    existed was not written by this call, so it reports True.
+    `saved` is False only when this call generated a key and the save failed
+    (`.env` could not be written; a stored copy is put back): the key then
+    works for this process alone. A key that already existed was not written
+    by this call, so it reports True.
     """
 
     key: str
@@ -658,14 +659,24 @@ def ensure_api_key(*, rotate: bool = False) -> ApiKeyResult:
     """
     Return the API key, generating and persisting one when needed.
 
-    Writes to `.env`, so it is never called implicitly — only by the API server
-    at startup and by the Settings page button.
+    Saves a credential, so it is never called implicitly — only by the API
+    server at startup and by the Settings page button.
 
-    A `.env` that cannot be written does not stop the caller: the key still
-    goes to `os.environ` and `API_KEY`, so this process can use it. That design
-    is kept (user decision T2(a), 2026-11-11), but the failure is no longer
-    silent — it is logged here, and `saved` tells the caller, which is how the
-    Settings page can say "not saved, this session only" instead of "saved".
+    THE KEY IS READ AND SAVED LIKE EVERY OTHER CREDENTIAL (6E-2 PR8, Y1).
+    An existing key is found with `_get_secret`, the rule `reload()` uses:
+    `.env` when it holds a value, the store otherwise. A new key goes through
+    `save_secret`: the store when there is one, `.env` when there is not. This
+    read `.env` alone and wrote `.env` alone, so after the credential migration
+    — key in the store, `.env` line empty — every API server start found no
+    key, generated a new one in plain text, and the key the Settings page
+    showed (and a Jira webhook held) stopped working. Measured at 9757edf with
+    a fake store: every server start after a dashboard start rotated the key.
+
+    A save that fails does not stop the caller: the key still goes to
+    `os.environ` and `API_KEY`, so this process can use it. That design is
+    kept (user decision T2(a), 2026-11-11), but the failure is not silent — it
+    is logged here, and `saved` tells the caller, which is how the Settings
+    page can say "not saved, this session only" instead of "saved".
 
     Args:
         rotate: Generate a fresh key even if one already exists.
@@ -673,7 +684,7 @@ def ensure_api_key(*, rotate: bool = False) -> ApiKeyResult:
     global API_KEY
 
     if not rotate:
-        existing = _get_env("API_KEY")
+        existing = _get_secret("API_KEY")
         if existing:
             API_KEY = existing
             return ApiKeyResult(existing, True)
@@ -681,11 +692,12 @@ def ensure_api_key(*, rotate: bool = False) -> ApiKeyResult:
     new_key = secrets.token_urlsafe(32)
     saved = True
     try:
-        set_env_value("API_KEY", new_key)
+        save_secret("API_KEY", new_key)
     except OSError:
-        # A read-only .env still gives a working key for this process.
+        # A failed save still gives a working key for this process.
+        # save_settings has already put the store back as it was.
         logger.warning(
-            "A new API key could not be saved to .env; it is valid for this "
+            "A new API key could not be saved; it is valid for this "
             "process only.",
             exc_info=True,
         )
