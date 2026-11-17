@@ -78,6 +78,20 @@ llm_semaphore = asyncio.Semaphore(1)
 #: What a failed POST /refresh answers. Fixed text: see the endpoint.
 REFRESH_FAILED_DETAIL = "Refresh failed; see server log."
 
+# The same fixed-sentence rule for the analysis endpoints' 500 branches (user
+# decision 3a, 2026-11-17). Each detail used to end in the exception's text,
+# which can be a file path (on Windows, under the account name) or a piece of
+# an LLM provider's reply. The status codes did not change; the exception goes
+# to the server log through logger.exception. The 4xx branches still answer
+# str(e): their texts are the app's own and useful to the caller (decision 4a,
+# v1.1).
+ANALYZE_LLM_FAILED_DETAIL = "LLM analysis failed; see server log."
+ANALYZE_FAILED_DETAIL = "Analysis failed; see server log."
+WEBHOOK_FAILED_DETAIL = "Webhook analysis failed; see server log."
+PATTERNS_FAILED_DETAIL = "Pattern detection failed; see server log."
+DUPLICATES_FAILED_DETAIL = "Duplicate search failed; see server log."
+BLIND_SPOTS_FAILED_DETAIL = "Blind spot detection failed; see server log."
+
 
 # ---------------------------------------------------------------------------
 # Lifespan — startup / shutdown
@@ -228,16 +242,17 @@ async def analyze_single(request: AnalyzeRequest):
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=str(e),
             )
-        except LLMError as e:
+        except LLMError:
+            logger.exception("LLM analysis failed")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"LLM analysis failed: {e}",
+                detail=ANALYZE_LLM_FAILED_DETAIL,
             )
-        except Exception as e:
-            logger.error("Unexpected error in /analyze: %s", e, exc_info=True)
+        except Exception:
+            logger.exception("Analysis failed")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Analysis failed: {e}",
+                detail=ANALYZE_FAILED_DETAIL,
             )
 
 
@@ -366,11 +381,11 @@ async def jira_webhook(payload: WebhookPayload):
                 status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                 detail=str(e),
             )
-        except Exception as e:
-            logger.error("Webhook analysis failed: %s", e, exc_info=True)
+        except Exception:
+            logger.exception("Webhook analysis failed")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=f"Webhook analysis failed: {e}",
+                detail=WEBHOOK_FAILED_DETAIL,
             )
 
 
@@ -454,11 +469,11 @@ async def get_patterns():
     """
     try:
         return await asyncio.to_thread(analyzer.detect_patterns, include_bugs=False)
-    except Exception as e:
-        logger.error("Pattern detection failed: %s", e, exc_info=True)
+    except Exception:
+        logger.exception("Pattern detection failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Pattern detection failed: {e}",
+            detail=PATTERNS_FAILED_DETAIL,
         )
 
 
@@ -479,11 +494,12 @@ async def get_duplicates(bug_key: str):
     try:
         duplicates = await asyncio.to_thread(analyzer.find_duplicate_bugs, bug_data)
         return {"bug_key": bug_key, "potential_duplicates": duplicates}
-    except Exception as e:
-        logger.error("Duplicate search failed: %s", e)
+    except Exception:
+        # This branch used to log without the traceback.
+        logger.exception("Duplicate search failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Duplicate search failed: {e}",
+            detail=DUPLICATES_FAILED_DETAIL,
         )
 
 
@@ -502,11 +518,11 @@ async def get_blind_spots():
     try:
         spots = await asyncio.to_thread(analyzer.detect_blind_spots)
         return spots
-    except Exception as e:
-        logger.error("Blind spot detection failed: %s", e, exc_info=True)
+    except Exception:
+        logger.exception("Blind spot detection failed")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Blind spot detection failed: {e}",
+            detail=BLIND_SPOTS_FAILED_DETAIL,
         )
 
 

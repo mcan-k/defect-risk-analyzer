@@ -889,6 +889,17 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       beş testi ve dil seçicinin AppTest'i M10 kodunda kırmızı ölçüldü, bu
       PR'la yeşil. Keşifte ölçülen üç kusur xfail(strict) ile belgelendi
       ("6E-2 PR6 keşfinde belgelenen kusurlar").
+- [x] Kullanıcıya görünen mesajlar: `api.py`'nin analiz uçlarındaki altı
+      500 dalı (`POST /analyze` `LLMError` ve genel, `POST /webhook/jira`,
+      `GET /patterns`, `GET /patterns/{bug_key}/duplicates`,
+      `GET /blind-spots`) istisna metnini yanıta koyuyordu; senkronun başarı
+      satırı `st.rerun()` ile kayboluyordu (`KNOWN-DEBT.md`, "`api.py`:
+      istisna metni yanıta giren öteki uçlar" ve "6E-2 PR6 keşfinde
+      belgelenen kusurlar"). Yapıldı: 6E-2 PR7, `e8c61f8` + `8a0b070`
+      (2026-11-17; kullanıcı kararları 3a ve K-E3). Kanıt: altı API vakası
+      ve iki AppTest M11 kodunda kırmızı ölçüldü, bu PR'la yeşil; PR6'nın
+      xfail(strict) testi normal teste döndü. 4xx/429 dalları v1.1 (karar
+      4a); sır deposunun iki kusuru 6E, PR8 (kararlar 1a/2a).
 
 #### Doğrulama soruları
 

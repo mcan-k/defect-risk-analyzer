@@ -63,6 +63,10 @@ _LEGACY_NOTICE_SHOWN = "_dra_legacy_anon_map_notice_shown"
 # carried over the sync's st.rerun() to the run that shows the warning.
 _SYNC_TRUNCATED = "_dra_sync_truncated_count"
 
+# st.session_state key: the bug count of a successful sync, carried over the
+# same rerun to the run that shows the success line.
+_SYNC_DONE = "_dra_sync_done_count"
+
 
 def _report_removed_legacy_files() -> None:
     """Tell the user that `data/anon_map.json` was deleted at startup.
@@ -193,8 +197,16 @@ def render_status() -> None:
 
     st.sidebar.markdown("---")
 
-    # A sync cut short by the Jira page cap, reported here on the run AFTER the
-    # sync: anything drawn before st.rerun() is gone once the rerun renders.
+    # A sync's outcome, reported here on the run AFTER the sync: anything drawn
+    # before st.rerun() is gone once the rerun renders. The success line used
+    # to be drawn there and was never seen (measured, 6E-2 PR6). Popped, so
+    # each line is shown once.
+    done_count = st.session_state.pop(_SYNC_DONE, None)
+    if done_count is not None:
+        st.sidebar.success(t("sidebar.sync.done", count=done_count))
+
+    # A sync cut short by the Jira page cap: it still loaded bugs, so it gets
+    # the success line above as well.
     truncated_count = st.session_state.pop(_SYNC_TRUNCATED, None)
     if truncated_count is not None:
         st.sidebar.warning(t("sidebar.sync.truncated", count=truncated_count))
@@ -206,7 +218,7 @@ def render_status() -> None:
         with st.spinner(t("sidebar.sync.running")):
             result = call(get_service().refresh)
         if result:
-            st.sidebar.success(t("sidebar.sync.done", count=result.get("bugs_fetched", 0)))
+            st.session_state[_SYNC_DONE] = result.get("bugs_fetched", 0)
             if result.get("truncated"):
                 st.session_state[_SYNC_TRUNCATED] = result.get("bugs_fetched", 0)
             st.rerun()
