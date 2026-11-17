@@ -492,7 +492,7 @@ def save_secret(key: str, value: str) -> str:
     return "env"
 
 
-def persist_language(code: str) -> None:
+def persist_language(code: str) -> bool:
     """
     Persist the interface language and make it live for this process.
 
@@ -516,12 +516,27 @@ def persist_language(code: str) -> None:
     Lowercased once, so the file and the global cannot disagree: `reload()`
     lowercases what it reads, and a stored "EN" would mean one demo set now and
     the other after a restart.
+
+    A `.env` that cannot be written does not cancel the choice (6E-2 PR6, on
+    the T2(a) principle): `LANGUAGE` still moves, so the choice holds for this
+    process, the reason is logged, and False tells the picker to say it was not
+    saved. The picker runs this from a widget callback, outside `call()`, so an
+    exception from here used to reach the screen raw — path included.
     """
     global LANGUAGE
 
     code = code.strip().lower()
-    set_env_value("DRA_LANGUAGE", code)
     LANGUAGE = code
+    try:
+        set_env_value("DRA_LANGUAGE", code)
+    except OSError:
+        logger.warning(
+            "The interface language could not be saved to .env; it applies to "
+            "this process only.",
+            exc_info=True,
+        )
+        return False
+    return True
 
 
 class ApiKeyResult(NamedTuple):

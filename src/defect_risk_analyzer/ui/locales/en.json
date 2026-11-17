@@ -221,6 +221,7 @@
   "sidebar.language": "Language",
   "sidebar.language.help.jira": "Interface language only. Bug texts stay as Jira delivers them.",
   "sidebar.language.help.mock": "Press {action} to load the sample data in the language you picked.",
+  "sidebar.language.not_saved": "⚠️ The language choice could not be saved; it applies to this session only. Details are in the application log.",
   "sidebar.llm.connected": "✅ LLM: {provider}",
   "sidebar.llm.missing_key": "⚠️ LLM: API key missing",
   "sidebar.metric.bugs_loaded": "Bugs Loaded",

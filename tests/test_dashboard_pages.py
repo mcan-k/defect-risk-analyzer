@@ -656,6 +656,34 @@ def test_choosing_a_language_persists_it_to_env(restorable_env):
     assert not at.exception, [f"{e.value}" for e in at.exception]
 
 
+def test_a_language_env_cannot_take_applies_now_and_says_it_was_not_saved(
+    restorable_env, monkeypatch
+):
+    """6E-2 PR6: the picker writes .env from a widget callback, outside call(),
+    so an unwritable .env used to surface as a raw exception. The choice now
+    applies to this session, and the sidebar says it was not saved."""
+    monkeypatch.setattr(config, "LANGUAGE", config.LANGUAGE)
+    at = _open()
+    before = config.ENV_FILE.read_bytes()
+
+    def unwritable(lines):
+        raise PermissionError(13, "Permission denied", str(config.ENV_FILE))
+
+    monkeypatch.setattr(config, "_atomic_write_lines", unwritable)
+    [s for s in at.sidebar.selectbox if s.label == "Dil"][0].set_value("en").run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    en = json.loads(
+        (Path(config.__file__).resolve().parent / "ui" / "locales" / "en.json")
+        .read_text(encoding="utf-8")
+    )
+    assert en["sidebar.language.not_saved"].removeprefix("⚠️ ") in [
+        w.value for w in at.sidebar.warning
+    ]
+    assert config.LANGUAGE == "en", "the choice must still apply to this session"
+    assert config.ENV_FILE.read_bytes() == before
+
+
 class _Recorder:
     """A stand-in for st / st.sidebar that just keeps the selectbox kwargs.
 
