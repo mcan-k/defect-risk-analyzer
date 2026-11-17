@@ -165,6 +165,7 @@
   "settings.anon.toggle.help": "LLM'e gönderilen verilerde PII maskeleme",
   "settings.apikey.create": "🔑 API Key Üret",
   "settings.apikey.none": "Henüz bir API key üretilmemiş. Webhook kurmayacaksanız gerek yok — dashboard bu key olmadan da tam olarak çalışır.",
+  "settings.apikey.not_saved": "⚠️ API key .env dosyasına kaydedilemedi; yalnız bu oturum için geçerli. Ayrıntı uygulama günlüğünde.",
   "settings.apikey.note": "Bu key yalnızca opsiyonel webhook/API servisi için gerekir; dashboard analiz motorunu doğrudan çalıştırır ve bu key'i kullanmaz.",
   "settings.apikey.restart": "Webhook servisi çalışıyorsa yeni key'i alması için yeniden başlatılmalı; Jira webhook tanımındaki header da güncellenmeli.",
   "settings.apikey.rotate": "🔄 API Key'i Yenile",

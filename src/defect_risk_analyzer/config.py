@@ -24,6 +24,7 @@ import os
 import secrets
 import stat
 from pathlib import Path
+from typing import NamedTuple
 
 from dotenv import load_dotenv
 
@@ -523,12 +524,30 @@ def persist_language(code: str) -> None:
     LANGUAGE = code
 
 
-def ensure_api_key(*, rotate: bool = False) -> str:
+class ApiKeyResult(NamedTuple):
+    """What `ensure_api_key()` hands back.
+
+    `saved` is False only when this call generated a key and `.env` could not
+    be written: the key then works for this process alone. A key that already
+    existed was not written by this call, so it reports True.
+    """
+
+    key: str
+    saved: bool
+
+
+def ensure_api_key(*, rotate: bool = False) -> ApiKeyResult:
     """
     Return the API key, generating and persisting one when needed.
 
     Writes to `.env`, so it is never called implicitly — only by the API server
     at startup and by the Settings page button.
+
+    A `.env` that cannot be written does not stop the caller: the key still
+    goes to `os.environ` and `API_KEY`, so this process can use it. That design
+    is kept (user decision T2(a), 2026-11-11), but the failure is no longer
+    silent — it is logged here, and `saved` tells the caller, which is how the
+    Settings page can say "not saved, this session only" instead of "saved".
 
     Args:
         rotate: Generate a fresh key even if one already exists.
@@ -539,17 +558,24 @@ def ensure_api_key(*, rotate: bool = False) -> str:
         existing = _get_env("API_KEY")
         if existing:
             API_KEY = existing
-            return existing
+            return ApiKeyResult(existing, True)
 
     new_key = secrets.token_urlsafe(32)
+    saved = True
     try:
         set_env_value("API_KEY", new_key)
     except OSError:
         # A read-only .env still gives a working key for this process.
+        logger.warning(
+            "A new API key could not be saved to .env; it is valid for this "
+            "process only.",
+            exc_info=True,
+        )
         os.environ["API_KEY"] = new_key
+        saved = False
 
     API_KEY = new_key
-    return new_key
+    return ApiKeyResult(new_key, saved)
 
 
 # ---------------------------------------------------------------------------

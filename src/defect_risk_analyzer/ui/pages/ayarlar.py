@@ -12,6 +12,11 @@ from defect_risk_analyzer.ui.shell import bootstrap
 
 bootstrap()
 
+# st.session_state key: a generated API key that .env did not take, carried
+# over the button's st.rerun() to the run that shows the warning — anything
+# drawn before the rerun is gone once the rerun renders (6E-2 PR5, MG).
+_API_KEY_NOT_SAVED = "_dra_api_key_not_saved"
+
 
 def render_settings():
     """Self-service configuration panel with live reload."""
@@ -223,14 +228,22 @@ def render_settings():
     else:
         st.info(t("settings.apikey.none"))
 
+    if st.session_state.pop(_API_KEY_NOT_SAVED, False):
+        st.warning(t("settings.apikey.not_saved"))
+
     # Generation is explicit: it writes to .env, and merely opening this page
     # must never do that.
     label = t("settings.apikey.rotate") if config.API_KEY else t("settings.apikey.create")
     if st.button(label, use_container_width=True):
-        new_key = config.ensure_api_key(rotate=bool(config.API_KEY))
-        st.success(t("settings.apikey.saved", key=new_key[:8]))
-        st.warning(t("settings.apikey.restart"))
-        time.sleep(1)
+        result = config.ensure_api_key(rotate=bool(config.API_KEY))
+        if result.saved:
+            st.success(t("settings.apikey.saved", key=result.key[:8]))
+            st.warning(t("settings.apikey.restart"))
+            time.sleep(1)
+        else:
+            # .env did not take the key: it works in this process only, and
+            # "saved" would be the one thing not to say (T2(a), 2026-11-11).
+            st.session_state[_API_KEY_NOT_SAVED] = True
         st.rerun()
     st.warning(t("settings.webhook.separate_process"))
 

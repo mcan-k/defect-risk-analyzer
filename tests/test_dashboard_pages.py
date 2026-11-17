@@ -1244,6 +1244,60 @@ def test_the_wizard_live_save_still_writes_and_tests_both_connections(unconfigur
 
 
 # ---------------------------------------------------------------------------
+# 6E-2 PR6, T2(a) — the API key button, when .env will not take the key
+# ---------------------------------------------------------------------------
+
+
+def _api_key_button(at: AppTest):
+    labels = (_TR["settings.apikey.create"], _TR["settings.apikey.rotate"])
+    found = [b for b in at.button if b.label in labels]
+    assert found, f"API key button missing: {[b.label for b in at.button]}"
+    return found[0]
+
+
+def _isolate_api_key(monkeypatch) -> None:
+    """The button writes API_KEY to os.environ and config; undo both after."""
+    monkeypatch.setenv("API_KEY", "")
+    monkeypatch.setattr(config, "API_KEY", config.API_KEY)
+
+
+def test_an_api_key_env_cannot_take_is_reported_after_the_rerun(restorable_env, monkeypatch):
+    """The page used to say "✅ API key kaydedildi" for a key that lived in this
+    process only. Now it says the key was not saved — on the run after the
+    button's st.rerun(), the only place a message survives."""
+    _isolate_api_key(monkeypatch)
+    at = _open("pages/ayarlar.py")
+    before = config.ENV_FILE.read_bytes()
+
+    def unwritable(lines):
+        raise PermissionError(13, "Permission denied", str(config.ENV_FILE))
+
+    monkeypatch.setattr(config, "_atomic_write_lines", unwritable)
+    successes = _record_success(monkeypatch)
+    _api_key_button(at).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _on_screen("settings.apikey.not_saved") in [w.value for w in at.warning]
+    saved = _TR["settings.apikey.saved"].split("{key}")[0]
+    assert not [s for s in successes if s.startswith(saved)]
+    assert config.ENV_FILE.read_bytes() == before
+    assert config.API_KEY, "the key must still work in this process"
+
+
+def test_an_api_key_env_takes_is_still_confirmed(restorable_env, monkeypatch):
+    _isolate_api_key(monkeypatch)
+    at = _open("pages/ayarlar.py")
+    successes = _record_success(monkeypatch)
+
+    _api_key_button(at).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert f"API_KEY={config.API_KEY}" in config.ENV_FILE.read_text(encoding="utf-8")
+    assert _TR["settings.apikey.saved"].format(key=config.API_KEY[:8]) in successes
+    assert _on_screen("settings.apikey.not_saved") not in [w.value for w in at.warning]
+
+
+# ---------------------------------------------------------------------------
 # Faz 6B — the credential migration, and its notice sharing a boot with D4's
 # ---------------------------------------------------------------------------
 
