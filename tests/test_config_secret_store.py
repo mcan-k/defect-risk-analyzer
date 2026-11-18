@@ -89,6 +89,9 @@ def env_and_store(monkeypatch, tmp_path):
     for name in ("_secret_store", "_secret_store_code",
                  "_secret_store_params", "_secret_store_resolved"):
         monkeypatch.setattr(config, name, getattr(config, name))
+    # reload() writes this one too (6E-2 PR10); a store left unreadable here
+    # would otherwise put a warning on the Settings page in another module.
+    monkeypatch.setattr(config, "UNREADABLE_SECRETS", config.UNREADABLE_SECRETS)
 
     env_file = tmp_path / ".env"
     env_file.write_text("", encoding="utf-8")
@@ -158,6 +161,69 @@ def test_no_store_leaves_the_value_empty(env_and_store):
     config.reload()
 
     assert config.GROQ_API_KEY == ""
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR10 — a store that cannot be read is not a store that is empty
+# ---------------------------------------------------------------------------
+
+class _UnreadableFor(FakeStore):
+    """Raises `SecretReadError` for the keys in `unreadable`, as KeyringStore
+    does when the OS store fails; the values stay where they are."""
+
+    def __init__(self, values=None, unreadable=()):
+        super().__init__(values)
+        self.unreadable = set(unreadable)
+
+    def get(self, name):
+        from defect_risk_analyzer.adapters.secrets import SecretReadError
+
+        if name in self.unreadable:
+            self.reads.append(name)
+            raise SecretReadError(name)
+        return super().get(name)
+
+
+def test_reload_names_the_credentials_the_store_could_not_read(env_and_store):
+    """Measured at cdb23f2: the read error ended as "" inside the adapter, so
+    nothing above it could tell an unreadable token from a missing one."""
+    store = _UnreadableFor(
+        {"JIRA_API_TOKEN": SYNTHETIC_STORE, "GROQ_API_KEY": SYNTHETIC_STORE},
+        unreadable={"JIRA_API_TOKEN"},
+    )
+    env_and_store(store, "JIRA_API_TOKEN=\nGROQ_API_KEY=\n")
+
+    config.reload()
+
+    assert config.JIRA_API_TOKEN == "", "every other reader still gets an empty value"
+    assert config.GROQ_API_KEY == SYNTHETIC_STORE
+    assert config.UNREADABLE_SECRETS == {"JIRA_API_TOKEN"}, (
+        "absent (OPENAI_API_KEY, API_KEY) and readable keys must not be marked"
+    )
+
+
+def test_the_unreadable_mark_clears_once_the_store_reads_again(env_and_store):
+    store = _UnreadableFor({"JIRA_API_TOKEN": SYNTHETIC_STORE}, unreadable={"JIRA_API_TOKEN"})
+    env_and_store(store, "JIRA_API_TOKEN=\n")
+    config.reload()
+
+    store.unreadable.clear()
+    config.reload()
+
+    assert config.JIRA_API_TOKEN == SYNTHETIC_STORE
+    assert config.UNREADABLE_SECRETS == frozenset()
+
+
+def test_a_filled_env_value_is_never_marked_unreadable(env_and_store):
+    """`.env` wins and the store is not asked, so nothing about it is known."""
+    store = _UnreadableFor({"GROQ_API_KEY": SYNTHETIC_STORE}, unreadable={"GROQ_API_KEY"})
+    env_and_store(store, f"GROQ_API_KEY={SYNTHETIC_ENV}\n")
+
+    config.reload()
+
+    assert config.GROQ_API_KEY == SYNTHETIC_ENV
+    assert "GROQ_API_KEY" not in store.reads
+    assert "GROQ_API_KEY" not in config.UNREADABLE_SECRETS
 
 
 def test_a_full_env_never_resolves_the_store(env_and_store, monkeypatch):

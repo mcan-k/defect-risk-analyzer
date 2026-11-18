@@ -43,10 +43,16 @@ go back to the stored value.
 use, and clears the `.env` line when the store took the value — otherwise the
 file would shadow what you just saved. If the store refuses, the value goes to
 `.env` rather than being lost. Clearing a credential field and saving removes
-the value from both places; if the store will not delete it, nothing in that
-save is kept and the page reports an error. The webhook `API_KEY` is saved the
+the value from both places; if the store will not delete it, or cannot be read
+to confirm it, nothing in that save is kept and the page reports an error. If
+the store cannot read a credential when the page opens, its field shows empty
+with a warning under it, and saving that field empty leaves the stored value
+alone; a value you type there is saved. The webhook `API_KEY` is saved the
 same way, whether the Settings page or the API server's first start generates
 it, and an existing key — in `.env` or in the store — is reused, not replaced.
+The exception is a store that cannot be read: the key looks absent, and a new
+one is generated and written to `.env` in plain text (measured; open in
+`docs/KNOWN-DEBT.md`).
 
 `.env` is excluded from git (`.gitignore`) and from the Docker build context
 (`.dockerignore`). Writes go through a temp file and `os.replace`, and POSIX

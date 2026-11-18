@@ -198,6 +198,7 @@
   "settings.mock_mode.help": "When on, sample data is used instead of Jira",
   "settings.openai.help": "Get a key from [OpenAI Platform →](https://platform.openai.com/api-keys)",
   "settings.secret_layer": "Credential layer: {layer}",
+  "settings.secret_unreadable": "⚠️ The credential store could not read this value, so the field shows empty. Saving with the field left empty does not delete the stored value; a new value you type is saved.",
   "settings.sleep": "Delay Between Requests (seconds)",
   "settings.sleep.help": "Wait time that keeps Groq's free-tier rate limit happy",
   "settings.status.jira_missing": "❌ Jira Missing",

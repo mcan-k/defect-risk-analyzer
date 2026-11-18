@@ -32,6 +32,7 @@ import os
 import pytest
 
 from defect_risk_analyzer import config
+from defect_risk_analyzer.adapters.secrets import SecretReadError
 
 TOKEN ="synthetic-jira-token-0000"
 LLM_KEY = "synthetic-groq-key-1111"
@@ -47,12 +48,14 @@ class FakeStore:
         self._refuse = set(refuse)   # set() returns False
         self._lose = set(lose)       # set() succeeds but nothing is stored
         self._stuck = set(stuck)     # delete() returns False, the value stays
-        self._unreadable = set(unreadable)  # get() returns None, the value stays
+        self._unreadable = set(unreadable)  # get() raises SecretReadError, the value stays
         self._ghost = set(ghost)     # delete() returns True, the value stays
 
     def get(self, name):
         if name in self._unreadable:
-            return None
+            # What KeyringStore does since 6E-2 PR10; it returned None before,
+            # which is "absent" now.
+            raise SecretReadError(name)
         return self.values.get(name)
 
     def set(self, name, value):
@@ -90,6 +93,9 @@ def migration(monkeypatch, tmp_path):
     for name in ("_secret_store", "_secret_store_code",
                  "_secret_store_params", "_secret_store_resolved"):
         monkeypatch.setattr(config, name, getattr(config, name))
+    # reload() writes this one too (6E-2 PR10); a store left unreadable here
+    # would otherwise put a warning on the Settings page in another module.
+    monkeypatch.setattr(config, "UNREADABLE_SECRETS", config.UNREADABLE_SECRETS)
 
     env_file = tmp_path / ".env"
     monkeypatch.setattr(config, "ENV_FILE", env_file)
@@ -195,6 +201,21 @@ def test_a_store_that_loses_the_value_stops_the_migration(migration):
 
     assert TOKEN in _text(env_file), "the secret was deleted despite a failed read-back"
     assert report["not_moved"] == ["JIRA_API_TOKEN"]
+
+
+def test_a_read_back_the_store_cannot_do_leaves_the_credential_in_env(migration):
+    """6E-2 PR10 kept this as it was: a store that cannot be read raises now
+    instead of answering None, and the migration still counts it as a
+    read-back that failed, rather than stopping on the error."""
+    store = FakeStore(unreadable={"JIRA_API_TOKEN"})
+    env_file = migration(store, f"JIRA_API_TOKEN={TOKEN}\n")
+    before = _text(env_file)
+
+    report = config.migrate_secrets_to_store()
+
+    assert _text(env_file) == before
+    assert report["not_moved"] == ["JIRA_API_TOKEN"]
+    assert report["moved"] == []
 
 
 def test_a_failed_env_write_is_reported_not_swallowed(migration, monkeypatch):
@@ -533,13 +554,78 @@ def test_a_deleted_credential_is_put_back_when_env_cannot_be_written(
 
 
 def test_a_credential_the_store_cannot_read_is_not_deleted(migration):
-    """What cannot be read cannot be put back if the save fails later, and the
-    Settings page showed the field empty already — so nothing is deleted."""
+    """What cannot be read cannot be put back if the save fails later — so
+    nothing is deleted. And the save is not reported as done either (6E-2
+    PR10): the empty value is a field the user cleared (the Settings page no
+    longer sends one for a field it could not fill), and measured at cdb23f2
+    the page said "saved" while the credential came back once the store could
+    be read. So the whole save is undone, as for a refused delete."""
     store = FakeStore(unreadable={"JIRA_API_TOKEN"})
     store.values["JIRA_API_TOKEN"] = TOKEN
-    migration(store, "JIRA_API_TOKEN=\n")
+    env_file = migration(store, "JIRA_API_TOKEN=\nJIRA_URL=https://old\n")
+    before = env_file.read_bytes()
 
-    config.save_secret("JIRA_API_TOKEN", "")
+    with pytest.raises(config.CredentialStoreError) as raised:
+        config.save_settings({"JIRA_API_TOKEN": "", "JIRA_URL": "https://new"})
 
+    assert isinstance(raised.value, OSError)
+    assert "JIRA_API_TOKEN" in str(raised.value)
+    assert TOKEN not in str(raised.value)
     assert store.deletes == []
     assert store.values == {"JIRA_API_TOKEN": TOKEN}
+    assert env_file.read_bytes() == before
+
+
+def test_an_unreadable_credential_cleared_in_a_batch_puts_the_others_back(migration):
+    """No half-saved batch here either: a credential written to the store
+    earlier in the same save goes back to what the store held. The Settings
+    page sends one credential per section, so this path is reached by a direct
+    save_settings call — found missing in 6E-2 PR10's mutation inventory."""
+    store = FakeStore(unreadable={"JIRA_API_TOKEN"})
+    store.values.update({"GROQ_API_KEY": "old-groq-6666", "JIRA_API_TOKEN": TOKEN})
+    env_file = migration(store, "GROQ_API_KEY=\nJIRA_API_TOKEN=\n")
+    before = env_file.read_bytes()
+
+    with pytest.raises(config.CredentialStoreError):
+        config.save_settings({"GROQ_API_KEY": LLM_KEY, "JIRA_API_TOKEN": ""})
+
+    assert store.values == {"GROQ_API_KEY": "old-groq-6666", "JIRA_API_TOKEN": TOKEN}
+    assert env_file.read_bytes() == before
+
+
+def test_a_delete_that_cannot_be_read_back_undoes_the_save(migration):
+    """The read-back after a delete, when the store cannot answer: the delete
+    is unconfirmed, so it is treated like a refused one and put back."""
+
+    class _GoesDarkAfterDelete(FakeStore):
+        def delete(self, name):
+            result = super().delete(name)
+            self._unreadable.add(name)
+            return result
+
+    store = _GoesDarkAfterDelete()
+    store.values["JIRA_API_TOKEN"] = TOKEN
+    env_file = migration(store, "JIRA_API_TOKEN=\nJIRA_URL=https://old\n")
+    before = env_file.read_bytes()
+
+    with pytest.raises(config.CredentialStoreError):
+        config.save_settings({"JIRA_API_TOKEN": "", "JIRA_URL": "https://new"})
+
+    assert store.values == {"JIRA_API_TOKEN": TOKEN}
+    assert env_file.read_bytes() == before
+
+
+def test_a_value_typed_over_an_unreadable_credential_is_still_saved(migration):
+    """Unchanged by 6E-2 PR10, and held here because the read error is new: a
+    store that cannot read back what it was given is a write that cannot be
+    confirmed, so the value falls back to `.env` — saved, and in use."""
+    store = FakeStore(unreadable={"JIRA_API_TOKEN"})
+    store.values["JIRA_API_TOKEN"] = TOKEN
+    env_file = migration(store, "JIRA_API_TOKEN=\n")
+
+    layer = config.save_secret("JIRA_API_TOKEN", "synthetic-new-token-7777")
+    config.reload()
+
+    assert layer == "env"
+    assert "JIRA_API_TOKEN=synthetic-new-token-7777" in _text(env_file)
+    assert config.JIRA_API_TOKEN == "synthetic-new-token-7777"

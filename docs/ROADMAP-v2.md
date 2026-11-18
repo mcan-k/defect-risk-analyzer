@@ -915,6 +915,16 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       normal teste döndü; dört vakası ve API key sıra testi f639bc5 kodunda
       kırmızı ölçüldü, bu PR'la yeşil. Okunamayan depo ölçüldü ve iki
       xfail(strict) testiyle belgelendi (düzeltme 6E, ayrı PR).
+- [x] Okunamayan depo: Ayarlar okunamayan bir sırrın alanını boş ve
+      açıklamasız gösteriyordu; o alanla kaydetmek "kaydedildi" diyordu,
+      depo bir anda okunabilir olunca kullanıcının hiç görmediği sırrı
+      siliyordu (`KNOWN-DEBT.md`, "6E-2 PR6 keşfinde belgelenen kusurlar").
+      Yapıldı: 6E-2 PR10, `25143ad` + `de36783` (2026-11-18; kullanıcı
+      kararı (a)). Kanıt: PR9'un iki xfail(strict) testi normal teste döndü
+      (birinin iddiası değişti); keşifte ölçülen üçüncü yüz (boşaltılan ama
+      okunamayan sır) cdb23f2 kodunda "kaydedildi" diyordu, bu PR'la
+      `error.os`. Okunamayan depoda API key'in sessizce değişmesi ölçüldü ve
+      açık satır oldu (sahip önerisi 6E).
 
 #### Doğrulama soruları
 
