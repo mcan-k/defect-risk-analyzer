@@ -1753,3 +1753,83 @@ def test_a_delete_the_store_refuses_is_reported_and_nothing_is_saved(
     assert _TR["settings.jira.saved"] not in successes
     assert store.values["JIRA_API_TOKEN"] == _STORED_TOKEN
     assert config.ENV_FILE.read_bytes() == before
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR9 — a store that cannot be read (measured, documented, not fixed)
+# ---------------------------------------------------------------------------
+# The real adapter's get() returns None when the OS store raises
+# (KeyringStore.get, with a WARNING naming the key). reload() then reads the
+# credential as empty, the Settings field starts empty, and nothing on the
+# page says the store could not be read: the layer line still says the store
+# is in use. PR8 left this edge unmeasured ("Kapsamadığı" in its closed Y2
+# row); both faces below were measured at f639bc5 and are xfail(strict) under
+# K-E3 — documented first, the fix belongs to a separate PR.
+
+_UNREADABLE_REASON = (
+    "Bilinen kusur: okunamayan depo (KNOWN-DEBT.md, 'Okunamayan depo' satırı; "
+    "6E-2 PR9'da ölçüldü, düzeltme ayrı PR)"
+)
+
+
+class _UnreadableStore(_RecordingStore):
+    """get() returns None while `unreadable` is True; the value stays."""
+
+    def __init__(self):
+        super().__init__()
+        self.unreadable = False
+
+    def get(self, name):
+        if self.unreadable:
+            return None
+        return super().get(name)
+
+
+@pytest.mark.xfail(strict=True, reason=_UNREADABLE_REASON)
+def test_a_save_over_an_unreadable_token_is_not_reported_as_done(
+    restorable_env, monkeypatch
+):
+    """The store cannot be read; the user saves the Jira section with the token
+    field as the page showed it — empty. Measured at f639bc5: the save is
+    reported as done, the token is not deleted (what cannot be read is not
+    deleted, PR8), and once the store can be read again the token is back in
+    use. A save the user was told succeeded did not do what the screen showed."""
+    store = _settings_with_store(monkeypatch, _UnreadableStore())
+    store.unreadable = True
+    at = _open("pages/ayarlar.py")
+    assert _field(at, "common.jira_token") == "", "precondition: the field starts empty"
+    successes = _record_success(monkeypatch)
+
+    _button(at, _TR["settings.jira.save"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    told_saved = _TR["settings.jira.saved"] in successes
+    store.unreadable = False
+    config.reload()
+    assert not (told_saved and config.JIRA_API_TOKEN == _STORED_TOKEN), (
+        "reported as saved, and the cleared token came back once the store could be read"
+    )
+
+
+@pytest.mark.xfail(strict=True, reason=_UNREADABLE_REASON)
+def test_a_token_the_page_could_not_read_survives_an_unrelated_save(
+    restorable_env, monkeypatch
+):
+    """The store cannot be read when the page loads and can be read again by the
+    time the user saves — a passing failure. The token field started empty; the
+    user changed only the project key. Measured at f639bc5: the save sends the
+    empty field, save_settings can read the token now, and deletes it — a
+    credential the user never saw and never cleared, reported as saved."""
+    store = _settings_with_store(monkeypatch, _UnreadableStore())
+    store.unreadable = True
+    at = _open("pages/ayarlar.py")
+    assert _field(at, "common.jira_token") == "", "precondition: the field starts empty"
+    store.unreadable = False
+    _type(at, _TR["common.jira_project"], "YENI")
+
+    _button(at, _TR["settings.jira.save"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert store.values.get("JIRA_API_TOKEN") == _STORED_TOKEN, (
+        "a token the user never saw was deleted by a save of another field"
+    )
