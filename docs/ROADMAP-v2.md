@@ -908,6 +908,13 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       xfail(strict) testi normal teste döndü; dört Y1 ve beş Y2 testi 9757edf
       kodunda kırmızı ölçüldü, bu PR'la yeşil. Ayarlar'ın dört başarı satırı
       ölçüldü ve xfail(strict) ile belgelendi (düzeltme 6E, ayrı PR).
+- [x] Ayarlar'ın dört başarı satırı (Jira, LLM, Uygulama, API key)
+      `time.sleep(1)` + `st.rerun()` ile kayboluyordu (`KNOWN-DEBT.md`, "6E-2
+      PR6 keşfinde belgelenen kusurlar"). Yapıldı: 6E-2 PR9, `4716f0c`
+      (2026-11-18; K-E3'ün ikinci adımı). Kanıt: PR8'in xfail(strict) testi
+      normal teste döndü; dört vakası ve API key sıra testi f639bc5 kodunda
+      kırmızı ölçüldü, bu PR'la yeşil. Okunamayan depo ölçüldü ve iki
+      xfail(strict) testiyle belgelendi (düzeltme 6E, ayrı PR).
 
 #### Doğrulama soruları
 
