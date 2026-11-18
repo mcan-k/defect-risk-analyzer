@@ -576,6 +576,23 @@ def test_a_credential_the_store_cannot_read_is_not_deleted(migration):
     assert env_file.read_bytes() == before
 
 
+def test_an_unreadable_credential_cleared_in_a_batch_puts_the_others_back(migration):
+    """No half-saved batch here either: a credential written to the store
+    earlier in the same save goes back to what the store held. The Settings
+    page sends one credential per section, so this path is reached by a direct
+    save_settings call — found missing in 6E-2 PR10's mutation inventory."""
+    store = FakeStore(unreadable={"JIRA_API_TOKEN"})
+    store.values.update({"GROQ_API_KEY": "old-groq-6666", "JIRA_API_TOKEN": TOKEN})
+    env_file = migration(store, "GROQ_API_KEY=\nJIRA_API_TOKEN=\n")
+    before = env_file.read_bytes()
+
+    with pytest.raises(config.CredentialStoreError):
+        config.save_settings({"GROQ_API_KEY": LLM_KEY, "JIRA_API_TOKEN": ""})
+
+    assert store.values == {"GROQ_API_KEY": "old-groq-6666", "JIRA_API_TOKEN": TOKEN}
+    assert env_file.read_bytes() == before
+
+
 def test_a_delete_that_cannot_be_read_back_undoes_the_save(migration):
     """The read-back after a delete, when the store cannot answer: the delete
     is unconfirmed, so it is treated like a refused one and put back."""
