@@ -1339,42 +1339,113 @@ def test_a_settings_save_still_writes_and_confirms(
     assert _on_screen("error.os") not in [e.value for e in at.error]
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Bilinen kusur: Ayarlar'ın dört başarı satırı time.sleep(1) + st.rerun() ile "
-        "son ağaçta yok (KNOWN-DEBT.md, '6E-2 PR6 keşfinde belgelenen kusurlar')"
-    ),
-)
+def _click_settings_save(at: AppTest, case: str) -> None:
+    """Press one of the Settings page's four save buttons, with an edit."""
+    if case == "apikey":
+        _api_key_button(at).click().run()
+    else:
+        _, button, _, edit, _ = next(c for c in _SETTINGS_EDITS if c[0] == case)
+        edit(at)
+        _button(at, _TR[button]).click().run()
+
+
+def _settings_success_line(case: str) -> str:
+    """The line a successful save of `case` should show, as AppTest reports it."""
+    if case == "apikey":
+        line = _TR["settings.apikey.saved"].format(key=config.API_KEY[:8])
+    else:
+        line = _TR[next(c for c in _SETTINGS_EDITS if c[0] == case)[2]]
+    return line.removeprefix("✅ ")
+
+
 @pytest.mark.parametrize("case", ["jira", "llm", "app", "apikey"])
 def test_a_settings_save_shows_its_success_line_after_the_rerun(
     case, restorable_env, monkeypatch
 ):
-    """6E-2 PR8 measurement, documented first (K-E3); the fix is a separate PR.
+    """6E-2 PR8 measured each of the Settings page's four success lines drawn,
+    then `time.sleep(1)` and `st.rerun()`, and gone from the rerun's tree —
+    the API key's restart warning with it. This test was xfail(strict) there.
 
-    Each of the Settings page's four success lines is drawn, then
-    `time.sleep(1)` and `st.rerun()`: the rerun's tree is the one that stays,
-    and it does not hold the line. The sync line had the same shape without
-    the sleep and was fixed in 6E-2 PR7 by carrying it across the rerun in
-    session_state. Recorded as DRAWN first, so a red on the last assert means
-    drawn and then lost — not that the success branch never ran."""
+    Fixed in 6E-2 PR9 the way PR7 fixed the sync line: which save succeeded is
+    carried across the rerun in session_state and the line is drawn on the
+    run after it, popped, so it is shown exactly once. The sleep is gone."""
     if case == "apikey":
         _isolate_api_key(monkeypatch)
     at = _open("pages/ayarlar.py")
     successes = _record_success(monkeypatch)
 
-    if case == "apikey":
-        _api_key_button(at).click().run()
-        line = _TR["settings.apikey.saved"].format(key=config.API_KEY[:8])
-    else:
-        _, button, saved, edit, _ = next(c for c in _SETTINGS_EDITS if c[0] == case)
-        edit(at)
-        _button(at, _TR[button]).click().run()
-        line = _TR[saved]
+    _click_settings_save(at, case)
+    line = _settings_success_line(case)
+    restart = _on_screen("settings.apikey.restart")
 
     assert not at.exception, [f"{e.value}" for e in at.exception]
-    assert line in successes, "the success branch did not run"
-    assert line.removeprefix("✅ ") in [s.value for s in at.success]
+    assert [s.value for s in at.success].count(line) == 1, [s.value for s in at.success]
+    if case == "apikey":
+        assert [w.value for w in at.warning].count(restart) == 1
+        assert _on_screen("settings.apikey.not_saved") not in [w.value for w in at.warning]
+    assert len([s for s in successes if s.removeprefix("✅ ") == line]) == 1, successes
+
+    at.run()
+
+    assert line not in [s.value for s in at.success], "shown again on the next run"
+    assert restart not in [w.value for w in at.warning]
+
+
+@pytest.mark.parametrize("case", ["jira", "llm", "app", "apikey"])
+def test_a_failed_settings_save_shows_no_success_line_now_or_later(
+    case, restorable_env, monkeypatch
+):
+    """A save that could not write `.env` reports the error and nothing else —
+    on this run, and on the next one: a success line carried across a rerun
+    is drawn by whichever run comes next, so a carry set on the failed path
+    would surface on the user's next click."""
+    if case == "apikey":
+        _isolate_api_key(monkeypatch)
+    at = _open("pages/ayarlar.py")
+    monkeypatch.setattr(config, "_atomic_write_lines", _unwritable_env)
+    successes = _record_success(monkeypatch)
+
+    _click_settings_save(at, case)
+    at.run()
+
+    # The page draws other st.success lines (the status column); only the four
+    # save lines are this test's business. The API key's is matched by its
+    # prefix, since the key in it is new.
+    save_lines = (
+        _TR["settings.jira.saved"], _TR["settings.llm.saved"], _TR["settings.app.saved"],
+    )
+    key_prefix = _TR["settings.apikey.saved"].split("{key}")[0]
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert not [s for s in successes if s in save_lines or s.startswith(key_prefix)], successes
+    assert _on_screen("settings.apikey.restart") not in [w.value for w in at.warning]
+
+
+def test_the_api_key_lines_follow_each_click(restorable_env, monkeypatch):
+    """The API key button has two outcomes, each carried across its own rerun:
+    "not saved" (6E-2 PR6, T2(a)) and the success line with the restart
+    warning. A failed click followed by a successful one shows each click's
+    own lines only — neither outcome leaks into the other's run."""
+    _isolate_api_key(monkeypatch)
+    at = _open("pages/ayarlar.py")
+    not_saved = _on_screen("settings.apikey.not_saved")
+    restart = _on_screen("settings.apikey.restart")
+    saved_prefix = _TR["settings.apikey.saved"].split("{key}")[0].removeprefix("✅ ")
+
+    with monkeypatch.context() as m:
+        m.setattr(config, "_atomic_write_lines", _unwritable_env)
+        _api_key_button(at).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert [w.value for w in at.warning].count(not_saved) == 1
+    assert restart not in [w.value for w in at.warning]
+    assert not [s.value for s in at.success if s.value.startswith(saved_prefix)]
+
+    _api_key_button(at).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert not_saved not in [w.value for w in at.warning]
+    assert [w.value for w in at.warning].count(restart) == 1
+    assert [s.value for s in at.success].count(_settings_success_line("apikey")) == 1
 
 
 def test_the_wizard_live_save_still_writes_and_tests_both_connections(unconfigured, monkeypatch):
