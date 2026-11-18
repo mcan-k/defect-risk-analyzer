@@ -447,3 +447,129 @@ def test_a_key_in_env_still_wins_over_a_different_stored_key(env_and_store):
     assert result == (SYNTHETIC_ENV, True)
     assert store.values == {"API_KEY": SYNTHETIC_STORE}
     assert env_file.read_text(encoding="utf-8") == f"API_KEY={SYNTHETIC_ENV}\n"
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR11 — a key the store cannot read is not replaced (user decision
+# 1 (iii), 2026-11-18)
+# ---------------------------------------------------------------------------
+# Measured at 5b9ed4e with a fake store: the server start read the unreadable
+# key as "", generated a new one, wrote it to `.env` in plain text (the
+# read-back failed) and, when the store took the write, overwrote the stored
+# key — a Jira webhook holding it answered 403 from then on.
+
+_NO_NEW_KEY = "no new key was generated"
+
+
+def _server_start(env_and_store, monkeypatch, tmp_path, store, env_text="API_KEY=\n"):
+    """`init(generate_api_key=True)`, the call the API server's lifespan makes,
+    on a fresh process state. Returns the `.env` path."""
+    env_file = env_and_store(store, env_text)
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(config, "ANON_MAP_FILE", tmp_path / "data" / "anon_map.json")
+    monkeypatch.setattr(config, "LEGACY_ANON_MAP_REMOVED", False)
+    monkeypatch.setattr(config, "_initialized", False)
+    config.init(generate_api_key=True)
+    return env_file
+
+
+def test_the_server_start_leaves_an_unreadable_key_alone(
+    env_and_store, monkeypatch, tmp_path, caplog
+):
+    """Nothing generated, nothing written — `.env` byte for byte, the store
+    value for value — and an ERROR that says so without a value in it."""
+    store = _UnreadableFor({"API_KEY": SYNTHETIC_STORE}, unreadable={"API_KEY"})
+    env_file = env_and_store(store, "API_KEY=\n")
+    before = env_file.read_bytes()
+
+    with caplog.at_level("ERROR", logger="defect_risk_analyzer.config"):
+        _server_start(env_and_store, monkeypatch, tmp_path, store)
+
+    assert config.API_KEY == "", "a key was put in use"
+    assert env_file.read_bytes() == before, ".env was written"
+    assert store.values == {"API_KEY": SYNTHETIC_STORE}, "the store was written"
+    assert "API_KEY" in config.UNREADABLE_SECRETS
+    errors = [r for r in caplog.records if r.levelname == "ERROR"]
+    assert len(errors) == 1 and _NO_NEW_KEY in errors[0].getMessage(), caplog.text
+    assert SYNTHETIC_STORE not in caplog.text
+
+
+def test_ensure_api_key_names_the_unreadable_key_on_its_own(env_and_store, monkeypatch):
+    """Called with no reload() before it — the store went dark after the last
+    one, or init() ran earlier in the process: the result is "", nothing is
+    kept from before, and API_KEY joins UNREADABLE_SECRETS so api_auth's 503
+    says what happened rather than "Set API_KEY in .env"."""
+    store = _UnreadableFor({"API_KEY": SYNTHETIC_STORE}, unreadable={"API_KEY"})
+    env_and_store(store, "API_KEY=\n")
+    monkeypatch.setattr(config, "UNREADABLE_SECRETS", frozenset({"GROQ_API_KEY"}))
+    monkeypatch.setattr(config, "API_KEY", "stale-key-from-before")
+
+    result = config.ensure_api_key()
+
+    assert result == ("", True)
+    assert config.API_KEY == ""
+    assert config.UNREADABLE_SECRETS == {"GROQ_API_KEY", "API_KEY"}
+    assert store.values == {"API_KEY": SYNTHETIC_STORE}
+
+
+def test_the_server_answers_503_with_the_unreadable_text_and_stays_healthy(
+    env_and_store, monkeypatch, tmp_path
+):
+    """End to end through the real lifespan: the server comes up, /health is
+    200, an authenticated endpoint answers 503 with the unreadable-store text —
+    for the old key and for no key alike — and nothing was written."""
+    from fastapi.testclient import TestClient
+
+    from defect_risk_analyzer import api, api_auth
+
+    store = _UnreadableFor({"API_KEY": SYNTHETIC_STORE}, unreadable={"API_KEY"})
+    env_file = env_and_store(store, "API_KEY=\n")
+    before = env_file.read_bytes()
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(config, "ANON_MAP_FILE", tmp_path / "data" / "anon_map.json")
+    monkeypatch.setattr(config, "LEGACY_ANON_MAP_REMOVED", False)
+    monkeypatch.setattr(config, "_initialized", False)
+    monkeypatch.setattr(api, "load_bugs_from_file", lambda: [])
+
+    with TestClient(api.app, raise_server_exceptions=False) as client:
+        health = client.get("/health")
+        with_old = client.get("/results", headers={"X-API-Key": SYNTHETIC_STORE})
+        without = client.get("/results")
+
+    assert health.status_code == 200
+    for response in (with_old, without):
+        assert response.status_code == 503
+        assert response.json() == {"detail": api_auth.API_KEY_UNREADABLE_DETAIL}
+    assert env_file.read_bytes() == before
+    assert store.values == {"API_KEY": SYNTHETIC_STORE}
+
+
+def test_the_server_start_without_a_store_still_generates_into_env(
+    env_and_store, monkeypatch, tmp_path, caplog
+):
+    """The Docker and CI path: no keyring, so no store and nothing unreadable.
+    Unchanged by PR11 — the first start generates a key into `.env`."""
+    with caplog.at_level("ERROR", logger="defect_risk_analyzer.config"):
+        env_file = _server_start(env_and_store, monkeypatch, tmp_path, None)
+
+    assert config.API_KEY
+    assert env_file.read_text(encoding="utf-8") == f"API_KEY={config.API_KEY}\n"
+    assert config.UNREADABLE_SECRETS == frozenset()
+    assert _NO_NEW_KEY not in caplog.text
+
+
+def test_the_server_start_keeps_a_readable_stored_key_after_pr11(
+    env_and_store, monkeypatch, tmp_path, caplog
+):
+    """PR8's behaviour for a readable store, through the same start: the stored
+    key is the server's key, nothing is written, and no ERROR."""
+    store = FakeStore({"API_KEY": SYNTHETIC_STORE})
+
+    with caplog.at_level("ERROR", logger="defect_risk_analyzer.config"):
+        env_file = _server_start(env_and_store, monkeypatch, tmp_path, store)
+
+    assert config.API_KEY == SYNTHETIC_STORE
+    assert store.values == {"API_KEY": SYNTHETIC_STORE}
+    assert env_file.read_text(encoding="utf-8") == "API_KEY=\n"
+    assert "API_KEY" not in config.UNREADABLE_SECRETS
+    assert _NO_NEW_KEY not in caplog.text

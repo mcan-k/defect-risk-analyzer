@@ -721,7 +721,8 @@ class ApiKeyResult(NamedTuple):
     `saved` is False only when this call generated a key and the save failed
     (`.env` could not be written; a stored copy is put back): the key then
     works for this process alone. A key that already existed was not written
-    by this call, so it reports True.
+    by this call, so it reports True — and so does a key the store could not
+    read, which comes back as "" and is not replaced (6E-2 PR11).
     """
 
     key: str
@@ -751,16 +752,39 @@ def ensure_api_key(*, rotate: bool = False) -> ApiKeyResult:
     is logged here, and `saved` tells the caller, which is how the Settings
     page can say "not saved, this session only" instead of "saved".
 
+    A KEY THE STORE CANNOT READ IS NOT REPLACED (6E-2 PR11, user decision
+    1 (iii), 2026-11-18). It reads as "" like an absent one, and this used to
+    generate a new key over it: written to `.env` in plain text because the
+    read-back failed, the stored key overwritten when the store took the
+    write, and a Jira webhook holding the old key answered 403 from then on.
+    Measured at 5b9ed4e with a fake store. Now nothing is generated and
+    nothing written: `API_KEY` stays "", so the server's authenticated
+    endpoints answer 503 (`api_auth`), and an ERROR says why. Once the store
+    can be read, a restart finds the key again. `rotate=True` — the Settings
+    page's confirmed button — still generates: that is a decision the user
+    made with the warning in front of them.
+
     Args:
         rotate: Generate a fresh key even if one already exists.
     """
-    global API_KEY
+    global API_KEY, UNREADABLE_SECRETS
 
     if not rotate:
-        existing = _get_secret("API_KEY")
+        unreadable: set[str] = set()
+        existing = _get_secret("API_KEY", unreadable)
         if existing:
             API_KEY = existing
             return ApiKeyResult(existing, True)
+        if unreadable:
+            logger.error(
+                "API_KEY could not be read from the credential store; no new key "
+                "was generated. Authenticated endpoints answer 503 until the "
+                "store can be read and the server is restarted."
+            )
+            # For api_auth's 503 text, even when reload() saw the store readable.
+            UNREADABLE_SECRETS = UNREADABLE_SECRETS | {"API_KEY"}
+            API_KEY = ""
+            return ApiKeyResult("", True)
 
     new_key = secrets.token_urlsafe(32)
     saved = True
@@ -1019,7 +1043,8 @@ def init(*, generate_api_key: bool = False) -> None:
     file on every interaction. Use `reload()` to force a re-read.
 
     Args:
-        generate_api_key: Create and persist an API key if none exists. Only
+        generate_api_key: Create and persist an API key if none exists — not
+            when the credential store holds one it cannot read. Only
             the API server needs this; the dashboard offers it as an explicit
             button instead, so that merely opening the UI never writes to .env.
     """
