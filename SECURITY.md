@@ -50,9 +50,12 @@ with a warning under it, and saving that field empty leaves the stored value
 alone; a value you type there is saved. The webhook `API_KEY` is saved the
 same way, whether the Settings page or the API server's first start generates
 it, and an existing key — in `.env` or in the store — is reused, not replaced.
-The exception is a store that cannot be read: the key looks absent, and a new
-one is generated and written to `.env` in plain text (measured; open in
-`docs/KNOWN-DEBT.md`).
+A key the store cannot read is not replaced either: the API server starts
+without one, logs an ERROR and answers 503 on every authenticated endpoint
+until the store can be read and the server is restarted. On the Settings page
+a new key over an unreadable one needs an explicit confirmation, and if the
+store then cannot confirm the write, the key falls back to `.env` in plain
+text and the page says so rather than "saved".
 
 `.env` is excluded from git (`.gitignore`) and from the Docker build context
 (`.dockerignore`). Writes go through a temp file and `os.replace`, and POSIX
