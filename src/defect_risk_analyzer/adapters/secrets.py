@@ -77,8 +77,24 @@ LAYER_STORE_ACTIVE = "store_active"
 LAYER_QUERY_FAILED = "query_failed"
 
 
+class SecretReadError(Exception):
+    """The store could not be read. The value may still be in it (6E-2 PR10).
+
+    Not the same as absent, which is `None`. The two used to look alike — `get`
+    returned `None` for both — and a reader cannot act on what it cannot tell
+    apart: the Settings page showed an unreadable credential as an empty field,
+    and saving that empty field deleted a credential the user had never seen
+    once the store could be read again. The message names the key, never a
+    value or the backend's own text (that is in the WARNING already).
+    """
+
+
 class SecretStore(Protocol):
-    """What the rest of the application may ask of a credential store."""
+    """What the rest of the application may ask of a credential store.
+
+    `get` returns the value, or `None` when there is none, and raises
+    `SecretReadError` when the store cannot say which.
+    """
 
     def get(self, name: str) -> str | None: ...
 
@@ -136,7 +152,12 @@ class KeyringStore:
         except Exception as exc:
             logger.warning("Could not read %s from the credential store. %s",
                            name, _describe(exc))
-            return None
+            # `from None`: the backend's message is in the line above, through
+            # `_describe`; chained, it would ride along in any traceback logged
+            # further up, past the check that withholds a quoted value.
+            raise SecretReadError(
+                f"{name} could not be read from the credential store"
+            ) from None
 
     def set(self, name: str, value: str) -> bool:
         try:
@@ -153,13 +174,19 @@ class KeyringStore:
         `delete_password` is not idempotent — the real backend raises when there
         is nothing to delete — and the exception type that means "absent" cannot
         be named here without importing `keyring.errors`. So a failure is
-        resolved by asking: if the value can no longer be read, it is gone.
+        resolved by asking: if the store answers that there is no value, it is
+        gone. A store that cannot answer has not confirmed anything, so that is
+        a failure — it used to count as gone (6E-2 PR10).
         """
         try:
             self._keyring.delete_password(_service(name), _USERNAME)
             return True
         except Exception as exc:
-            if self.get(name) is None:
+            try:
+                gone = self.get(name) is None
+            except SecretReadError:
+                gone = False
+            if gone:
                 return True
             logger.warning("Could not delete %s from the credential store. %s",
                            name, _describe(exc))

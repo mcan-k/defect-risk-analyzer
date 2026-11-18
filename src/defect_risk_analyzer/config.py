@@ -156,7 +156,22 @@ def secret_store() -> tuple[object | None, str, dict]:
     return _secret_store, _secret_store_code, _secret_store_params
 
 
-def _get_secret(key: str) -> str:
+def _read_stored(store, key: str) -> tuple[str | None, bool]:
+    """`store.get`, with "could not be read" told apart: `(value, readable)`.
+
+    `(None, True)` is absent; `(None, False)` is a store that could not say
+    (6E-2 PR10). The import is here for the same reason as in `secret_store`:
+    this module's own `secrets` is the stdlib one.
+    """
+    from defect_risk_analyzer.adapters.secrets import SecretReadError
+
+    try:
+        return store.get(key), True
+    except SecretReadError:
+        return None, False
+
+
+def _get_secret(key: str, unreadable: set[str] | None = None) -> str:
     """A credential from `.env`, falling back to the credential store.
 
     `.env` WINS when it holds a value, and the store is not consulted at all.
@@ -170,6 +185,11 @@ def _get_secret(key: str) -> str:
     the next reload() handed back the old value; memoising what the store
     returned would rebuild it one layer over, where the file on disk would look
     correct the whole time.
+
+    A STORE THAT CANNOT BE READ gives "" here, as it always did — every reader
+    but one only needs the value — and the key is added to `unreadable` when
+    the caller passes a set. `reload()` does, and publishes the result as
+    `UNREADABLE_SECRETS` for the Settings page (6E-2 PR10).
     """
     value = _get_env(key)
     if value:
@@ -179,7 +199,10 @@ def _get_secret(key: str) -> str:
     if store is None:
         return ""
 
-    return store.get(key) or ""
+    stored, readable = _read_stored(store, key)
+    if not readable and unreadable is not None:
+        unreadable.add(key)
+    return stored or ""
 
 
 def _get_env_bool(key: str, default: bool = False) -> bool:
@@ -464,7 +487,9 @@ def migrate_secrets_to_store() -> dict[str, object]:
         # reasoning as the retired guard in _is_assignment_line.
         store.set(key, value)
 
-        if store.get(key) != value:
+        # A read-back the store cannot do is a read-back that failed: the value
+        # stays in `.env` (6E-2 PR10 kept this exactly as it was).
+        if _read_stored(store, key)[0] != value:
             logger.warning(
                 "%s was written to the credential store but did not read back; "
                 "leaving it in .env.",
@@ -537,9 +562,21 @@ def save_settings(values: dict[str, str]) -> dict[str, str]:
     once the value lived in the store: `_get_secret` fell through to it and the
     credential stayed in use. So a stored copy is deleted and read back. A
     delete the store will not do has no fallback — `.env` cannot hide a stored
-    value — so the whole save is undone and `CredentialStoreError` raised. A
-    value the store cannot read is not deleted: what cannot be read cannot be
-    put back, and the page showed it empty already.
+    value — so the whole save is undone and `CredentialStoreError` raised.
+
+    A CREDENTIAL THE STORE CANNOT READ IS NOT DELETED, AND NOT REPORTED AS
+    CLEARED EITHER (6E-2 PR10). What cannot be read cannot be put back, so it
+    is left alone — but the empty value means the user cleared a field that
+    showed it, and "saved" would tell them it is gone while it comes back the
+    moment the store can be read. So the whole save is undone and
+    `CredentialStoreError` raised, as for a refused delete. The same holds when
+    the read-back after a delete cannot be done: the delete is unconfirmed.
+    The Settings page does not send an empty value for a field it could not
+    fill (`UNREADABLE_SECRETS`), so this is a field the user saw and cleared.
+
+    A store that cannot be read while a NEW value is written is handled as
+    before: the previous value counts as absent, and a read-back that cannot be
+    done counts as failed, so the value falls back to `.env`.
 
     WHAT THIS CANNOT COVER: the process dying between the store writes and the
     file replace. The store and the file share no transaction, so that window
@@ -552,8 +589,8 @@ def save_settings(values: dict[str, str]) -> dict[str, str]:
 
     for key, value in values.items():
         if key in STORED_SECRET_KEYS and store is not None and value:
-            previous[key] = store.get(key)
-            if store.set(key, value) and store.get(key) == value:
+            previous[key] = _read_stored(store, key)[0]
+            if store.set(key, value) and _read_stored(store, key)[0] == value:
                 file_values[key] = ""
                 layers[key] = "store"
                 continue
@@ -561,10 +598,16 @@ def save_settings(values: dict[str, str]) -> dict[str, str]:
                 "Could not store %s in the credential store; falling back to .env.", key
             )
         elif key in STORED_SECRET_KEYS and store is not None:
-            stored = store.get(key)
+            stored, readable = _read_stored(store, key)
+            if not readable:
+                _put_back(store, previous)
+                raise CredentialStoreError(
+                    f"{key} could not be read from the credential store, so "
+                    "clearing it cannot be confirmed; nothing was saved."
+                )
             if stored is not None:
                 previous[key] = stored
-                if not (store.delete(key) and store.get(key) is None):
+                if not (store.delete(key) and _read_stored(store, key) == (None, True)):
                     _put_back(store, previous)
                     raise CredentialStoreError(
                         f"{key} could not be removed from the credential store; "
@@ -760,6 +803,11 @@ DEFAULT_OPENAI_MODEL: str = "gpt-4o-mini"
 # API Security
 API_KEY: str = ""
 
+# The credentials the store could not read at the last reload() — read as ""
+# above, but not known to be empty. The Settings page warns next to these
+# fields and does not treat their empty value as "cleared" (6E-2 PR10).
+UNREADABLE_SECRETS: frozenset[str] = frozenset()
+
 # Rate Limiting & Cost Control
 MAX_DAILY_REQUESTS: int = 50
 GROQ_SLEEP: float = 2.0
@@ -801,7 +849,7 @@ def reload() -> None:
     """
     global JIRA_URL, JIRA_EMAIL, JIRA_API_TOKEN, JIRA_PROJECT_KEY
     global LLM_PROVIDER, GROQ_API_KEY, OPENAI_API_KEY, LLM_MODEL
-    global API_KEY
+    global API_KEY, UNREADABLE_SECRETS
     global MAX_DAILY_REQUESTS, GROQ_SLEEP, MAX_RETRIES
     global USE_MOCK_DATA
     global ANONYMIZE_DATA
@@ -811,18 +859,22 @@ def reload() -> None:
     # Re-read .env (override=True forces refresh)
     load_dotenv(ENV_FILE, override=True)
 
+    unreadable: set[str] = set()
+
     JIRA_URL = _get_env("JIRA_URL")
     JIRA_EMAIL = _get_env("JIRA_EMAIL")
-    JIRA_API_TOKEN = _get_secret("JIRA_API_TOKEN")
+    JIRA_API_TOKEN = _get_secret("JIRA_API_TOKEN", unreadable)
     JIRA_PROJECT_KEY = _get_env("JIRA_PROJECT_KEY")
 
     LLM_PROVIDER = _get_env("LLM_PROVIDER", "groq").lower()
-    GROQ_API_KEY = _get_secret("GROQ_API_KEY")
-    OPENAI_API_KEY = _get_secret("OPENAI_API_KEY")
+    GROQ_API_KEY = _get_secret("GROQ_API_KEY", unreadable)
+    OPENAI_API_KEY = _get_secret("OPENAI_API_KEY", unreadable)
     LLM_MODEL = _get_env("LLM_MODEL")
 
     # Read only — generating a key writes to .env, which reload() must not do.
-    API_KEY = _get_secret("API_KEY")
+    API_KEY = _get_secret("API_KEY", unreadable)
+
+    UNREADABLE_SECRETS = frozenset(unreadable)
 
     MAX_DAILY_REQUESTS = _get_env_int("MAX_DAILY_REQUESTS", 50)
     GROQ_SLEEP = float(_get_env("GROQ_SLEEP", "2"))

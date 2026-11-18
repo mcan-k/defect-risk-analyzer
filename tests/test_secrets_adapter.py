@@ -235,7 +235,8 @@ def test_the_description_is_not_rebuilt_from_operation_errors():
     store, _code, params = secrets_adapter._decide(fake)
 
     store.set("JIRA_API_TOKEN", SYNTHETIC)
-    store.get("JIRA_API_TOKEN")
+    with pytest.raises(secrets_adapter.SecretReadError):
+        store.get("JIRA_API_TOKEN")
 
     assert SYNTHETIC not in str(params)
     assert SYNTHETIC not in store.backend
@@ -282,17 +283,49 @@ def test_deleting_something_absent_is_not_an_error():
     assert store.delete("NEVER_STORED") is True
 
 
-def test_a_backend_failure_is_reported_not_raised():
+def test_a_backend_failure_is_reported_not_swallowed():
     """`keyring.errors.KeyringError` is not enough, measured: on Windows a
     CredRead/CredWrite failure arrives as a raw `pywin32ctypes` error that never
     passes through keyring's own hierarchy. Naming it would mean importing
     `win32ctypes`, which does not exist on Linux. So the adapter catches broadly
-    and reports — its contract is "return the secret or say you could not"."""
+    and reports — its contract is "return the secret or say you could not".
+
+    A read says so with `SecretReadError`, not `None` (6E-2 PR10): `None` is
+    "there is none", and the two used to look alike — the Settings page showed
+    an unreadable credential as a cleared one."""
     fake = FakeKeyring(WinVaultKeyring(), raises=RuntimeError("credential store is locked"))
     store, _, _ = secrets_adapter._decide(fake)
 
-    assert store.get("JIRA_API_TOKEN") is None
+    with pytest.raises(secrets_adapter.SecretReadError):
+        store.get("JIRA_API_TOKEN")
     assert store.set("JIRA_API_TOKEN", SYNTHETIC) is False
+
+
+def test_a_read_error_names_the_key_and_drops_the_backend_message(caplog):
+    """The backend's message goes to the WARNING, through `_describe`, and
+    nowhere else: not into the error's text, and not into its chain, where a
+    traceback logged further up would carry it past that check."""
+    fake = FakeKeyring(WinVaultKeyring(), raises=RuntimeError("credential store is locked"))
+    store, _, _ = secrets_adapter._decide(fake)
+
+    with caplog.at_level(logging.WARNING):
+        with pytest.raises(secrets_adapter.SecretReadError) as raised:
+            store.get("JIRA_API_TOKEN")
+
+    assert "JIRA_API_TOKEN" in str(raised.value)
+    assert "locked" not in str(raised.value)
+    assert raised.value.__cause__ is None and raised.value.__suppress_context__
+    assert "RuntimeError" in caplog.text
+
+
+def test_a_delete_that_cannot_be_read_back_is_not_reported_as_done():
+    """`delete` resolves a failure by asking whether the value is still there.
+    A store that cannot answer has confirmed nothing; measured at cdb23f2, it
+    counted as gone and `delete` returned True."""
+    fake = FakeKeyring(WinVaultKeyring(), raises=RuntimeError("credential store is locked"))
+    store, _, _ = secrets_adapter._decide(fake)
+
+    assert store.delete("JIRA_API_TOKEN") is False
 
 
 # ---------------------------------------------------------------------------
