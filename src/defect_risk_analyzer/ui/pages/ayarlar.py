@@ -231,8 +231,8 @@ def render_settings():
     if st.session_state.pop(_API_KEY_NOT_SAVED, False):
         st.warning(t("settings.apikey.not_saved"))
 
-    # Generation is explicit: it writes to .env, and merely opening this page
-    # must never do that.
+    # Generation is explicit: it saves a credential (the store, or .env when
+    # there is none), and merely opening this page must never do that.
     label = t("settings.apikey.rotate") if config.API_KEY else t("settings.apikey.create")
     if st.button(label, use_container_width=True):
         result = config.ensure_api_key(rotate=bool(config.API_KEY))

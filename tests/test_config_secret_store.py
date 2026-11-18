@@ -25,6 +25,8 @@ refuses the keyring import for the whole session, and these tests inject a fake
 store directly.
 """
 
+import os
+
 import pytest
 
 from defect_risk_analyzer import config
@@ -254,28 +256,128 @@ def test_the_cache_holds_no_secret_value(env_and_store):
     assert SYNTHETIC_STORE not in repr(config._secret_store_resolved)
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason=(
-        "Bilinen kusur: ensure_api_key depodaki API key'i görmüyor, yenisini .env'e "
-        "düz metin yazıyor (KNOWN-DEBT.md, '6E-2 PR6 keşfinde belgelenen kusurlar')"
-    ),
-)
 def test_the_api_server_start_keeps_a_key_that_lives_in_the_store(env_and_store):
-    """6E-2 PR6 discovery, documented first (K-E3); the fix is a separate PR.
+    """6E-2 PR6 measured this red (K-E3, the xfail(strict) step); 6E-2 PR8
+    fixed it (user decision 1a, 2026-11-17) and this is an ordinary test now.
 
     After the migration the webhook key lives in the store and its `.env` line
-    is empty. `config.init(generate_api_key=True)` — the API server's start —
-    calls ensure_api_key(), which checks `.env`/os.environ only: it finds
-    nothing, generates a NEW key and writes it to `.env` in plain text. The
-    stored key is then shadowed, and a Jira webhook holding it stops working.
-    Measured on M10 outside the repo (2026-11-17) before this test existed.
+    is empty. ensure_api_key() used to check `.env`/os.environ only: it found
+    nothing, generated a NEW key and wrote it to `.env` in plain text, so the
+    stored key — the one the Settings page showed and a Jira webhook held —
+    stopped working. PR8 also asks for the return value: the caller must be
+    handed the stored key, reported as saved.
     """
     store = FakeStore({"API_KEY": SYNTHETIC_STORE})
     env_file = env_and_store(store, "API_KEY=\n")
     config.reload()
 
-    config.ensure_api_key()
+    result = config.ensure_api_key()
 
+    assert result == (SYNTHETIC_STORE, True), "the caller was not handed the stored key"
     assert config.API_KEY == SYNTHETIC_STORE, "the stored key was replaced"
     assert env_file.read_text(encoding="utf-8") == "API_KEY=\n", "a key went to .env"
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR8, Y1 — the API key is read and saved like every other credential
+# ---------------------------------------------------------------------------
+
+
+class _RefusingStore(FakeStore):
+    """A store that refuses every write."""
+
+    def set(self, name, value):
+        return False
+
+
+def _unwritable_env(lines):
+    raise PermissionError(13, "Permission denied", ".env")
+
+
+def test_the_api_server_start_uses_the_stored_key(env_and_store, monkeypatch, tmp_path):
+    """The call the API server makes at startup (api.py lifespan), end to end
+    through init(): the stored key is the server's key, and nothing is written."""
+    store = FakeStore({"API_KEY": SYNTHETIC_STORE})
+    env_file = env_and_store(store, "API_KEY=\n")
+    monkeypatch.setattr(config, "DATA_DIR", tmp_path / "data")
+    monkeypatch.setattr(config, "ANON_MAP_FILE", tmp_path / "data" / "anon_map.json")
+    monkeypatch.setattr(config, "LEGACY_ANON_MAP_REMOVED", False)
+    monkeypatch.setattr(config, "_initialized", False)
+
+    config.init(generate_api_key=True)
+
+    assert config.API_KEY == SYNTHETIC_STORE
+    assert store.values == {"API_KEY": SYNTHETIC_STORE}, "the store was changed"
+    assert env_file.read_text(encoding="utf-8") == "API_KEY=\n", "a key went to .env"
+
+
+def test_a_generated_key_goes_to_the_store_not_to_env(env_and_store):
+    store = FakeStore()
+    env_file = env_and_store(store, "API_KEY=\n")
+
+    result = config.ensure_api_key()
+
+    assert result.saved is True
+    assert result.key and store.values.get("API_KEY") == result.key
+    assert result.key not in env_file.read_text(encoding="utf-8"), "plain text in .env"
+    config.reload()
+    assert config.API_KEY == result.key, "the next read found a different key"
+
+
+def test_rotating_puts_the_new_key_in_the_store(env_and_store):
+    store = FakeStore({"API_KEY": SYNTHETIC_STORE})
+    env_file = env_and_store(store, "API_KEY=\n")
+
+    result = config.ensure_api_key(rotate=True)
+
+    assert result.saved is True
+    assert result.key != SYNTHETIC_STORE
+    assert store.values.get("API_KEY") == result.key
+    assert result.key not in env_file.read_text(encoding="utf-8")
+
+
+def test_a_generated_key_the_store_refuses_falls_back_to_env(env_and_store):
+    """The same rule as every other credential (save_secret): a key the store
+    will not take goes to `.env` rather than being lost."""
+    env_file = env_and_store(_RefusingStore(), "API_KEY=\n")
+
+    result = config.ensure_api_key()
+
+    assert result.saved is True
+    assert f"API_KEY={result.key}" in env_file.read_text(encoding="utf-8")
+
+
+def test_a_generated_key_that_cannot_be_saved_is_kept_for_the_process(
+    env_and_store, monkeypatch, caplog
+):
+    """T2(a) with a store in use: the store write succeeds, the `.env` write
+    that empties the line fails, so the save is undone — the store is put back
+    — and the key works for this process only, reported as not saved."""
+    store = FakeStore()
+    env_file = env_and_store(store, "API_KEY=\n")
+    before = env_file.read_bytes()
+    monkeypatch.setattr(config, "_atomic_write_lines", _unwritable_env)
+
+    with caplog.at_level("WARNING", logger="defect_risk_analyzer.config"):
+        result = config.ensure_api_key()
+
+    assert result.saved is False
+    assert result.key and config.API_KEY == result.key == os.environ["API_KEY"]
+    assert "API_KEY" not in store.values, "the store kept a key reported as not saved"
+    assert env_file.read_bytes() == before
+    assert "could not be saved" in caplog.text
+
+
+def test_a_key_in_env_still_wins_over_a_different_stored_key(env_and_store):
+    """The rule that settled PR8's stop question: with a key in `.env` and a
+    different one in the store, both the server and the dashboard read the
+    `.env` one — measured at 9757edf before the fix, and unchanged by it."""
+    store = FakeStore({"API_KEY": SYNTHETIC_STORE})
+    env_file = env_and_store(store, f"API_KEY={SYNTHETIC_ENV}\n")
+    config.reload()  # as init() does first: .env reaches os.environ
+
+    result = config.ensure_api_key()
+
+    assert result == (SYNTHETIC_ENV, True)
+    assert store.values == {"API_KEY": SYNTHETIC_STORE}
+    assert env_file.read_text(encoding="utf-8") == f"API_KEY={SYNTHETIC_ENV}\n"
