@@ -805,6 +805,20 @@ def ensure_api_key(*, rotate: bool = False) -> ApiKeyResult:
     return ApiKeyResult(new_key, saved)
 
 
+def api_key_in_plain_text() -> bool:
+    """True when `.env` holds the API key in use (6E-2 PR11, decision 3 (a)).
+
+    For the Settings page, after a saved generation over a key the store could
+    not read: the store usually takes the write but cannot read it back, so
+    `save_secret` falls back to `.env` — and "saved" alone would hide that the
+    key now sits there in plain text. Read from `os.environ`, which
+    `set_env_values` sets to what it wrote only after the file was replaced.
+    Meaningless after a save that failed: `ensure_api_key` then puts the key in
+    `os.environ` itself, which is why the page checks `saved` first.
+    """
+    return bool(_get_env("API_KEY"))
+
+
 # ---------------------------------------------------------------------------
 # Mutable config variables — updated by reload()
 # ---------------------------------------------------------------------------

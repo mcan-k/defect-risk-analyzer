@@ -1953,3 +1953,162 @@ def test_a_reload_from_another_session_does_not_turn_a_hidden_token_into_a_clear
 
     assert not at.exception, [f"{e.value}" for e in at.exception]
     assert store.values.get("JIRA_API_TOKEN") == _STORED_TOKEN
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR11 — the API key section over a key the store cannot read
+# ---------------------------------------------------------------------------
+# Measured at 5b9ed4e (AppTest, fake store): the section said "no API key
+# generated yet", offered "Generate", and one click overwrote the stored key,
+# put the new one in `.env` in plain text and said "✅ API key saved". User
+# decision 3 (a), 2026-11-18: a warning instead of "none yet", the button only
+# with a tick, a ticked generation as a rotation, and no "saved" for a key that
+# fell to `.env` in plain text.
+
+_OLD_API_KEY = "dummy-stored-api-key-not-a-real-credential"
+
+
+def _api_key_page(monkeypatch, *, unreadable: bool, stored: bool = True):
+    """The Settings page with a fake store holding the webhook key (or not),
+    readable or not. Returns (AppTest, store, .env bytes before)."""
+    _isolate_api_key(monkeypatch)
+    store = _settings_with_store(monkeypatch, _UnreadableStore())
+    if stored:
+        store.values["API_KEY"] = _OLD_API_KEY
+    store.unreadable = {"API_KEY"} if unreadable else False
+    before = config.ENV_FILE.read_bytes()
+    return _open("pages/ayarlar.py"), store, before
+
+
+def _confirm_box(at: AppTest):
+    return [c for c in at.checkbox if c.label == _TR["settings.apikey.unreadable_confirm"]]
+
+
+def _api_key_in_env_file() -> str:
+    for line in config.ENV_FILE.read_text(encoding="utf-8").splitlines():
+        if line.startswith("API_KEY="):
+            return line.split("=", 1)[1]
+    return ""
+
+
+def test_an_unreadable_api_key_is_named_and_not_offered_freely(restorable_env, monkeypatch):
+    at, _, _ = _api_key_page(monkeypatch, unreadable=True)
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _on_screen("settings.apikey.unreadable") in [w.value for w in at.warning]
+    assert _TR["settings.apikey.none"] not in [i.value for i in at.info]
+    boxes = _confirm_box(at)
+    assert len(boxes) == 1 and boxes[0].value is False
+    assert _api_key_button(at).disabled is True
+
+
+def test_the_button_does_nothing_without_the_tick(restorable_env, monkeypatch):
+    """The button is disabled, and the click is checked too: a disabled button
+    is the browser's promise. AppTest refuses to click a disabled button —
+    measured: "Cannot update a disabled button widget" — so the click is
+    forged one level down, by an st.button that answers True for it. That is
+    what holds the second check."""
+    import streamlit
+
+    at, store, before = _api_key_page(monkeypatch, unreadable=True)
+    assert _api_key_button(at).disabled is True
+    successes = _record_success(monkeypatch)
+    original = streamlit.button
+    forged_once: list[bool] = []
+
+    def forged(label, *args, **kwargs):
+        clicked = original(label, *args, **kwargs)
+        if label == _TR["settings.apikey.create"] and kwargs.get("disabled") and not forged_once:
+            forged_once.append(True)  # once: a click that got through reruns the page
+            return True
+        return clicked
+
+    monkeypatch.setattr(streamlit, "button", forged)
+    at.run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert store.values["API_KEY"] == _OLD_API_KEY
+    assert config.ENV_FILE.read_bytes() == before
+    assert config.API_KEY == ""
+    assert not any("API key" in s for s in successes), successes
+
+
+def test_a_ticked_generation_over_an_unreadable_key_says_plain_text(
+    restorable_env, monkeypatch
+):
+    """The store takes the write and cannot read it back, so the key falls to
+    `.env`: the page says plain text, and the restart line, never "saved"."""
+    at, store, _ = _api_key_page(monkeypatch, unreadable=True)
+    successes = _record_success(monkeypatch)
+
+    _confirm_box(at)[0].check().run()
+    _api_key_button(at).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert config.API_KEY and config.API_KEY != _OLD_API_KEY, "no rotation happened"
+    assert _api_key_in_env_file() == config.API_KEY, "precondition: it fell to .env"
+    warnings = [w.value for w in at.warning]
+    assert _on_screen("settings.apikey.plaintext") in warnings
+    assert _on_screen("settings.apikey.restart") in warnings
+    assert not any("API key" in s for s in successes), successes
+    # The new key is this process's own: rotating it needs no tick.
+    assert _confirm_box(at) == []
+    assert _api_key_button(at).label == _TR["settings.apikey.rotate"]
+
+
+def test_a_ticked_generation_the_store_confirms_is_reported_saved(
+    restorable_env, monkeypatch
+):
+    """The store could not be read when the page was drawn and can be by the
+    click: the new key lands in the store, `.env` stays empty, and "saved" is
+    true — so it is what the page says."""
+    at, store, _ = _api_key_page(monkeypatch, unreadable=True)
+    successes = _record_success(monkeypatch)
+    _confirm_box(at)[0].check().run()
+    store.unreadable = False
+
+    _api_key_button(at).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert store.values["API_KEY"] == config.API_KEY != _OLD_API_KEY
+    assert _api_key_in_env_file() == ""
+    assert any("API key" in s for s in successes), successes
+    assert _on_screen("settings.apikey.plaintext") not in [w.value for w in at.warning]
+
+
+def test_a_key_that_went_unreadable_after_the_page_was_drawn_is_not_saved(
+    restorable_env, monkeypatch
+):
+    """Drawn with a readable store and no key, clicked after the store stopped
+    reading one: ensure_api_key generates nothing (PR11), so the page must not
+    say "saved" for a key that does not exist."""
+    at, store, before = _api_key_page(monkeypatch, unreadable=False, stored=False)
+    store.values["API_KEY"] = _OLD_API_KEY
+    store.unreadable = {"API_KEY"}
+    successes = _record_success(monkeypatch)
+
+    _api_key_button(at).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert store.values["API_KEY"] == _OLD_API_KEY
+    assert config.ENV_FILE.read_bytes() == before
+    assert not any("API key" in s for s in successes), successes
+    assert _on_screen("settings.apikey.unreadable") in [w.value for w in at.warning]
+
+
+def test_a_readable_store_keeps_the_pr8_button(restorable_env, monkeypatch):
+    """Regression: no tick, no warning, the key generated into the store and
+    "saved" — what PR8 made of the button, unchanged by PR11."""
+    at, store, _ = _api_key_page(monkeypatch, unreadable=False, stored=False)
+    assert _TR["settings.apikey.none"] in [i.value for i in at.info]
+    assert _confirm_box(at) == []
+    assert _api_key_button(at).disabled is False
+    successes = _record_success(monkeypatch)
+
+    _api_key_button(at).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert store.values["API_KEY"] == config.API_KEY
+    assert _api_key_in_env_file() == ""
+    assert any("API key" in s for s in successes), successes
+    assert _on_screen("settings.apikey.plaintext") not in [w.value for w in at.warning]
