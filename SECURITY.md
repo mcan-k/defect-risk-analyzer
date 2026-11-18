@@ -23,8 +23,14 @@ If the store cannot take a value, it stays in `.env` and you are told. If the
 store took it but `.env` could not be updated, the credential is in both
 places and you are told that too.
 
-The API server and the CI analyzer never migrate anything. Neither has a
-credential store available, and neither has anywhere to report what it did.
+The API server and the CI analyzer never migrate anything, and neither has
+anywhere to report what it did. Both still read credentials the way the
+dashboard does — `.env` first, then the credential store — so wherever a store
+is available they use it. On a desktop install with the `desktop` extra that
+includes the API server: it reads the credentials from the store and keeps the
+webhook `API_KEY` there (see below). In Docker and on a CI runner the extra is
+not installed, so there is no store, and both read `.env` and the environment
+only.
 
 **Which copy wins.** A non-empty value in `.env` takes precedence over the
 credential store, and the store is consulted only for values `.env` does not

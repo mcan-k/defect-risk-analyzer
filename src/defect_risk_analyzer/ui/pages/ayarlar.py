@@ -1,7 +1,5 @@
 """Ayarlar — self-service configuration."""
 
-import time
-
 import streamlit as st
 
 from defect_risk_analyzer import config
@@ -17,9 +15,21 @@ bootstrap()
 # drawn before the rerun is gone once the rerun renders (6E-2 PR5, MG).
 _API_KEY_NOT_SAVED = "_dra_api_key_not_saved"
 
+# st.session_state key: which save succeeded — "jira", "llm", "app" or
+# "apikey" — carried over the same rerun to the run that shows its success
+# line. The lines used to be drawn, then time.sleep(1), then st.rerun(): the
+# rerun's tree is the one that stays, and it did not hold them (measured,
+# 6E-2 PR8). The sync line was fixed the same way in 6E-2 PR7, without a
+# sleep: waiting only made the user wait for a line that then vanished.
+_SAVED = "_dra_settings_saved"
+
 
 def render_settings():
     """Self-service configuration panel with live reload."""
+    # Popped once, at the top, so each success line is shown once — on the
+    # run right after its save — whichever section draws it.
+    saved = st.session_state.pop(_SAVED, None)
+
     st.title(t("nav.settings"))
     st.caption(t("settings.caption"))
 
@@ -49,7 +59,7 @@ def render_settings():
 
     col1, col2 = st.columns(2)
     # Every save goes through call(): a .env that cannot be written is reported
-    # on the page, and the success message and rerun run only after a real save
+    # on the page, and the success line and rerun come only after a real save
     # (a rerun right after the error would wipe it off the screen).
     if col1.button(t("settings.jira.save"), use_container_width=True):
         if call(save_multiple_env, {
@@ -58,9 +68,10 @@ def render_settings():
             "JIRA_API_TOKEN": jira_token,
             "JIRA_PROJECT_KEY": jira_project,
         }):
-            st.success(t("settings.jira.saved"))
-            time.sleep(1)
+            st.session_state[_SAVED] = "jira"
             st.rerun()
+    if saved == "jira":
+        st.success(t("settings.jira.saved"))
 
     if col2.button(t("settings.jira.test"), use_container_width=True):
         if all([jira_url, jira_email, jira_token]):
@@ -111,9 +122,10 @@ def render_settings():
         else:
             env_values["OPENAI_API_KEY"] = llm_key
         if call(save_multiple_env, env_values):
-            st.success(t("settings.llm.saved"))
-            time.sleep(1)
+            st.session_state[_SAVED] = "llm"
             st.rerun()
+    if saved == "llm":
+        st.success(t("settings.llm.saved"))
 
     if col2.button(t("settings.llm.test"), use_container_width=True):
         if llm_key:
@@ -186,9 +198,10 @@ def render_settings():
             "USE_MOCK_DATA": str(mock_mode),
             "ANONYMIZE_DATA": str(anonymize),
         }):
-            st.success(t("settings.app.saved"))
-            time.sleep(1)
+            st.session_state[_SAVED] = "app"
             st.rerun()
+    if saved == "app":
+        st.success(t("settings.app.saved"))
 
     st.markdown("---")
 
@@ -231,15 +244,20 @@ def render_settings():
     if st.session_state.pop(_API_KEY_NOT_SAVED, False):
         st.warning(t("settings.apikey.not_saved"))
 
+    # The key's prefix is read here, from the key in use — the one st.code
+    # shows above — not carried in session_state: there is no reason to keep
+    # any part of a credential in the session for a message.
+    if saved == "apikey":
+        st.success(t("settings.apikey.saved", key=config.API_KEY[:8]))
+        st.warning(t("settings.apikey.restart"))
+
     # Generation is explicit: it saves a credential (the store, or .env when
     # there is none), and merely opening this page must never do that.
     label = t("settings.apikey.rotate") if config.API_KEY else t("settings.apikey.create")
     if st.button(label, use_container_width=True):
         result = config.ensure_api_key(rotate=bool(config.API_KEY))
         if result.saved:
-            st.success(t("settings.apikey.saved", key=result.key[:8]))
-            st.warning(t("settings.apikey.restart"))
-            time.sleep(1)
+            st.session_state[_SAVED] = "apikey"
         else:
             # .env did not take the key: it works in this process only, and
             # "saved" would be the one thing not to say (T2(a), 2026-11-11).
