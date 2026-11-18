@@ -24,6 +24,34 @@ _API_KEY_NOT_SAVED = "_dra_api_key_not_saved"
 _SAVED = "_dra_settings_saved"
 
 
+def _warn_if_unreadable(key: str) -> None:
+    """Say so under a credential field the store could not fill (6E-2 PR10).
+
+    The field starts with the value in use, and for an unreadable credential
+    that is "" — which looks exactly like "not set". The layer line above
+    still says the store is in use, so without this nothing on the page
+    explains the empty field.
+    """
+    if key in config.UNREADABLE_SECRETS:
+        st.warning(t("settings.secret_unreadable"))
+
+
+def _add_credential(values: dict[str, str], key: str, typed: str) -> None:
+    """Put a credential field into a save, unless it is a field the store
+    could not fill and the user left it empty.
+
+    An empty credential field normally means the user cleared it, and the
+    save deletes the stored copy (6E-2 PR8). A field the store could not read
+    is empty for another reason, and the warning under it says saving will
+    not delete anything. Sent anyway, that "" deleted a credential the user
+    had never seen as soon as the store could be read again (measured, 6E-2
+    PR9) — so it is left out, and the stored value is not touched. A value
+    the user typed is saved as usual.
+    """
+    if typed or key not in config.UNREADABLE_SECRETS:
+        values[key] = typed
+
+
 def render_settings():
     """Self-service configuration panel with live reload."""
     # Popped once, at the top, so each success line is shown once — on the
@@ -54,6 +82,7 @@ def render_settings():
     )
     jira_token = st.text_input(t("common.jira_token"), value=config.JIRA_API_TOKEN,
                                type="password", help=t("settings.jira_token.help"))
+    _warn_if_unreadable("JIRA_API_TOKEN")
     jira_project = st.text_input(t("common.jira_project"), value=config.JIRA_PROJECT_KEY,
                                  placeholder="AP", help=t("common.jira_project.help"))
 
@@ -62,12 +91,10 @@ def render_settings():
     # on the page, and the success line and rerun come only after a real save
     # (a rerun right after the error would wipe it off the screen).
     if col1.button(t("settings.jira.save"), use_container_width=True):
-        if call(save_multiple_env, {
-            "JIRA_URL": jira_url.rstrip("/"),
-            "JIRA_EMAIL": jira_email,
-            "JIRA_API_TOKEN": jira_token,
-            "JIRA_PROJECT_KEY": jira_project,
-        }):
+        jira_values = {"JIRA_URL": jira_url.rstrip("/"), "JIRA_EMAIL": jira_email}
+        _add_credential(jira_values, "JIRA_API_TOKEN", jira_token)
+        jira_values["JIRA_PROJECT_KEY"] = jira_project
+        if call(save_multiple_env, jira_values):
             st.session_state[_SAVED] = "jira"
             st.rerun()
     if saved == "jira":
@@ -99,6 +126,7 @@ def render_settings():
         index=0 if config.LLM_PROVIDER == "groq" else 1,
     )
 
+    llm_key_name = "GROQ_API_KEY" if provider == "groq" else "OPENAI_API_KEY"
     if provider == "groq":
         llm_key = st.text_input(
             t("common.groq_api_key"),
@@ -113,14 +141,12 @@ def render_settings():
             type="password",
             help=t("settings.openai.help"),
         )
+    _warn_if_unreadable(llm_key_name)
 
     col1, col2 = st.columns(2)
     if col1.button(t("settings.llm.save"), use_container_width=True):
         env_values = {"LLM_PROVIDER": provider}
-        if provider == "groq":
-            env_values["GROQ_API_KEY"] = llm_key
-        else:
-            env_values["OPENAI_API_KEY"] = llm_key
+        _add_credential(env_values, llm_key_name, llm_key)
         if call(save_multiple_env, env_values):
             st.session_state[_SAVED] = "llm"
             st.rerun()

@@ -198,6 +198,7 @@
   "settings.mock_mode.help": "Aktifken Jira yerine örnek veriler kullanılır",
   "settings.openai.help": "[OpenAI Platform →](https://platform.openai.com/api-keys) adresinden key alın",
   "settings.secret_layer": "Kimlik bilgisi katmanı: {layer}",
+  "settings.secret_unreadable": "⚠️ Kimlik bilgisi deposu bu değeri okuyamadı; alan bu yüzden boş görünüyor. Alanı boş bırakıp kaydetmek kayıtlı değeri silmez; yeni bir değer yazarsanız o kaydedilir.",
   "settings.sleep": "İstekler Arası Bekleme (saniye)",
   "settings.sleep.help": "Groq free-tier rate limit'e takılmamak için bekleme süresi",
   "settings.status.jira_missing": "❌ Jira Eksik",

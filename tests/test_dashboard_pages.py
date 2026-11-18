@@ -45,6 +45,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from defect_risk_analyzer import config
+from defect_risk_analyzer.adapters.secrets import SecretReadError
 from defect_risk_analyzer.services import analysis_service as analysis_service_module
 from defect_risk_analyzer.ui import shell
 
@@ -1756,62 +1757,76 @@ def test_a_delete_the_store_refuses_is_reported_and_nothing_is_saved(
 
 
 # ---------------------------------------------------------------------------
-# 6E-2 PR9 — a store that cannot be read (measured, documented, not fixed)
+# 6E-2 PR9/PR10 — a store that cannot be read
 # ---------------------------------------------------------------------------
-# The real adapter's get() returns None when the OS store raises
-# (KeyringStore.get, with a WARNING naming the key). reload() then reads the
-# credential as empty, the Settings field starts empty, and nothing on the
-# page says the store could not be read: the layer line still says the store
-# is in use. PR8 left this edge unmeasured ("Kapsamadığı" in its closed Y2
-# row); both faces below were measured at f639bc5 and are xfail(strict) under
-# K-E3 — documented first, the fix belongs to a separate PR.
-
-_UNREADABLE_REASON = (
-    "Bilinen kusur: okunamayan depo (KNOWN-DEBT.md, 'Okunamayan depo' satırı; "
-    "6E-2 PR9'da ölçüldü, düzeltme ayrı PR)"
-)
+# PR9 measured both faces at f639bc5 and documented them xfail(strict); PR10
+# fixes them. The real adapter used to return None when the OS store raised,
+# so reload() read the credential as empty and nothing on the page said why.
+# Since PR10 it raises SecretReadError, reload() names the key in
+# config.UNREADABLE_SECRETS, the field carries a warning that saving it empty
+# deletes nothing, and the save leaves that credential out.
 
 
 class _UnreadableStore(_RecordingStore):
-    """get() returns None while `unreadable` is True; the value stays."""
+    """get() raises SecretReadError — what KeyringStore does when the OS store
+    fails — while `unreadable` is True, or for the keys in it when it is a set.
+    The values stay where they are."""
 
     def __init__(self):
         super().__init__()
-        self.unreadable = False
+        self.unreadable: bool | set[str] = False
 
     def get(self, name):
-        if self.unreadable:
-            return None
+        if self.unreadable is True or (self.unreadable and name in self.unreadable):
+            raise SecretReadError(name)
         return super().get(name)
 
 
-@pytest.mark.xfail(strict=True, reason=_UNREADABLE_REASON)
-def test_a_save_over_an_unreadable_token_is_not_reported_as_done(
+def _warning_under(at: AppTest, key: str) -> bool:
+    """True when the element right after the `key` text field is the
+    unreadable-store warning — under that field, not merely on the page."""
+    children = list(at.main.children.values())
+    for index, element in enumerate(children[:-1]):
+        if getattr(element, "type", None) == "text_input" and element.label == _TR[key]:
+            following = children[index + 1]
+            return (
+                getattr(following, "type", None) == "warning"
+                and following.value == _on_screen("settings.secret_unreadable")
+            )
+    raise AssertionError(f"no {key!r} field on the page")
+
+
+def _unreadable_warnings(at: AppTest) -> int:
+    return [w.value for w in at.warning].count(_on_screen("settings.secret_unreadable"))
+
+
+def test_a_save_over_an_unreadable_token_does_what_the_page_says(
     restorable_env, monkeypatch
 ):
     """The store cannot be read; the user saves the Jira section with the token
-    field as the page showed it — empty. Measured at f639bc5: the save is
-    reported as done, the token is not deleted (what cannot be read is not
-    deleted, PR8), and once the store can be read again the token is back in
-    use. A save the user was told succeeded did not do what the screen showed."""
+    field as the page showed it — empty. Measured at f639bc5: "saved", no
+    warning anywhere, and the token back in use once the store could be read
+    (PR9 asserted that pair as the defect). Since PR10 the field says, before
+    the save, that saving it empty deletes nothing — so "saved", the token left
+    alone and back after a reload are what the page promised."""
     store = _settings_with_store(monkeypatch, _UnreadableStore())
     store.unreadable = True
     at = _open("pages/ayarlar.py")
     assert _field(at, "common.jira_token") == "", "precondition: the field starts empty"
+    assert _warning_under(at, "common.jira_token"), "nothing said why the field is empty"
     successes = _record_success(monkeypatch)
 
     _button(at, _TR["settings.jira.save"]).click().run()
 
     assert not at.exception, [f"{e.value}" for e in at.exception]
-    told_saved = _TR["settings.jira.saved"] in successes
+    assert _TR["settings.jira.saved"] in successes
+    assert _on_screen("error.os") not in [e.value for e in at.error]
+    assert store.values["JIRA_API_TOKEN"] == _STORED_TOKEN
     store.unreadable = False
     config.reload()
-    assert not (told_saved and config.JIRA_API_TOKEN == _STORED_TOKEN), (
-        "reported as saved, and the cleared token came back once the store could be read"
-    )
+    assert config.JIRA_API_TOKEN == _STORED_TOKEN
 
 
-@pytest.mark.xfail(strict=True, reason=_UNREADABLE_REASON)
 def test_a_token_the_page_could_not_read_survives_an_unrelated_save(
     restorable_env, monkeypatch
 ):
@@ -1833,3 +1848,108 @@ def test_a_token_the_page_could_not_read_survives_an_unrelated_save(
     assert store.values.get("JIRA_API_TOKEN") == _STORED_TOKEN, (
         "a token the user never saw was deleted by a save of another field"
     )
+
+
+@pytest.mark.parametrize(
+    "unreadable,token_warned,groq_warned",
+    [({"JIRA_API_TOKEN"}, True, False), ({"GROQ_API_KEY"}, False, True), (set(), False, False)],
+    ids=["token", "groq", "neither"],
+)
+def test_the_unreadable_warning_is_shown_only_under_an_unreadable_field(
+    unreadable, token_warned, groq_warned, restorable_env, monkeypatch
+):
+    store = _settings_with_store(monkeypatch, _UnreadableStore())
+    store.unreadable = unreadable
+    at = _open("pages/ayarlar.py")
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _warning_under(at, "common.jira_token") is token_warned
+    assert _warning_under(at, "common.groq_api_key") is groq_warned
+    assert _unreadable_warnings(at) == len(unreadable)
+    if not token_warned:
+        assert _field(at, "common.jira_token") == _STORED_TOKEN
+    if not groq_warned:
+        assert _field(at, "common.groq_api_key") == _STORED_GROQ
+
+
+def test_a_new_value_typed_over_an_unreadable_field_is_saved(restorable_env, monkeypatch):
+    """Empty means "leave it" only for a field the store could not fill; a value
+    the user types there is a value to save."""
+    store = _settings_with_store(monkeypatch, _UnreadableStore())
+    store.unreadable = True
+    at = _open("pages/ayarlar.py")
+    _type(at, _TR["common.jira_token"], "dummy-new-token-not-a-real-credential")
+    successes = _record_success(monkeypatch)
+
+    _button(at, _TR["settings.jira.save"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _TR["settings.jira.saved"] in successes
+    assert config.JIRA_API_TOKEN == "dummy-new-token-not-a-real-credential"
+
+
+def test_clearing_a_token_the_store_can_no_longer_read_is_reported_and_nothing_is_saved(
+    restorable_env, monkeypatch
+):
+    """U3: the page showed the token, the user cleared it, and by the save the
+    store could not be read. Measured at cdb23f2: "saved", no error, the token
+    left in the store and back in use once the store could be read. The delete
+    cannot be confirmed, so — as for a delete the store refuses (PR8) — nothing
+    is saved and the page says so."""
+    store = _settings_with_store(monkeypatch, _UnreadableStore())
+    at = _open("pages/ayarlar.py")
+    assert _field(at, "common.jira_token") == _STORED_TOKEN, "precondition: the field is full"
+    before = config.ENV_FILE.read_bytes()
+    _type(at, _TR["common.jira_token"], "")
+    _type(at, _TR["common.jira_project"], "YENI")
+    store.unreadable = True
+    successes = _record_success(monkeypatch)
+
+    _button(at, _TR["settings.jira.save"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _on_screen("error.os") in [e.value for e in at.error]
+    assert _TR["settings.jira.saved"] not in successes
+    assert store.values["JIRA_API_TOKEN"] == _STORED_TOKEN
+    assert config.ENV_FILE.read_bytes() == before
+
+
+def test_an_unreadable_llm_key_survives_the_llm_save(restorable_env, monkeypatch):
+    """The LLM section's face of U2: the key could not be read when the page
+    opened and can be by the save; the user saves the section untouched."""
+    store = _settings_with_store(monkeypatch, _UnreadableStore())
+    store.unreadable = {"GROQ_API_KEY"}
+    at = _open("pages/ayarlar.py")
+    assert _field(at, "common.groq_api_key") == "", "precondition: the field starts empty"
+    store.unreadable = False
+    successes = _record_success(monkeypatch)
+
+    _button(at, _TR["settings.llm.save"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert _TR["settings.llm.saved"] in successes
+    assert store.values.get("GROQ_API_KEY") == _STORED_GROQ, (
+        "an LLM key the user never saw was deleted by the LLM save"
+    )
+
+
+def test_a_reload_from_another_session_does_not_turn_a_hidden_token_into_a_cleared_one(
+    restorable_env, monkeypatch
+):
+    """config's globals belong to the process, not to a browser session. This
+    page shows the token field empty and warned; another session's save then
+    reloads with a store that can be read again, and UNREADABLE_SECRETS is
+    empty by the time this page's user saves. The empty field must still not
+    reach the store as "cleared"."""
+    store = _settings_with_store(monkeypatch, _UnreadableStore())
+    store.unreadable = True
+    at = _open("pages/ayarlar.py")
+    assert _warning_under(at, "common.jira_token")
+    store.unreadable = False
+    config.reload()  # what another session's save does
+    _type(at, _TR["common.jira_project"], "YENI")
+
+    _button(at, _TR["settings.jira.save"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert store.values.get("JIRA_API_TOKEN") == _STORED_TOKEN
