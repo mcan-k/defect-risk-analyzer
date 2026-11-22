@@ -8,7 +8,9 @@ Burada yalnız karar, tarihi ve izi var.
 
 **İlke: kararlar kullanıcıya aittir; denetleyici önerir.** Bir öneri,
 kullanıcı onaylayana kadar karar değildir. Bu dosyaya kaydı olmayan bir karar
-yazılmaz. Tarihi bulunamayan kararda "tarih: —" yazar.
+yazılmaz. Tarihi bulunamayan kararda "tarih: —" yazar. K-E9'a uyan sahip
+atamaları kuralın uygulamasıdır ve denetleyici tarafından yapılabilir; kurala
+uymayan (tartışmalı) kayıtlar kullanıcıya sorulur.
 
 Biçim: **kod** (varsa) · tarih · karar · ilgili PR (biliniyorsa). Koddaki
 "(a)" gibi harf, kullanıcıya sunulan seçeneklerden seçileni gösterir.
@@ -123,6 +125,9 @@ Biçim: **kod** (varsa) · tarih · karar · ilgili PR (biliniyorsa). Koddaki
   sonuç yazımının gösterilmemesi 6E-2'de yapılır. 6E-2 bunlar bitince kapanır.
 - **2a** · 2026-11-22 · Sıfır-skor guard'ı ve `_days_since`'in naive saati
   6E-3a'da (6E planının "deterministik doğruluk" alt fazı) yapılır.
+- **(a)** · 2026-11-22 · Kalan iş dört PR'da, bu sırayla: `results_repository`
+  testleri + başarısız yazımın xfail'i; düzeltmesi; `ui/results.py` + `cli.py`
+  testleri; `api.py`'nin kalan HTTP testleri.
 
 ## Sınıflandırıcı
 
@@ -166,9 +171,8 @@ Biçim: **kod** (varsa) · tarih · karar · ilgili PR (biliniyorsa). Koddaki
     kimlik doğrulamalı uçlar 503 döner (yeni metin yalnız okunamayan
     durumda); Ayarlar'da üretim onayla yapılır ve düz metin uyarısı
     gösterilir. #87.
-- tarih: — · T1'in bilinen sınırı (depo ile `.env` arasında ortak işlem yok)
-  v1.1. *Kayıtta fark:* KNOWN-DEBT'teki satır bunu "denetleyici önerisi,
-  2026-11-17" diye yazıyor.
+- 2026-11-17 · T1'in bilinen sınırı (depo ile `.env` arasında ortak işlem yok)
+  v1.1. K-E9 uygulaması (denetleyici).
 
 ## Faz 7 ve sonrası
 
@@ -178,7 +182,8 @@ Biçim: **kod** (varsa) · tarih · karar · ilgili PR (biliniyorsa). Koddaki
 - 2026-10-11 · Geliştirici araçlarının kusurları Faz 7'de.
 - 2026-10-11 · Claude'un LLM sağlayıcısı olarak eklenmesi v1.1.
 - 2026-11-22 · "Could not store … falling back to .env." `WARNING`'i, depo
-  yazmayı kabul edip geri okuyamadığında yanıltıcı; Faz 7 (temizlik).
+  yazmayı kabul edip geri okuyamadığında yanıltıcı; Faz 7 (temizlik). K-E9
+  uygulaması, denetleyici.
 
 ## Açık sorular
 
@@ -188,7 +193,8 @@ taşınır.
 - **Q-A (K-E1)** · "5. Ölçek ve dayanıklılık" başlığı doğrulama sorularına
   eklensin mi? 6E-3e ve iki sürecin aynı ChromaDB dizinini paylaşması buna
   bağlı.
-- **Q-B (K-E2)** · Elle etiketlenmiş bir altın veri seti (6E-4).
+- **Q-B (K-E2)** · Altın veri seti (6E-4). Keşifteki öneri: sentetik,
+  yaklaşık 80 kayıt. Karar bekliyor.
 - **K-E6** · Gerçek API ölçümü, kullanıcının yerelinde (yaklaşık 15 çağrı).
 - **K-E6b** · Ağ envanterinin yöntemi.
 - **Faz 7** · 7a/7b bölünmesi.

@@ -961,14 +961,19 @@ surfaced". Sıfır-skor guard'ı ve `_days_since` 6E-3a'da (karar 2a).
 - [ ] `api.py`'nin kalan HTTP testleri: `/analyze`, webhook, `/patterns`,
       duplicates ve `/blind-spots`'un 500 dışındaki yolları, ve testi
       olmayan sekiz uç.
-- [ ] `adapters/results_repository.py` testleri: var olan dosyanın
+- [x] `adapters/results_repository.py` testleri: var olan dosyanın
       okunması, karantina, `upsert_result`, `append_webhook_result`,
-      `save_defect_density`, `_write_json`.
+      `save_defect_density`, `_write_json`. Yapıldı: 6E-2 PR12, `28f2633`
+      (2026-11-22). Kanıt: `tests/test_results_repository.py`, 13 test;
+      kapsam satırda 32/67 → 67/67, dalda 1/4 → 4/4; 17 mutasyonun 17'si
+      hedef testini kırmızıya çevirdi.
 - [ ] `ui/results.py` testleri (`display_analysis_result`).
 - [ ] `cli.py` testleri (bugünkü `main()`; `dra --version` Faz 7).
 - [ ] Başarısız sonuç yazımının gösterilmemesi: önce `xfail(strict)` ve
       `KNOWN-DEBT.md` kaydı, sonra ayrı PR'da düzeltme (K-E3). Düzeltme bir
-      HTTP ucunun yanıtını değiştirirse önce kullanıcı kararı.
+      HTTP ucunun yanıtını değiştirirse önce kullanıcı kararı. *İlk adım
+      yapıldı (6E-2 PR12, `c141916`): altı `xfail(strict)` ve KNOWN-DEBT
+      kaydı; kutu düzeltmeyle (6E-2'nin ikinci PR'ı) kapanır.*
 
 #### Doğrulama soruları
 
