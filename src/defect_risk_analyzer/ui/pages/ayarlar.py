@@ -15,6 +15,11 @@ bootstrap()
 # drawn before the rerun is gone once the rerun renders (6E-2 PR5, MG).
 _API_KEY_NOT_SAVED = "_dra_api_key_not_saved"
 
+# st.session_state key: a key generated over one the store could not read,
+# which the store could not confirm either, so it went to .env in plain text —
+# carried over the rerun like the one above (6E-2 PR11, decision 3 (a)).
+_API_KEY_PLAIN_TEXT = "_dra_api_key_plain_text"
+
 # st.session_state key: which save succeeded — "jira", "llm", "app" or
 # "apikey" — carried over the same rerun to the run that shows its success
 # line. The lines used to be drawn, then time.sleep(1), then st.rerun(): the
@@ -257,6 +262,11 @@ def render_settings():
     st.markdown("---")
     st.subheader(t("settings.apikey.title"))
 
+    # A key the store could not read shows as "" — not "never generated", and
+    # a new one would replace a key a Jira webhook may hold (6E-2 PR11).
+    unreadable = "API_KEY" in config.UNREADABLE_SECRETS
+    needs_confirm = unreadable and not config.API_KEY
+
     if config.API_KEY:
         # Prefix only. The full key used to be printed here, which is the one
         # place in the UI that did — analiz.py:141 and the rotate message below
@@ -264,11 +274,17 @@ def render_settings():
         # needs to display in full to confirm that one exists.
         st.code(f"{config.API_KEY[:8]}…", language=None)
         st.caption(t("settings.apikey.note"))
+    elif unreadable:
+        st.warning(t("settings.apikey.unreadable"))
     else:
         st.info(t("settings.apikey.none"))
 
     if st.session_state.pop(_API_KEY_NOT_SAVED, False):
         st.warning(t("settings.apikey.not_saved"))
+
+    if st.session_state.pop(_API_KEY_PLAIN_TEXT, False):
+        st.warning(t("settings.apikey.plaintext"))
+        st.warning(t("settings.apikey.restart"))
 
     # The key's prefix is read here, from the key in use — the one st.code
     # shows above — not carried in session_state: there is no reason to keep
@@ -280,14 +296,27 @@ def render_settings():
     # Generation is explicit: it saves a credential (the store, or .env when
     # there is none), and merely opening this page must never do that.
     label = t("settings.apikey.rotate") if config.API_KEY else t("settings.apikey.create")
-    if st.button(label, use_container_width=True):
-        result = config.ensure_api_key(rotate=bool(config.API_KEY))
-        if result.saved:
-            st.session_state[_SAVED] = "apikey"
-        else:
+    # Over an unreadable key, only with the consequence ticked in front of the
+    # user — and then as a rotation: ensure_api_key(rotate=False) no longer
+    # replaces a key it cannot read. The click is checked as well as the
+    # button disabled: a disabled button is the browser's promise, not ours.
+    confirmed = True
+    if needs_confirm:
+        confirmed = st.checkbox(t("settings.apikey.unreadable_confirm"))
+    clicked = st.button(label, use_container_width=True, disabled=not confirmed)
+    if clicked and confirmed:
+        result = config.ensure_api_key(rotate=bool(config.API_KEY) or needs_confirm)
+        if not result.saved:
             # .env did not take the key: it works in this process only, and
             # "saved" would be the one thing not to say (T2(a), 2026-11-11).
             st.session_state[_API_KEY_NOT_SAVED] = True
+        elif unreadable and config.api_key_in_plain_text():
+            # Saved, but in plain text — not what "saved" says (PR11, 3 (a)).
+            st.session_state[_API_KEY_PLAIN_TEXT] = True
+        elif result.key:
+            # "" is a key the store stopped reading after this page was drawn:
+            # nothing was generated, so nothing was saved either.
+            st.session_state[_SAVED] = "apikey"
         st.rerun()
     st.warning(t("settings.webhook.separate_process"))
 

@@ -925,6 +925,14 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       okunamayan sır) cdb23f2 kodunda "kaydedildi" diyordu, bu PR'la
       `error.os`. Okunamayan depoda API key'in sessizce değişmesi ölçüldü ve
       açık satır oldu (sahip önerisi 6E).
+- [x] Okunamayan depoda API key sessizce değişiyordu: sunucu başlangıcı ve
+      Ayarlar'ın "Üret" düğmesi okunamayan anahtarın yerine yenisini üretip
+      `.env`'e düz metin yazıyor, depodaki eskiyi eziyordu (`KNOWN-DEBT.md`,
+      "6E-2 PR6 keşfinde belgelenen kusurlar"). Yapıldı: 6E-2 PR11,
+      `05f0b92` + `c4536d0` (2026-11-18; kullanıcı kararları 1 (iii), 2 (a),
+      3 (a)). Kanıt: 15 yeni testin 12'si 5b9ed4e kodunda kırmızı ölçüldü
+      (biri yalnız yeni katalog anahtarı yüzünden), bu PR'la yeşil; üçü
+      regresyon. PR10'un öteki üç açık satırı v1.1 (karar 2a).
 
 #### Doğrulama soruları
 

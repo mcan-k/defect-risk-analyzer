@@ -88,6 +88,38 @@ def test_a_server_with_no_key_refuses_everything(client):
     assert unconfigured.get("/guarded").status_code == 503
 
 
+@pytest.mark.parametrize("header", [{}, {"X-API-Key": ""}, {"X-API-Key": "anything"}])
+def test_the_two_503s_say_different_things(client, monkeypatch, header):
+    """6E-2 PR11, user decision 2 (a), 2026-11-18: a key the credential store
+    could not read gets its own text — "Set API_KEY in .env" would send the
+    user to replace a key a Jira webhook may still hold. A key that was never
+    set keeps the text it always had, word for word."""
+    monkeypatch.setattr(config, "UNREADABLE_SECRETS", frozenset())
+    never_set = client("").get("/guarded", headers=header)
+
+    monkeypatch.setattr(config, "UNREADABLE_SECRETS", frozenset({"API_KEY"}))
+    unreadable = client("").get("/guarded", headers=header)
+
+    assert never_set.status_code == unreadable.status_code == 503
+    assert never_set.json() == {
+        "detail": "Server has no API key configured. Set API_KEY in .env."
+    }
+    assert unreadable.json() == {
+        "detail": "API key could not be read from the credential store; see server log."
+    }
+    assert api_auth.API_KEY_UNREADABLE_DETAIL == unreadable.json()["detail"]
+
+
+def test_another_unreadable_credential_does_not_change_the_503(client, monkeypatch):
+    """Only API_KEY's own entry selects the new text: an unreadable Jira token
+    says nothing about the webhook key."""
+    monkeypatch.setattr(config, "UNREADABLE_SECRETS", frozenset({"JIRA_API_TOKEN"}))
+
+    response = client("").get("/guarded")
+
+    assert response.json()["detail"].endswith("Set API_KEY in .env.")
+
+
 # ---------------------------------------------------------------------------
 # The source guard — this is where the D9 rule actually lives
 # ---------------------------------------------------------------------------

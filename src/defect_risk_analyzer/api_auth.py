@@ -15,6 +15,14 @@ from defect_risk_analyzer import config
 # Header-based API key scheme
 _api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
+#: The 503 detail when the key is in the credential store but could not be read
+#: (6E-2 PR11, user decision 2 (a), 2026-11-18). "Set API_KEY in .env" would
+#: send the user to replace a key a Jira webhook may still hold. The other 503,
+#: for a key that was never set, keeps its text.
+API_KEY_UNREADABLE_DETAIL = (
+    "API key could not be read from the credential store; see server log."
+)
+
 
 async def require_api_key(
     api_key: str | None = Security(_api_key_header),
@@ -27,7 +35,8 @@ async def require_api_key(
         async def analyze(...): ...
 
     Raises:
-        HTTPException 503 if the server has no API key configured.
+        HTTPException 503 if the server has no API key configured — or has
+            one in the credential store that could not be read (6E-2 PR11).
         HTTPException 401 if the header is missing.
         HTTPException 403 if the key is invalid.
     """
@@ -37,6 +46,11 @@ async def require_api_key(
     # misconfigured, not unauthenticated — reject every request outright.
     expected_key = config.API_KEY
     if not expected_key:
+        if "API_KEY" in config.UNREADABLE_SECRETS:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail=API_KEY_UNREADABLE_DETAIL,
+            )
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Server has no API key configured. Set API_KEY in .env.",
