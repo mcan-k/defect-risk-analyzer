@@ -4,6 +4,9 @@
 **Dağıtım:** `pipx install` + `dra` komutu (ana) · Docker (ikincil) · Streamlit Cloud mock demo (vitrin)
 **Marketplace hedefi yok.**
 
+Faz sırasını, sahipleri ve süreci belirleyen kullanıcı kararları tek yerde,
+tarihleriyle: [Kararlar](DECISIONS.md).
+
 ---
 
 ## Mimari kurallar
@@ -84,8 +87,9 @@ iki kutu açık kalıyor, gerekçeleri yanlarında.
       *(6E taraması, 2026-11-10: açık. Tek kaynak var — `__init__.py:10`;
       `api.py` onu okuyor, `pyproject.toml:35` `attr` ile okuyor. Ama
       `cli.py` hiçbir sürüm göstermiyor, yani "CLI oradan okusun" yarısının
-      kanıtı yok. Kapatılması ya da `dra --version` olarak sahiplenmesi
-      kullanıcı kararı bekliyor.)*
+      kanıtı yok. ~~Kapatılması ya da `dra --version` olarak sahiplenmesi
+      kullanıcı kararı bekliyor.~~ *Karar (kullanıcı, 2026-11-10):*
+      `dra --version` **Faz 7**'de eklenir; kutu o zaman kapanır.)*
 - [x] `pyproject.toml` (PEP 621): `requires-python = ">=3.11"`, bağımlılıklar requirements.txt'ten —
       `2c5c86c`: `requires-python = ">=3.11"`, `dependencies = { file = ["requirements.txt"] }`
 - [x] `[project.scripts]` ile `dra` konsol giriş noktası —
@@ -498,8 +502,9 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
 
       363 → 440 test.
 - [ ] Renk sadece risk seviyesini kodlasın → 5B kapsamına alınmadı
-      *(6E taraması, 2026-11-10: açık. Yapıldığına dair kanıt yok ve sahibi
-      yok; Faz 7 mi, v1.1 mi, kullanıcı kararı bekliyor.)*
+      *(6E taraması, 2026-11-10: açık. Yapıldığına dair kanıt yok ~~ve sahibi
+      yok; Faz 7 mi, v1.1 mi, kullanıcı kararı bekliyor~~. Sahibi **Faz 7**
+      (kullanıcı kararı, 2026-11-10).)*
 - [x] `data/sample_bugs_en.json` (İngilizce demo için)
 
       Brifing "demo veri tamamen İngilizce" diyordu; ölçüm tersini gösterdi —
@@ -727,9 +732,10 @@ bir davranışı taşımak sessiz kayıp demektir; 5C de taşınmış sayfalar �
       *(6E taraması, 2026-11-10: açık. `CONTRIBUTING.md` yarısı yapıldı —
       #19, `354c12d` (2026-09-02). Issue şablonları bilerek yazılmadı; aynı
       commit'in gövdesi: "ISSUE SABLONU YOK: sifir issue acilmis, 18 ogenin
-      hepsi PR". Kutunun
+      hepsi PR". ~~Kutunun
       "yapılmayacak" diye mi kapanacağı, yoksa bir sahiple mi açık kalacağı
-      kullanıcı kararı bekliyor.)*
+      kullanıcı kararı bekliyor.~~ Kutu açık kalır; issue şablonlarının
+      sahibi **Faz 7** (kullanıcı kararı, 2026-11-10).)*
 
 ### Faz 6E — Doğrulama ve test borcu
 
@@ -846,12 +852,25 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       *6E-1 taraması (2026-11-10), bu listenin dört üst kutusunun durumu.*
       Hepsi tarandı ama işaretlenmedi:
       - **İşaretsiz kutular.** Bitmiş fazlardaki 22 kutudan 15'i kanıtla
-        kapandı. Açık kalan 7'nin gerekçesi kutuların yanında. Üçü kullanıcı
-        kararı bekliyor: `__version__` / CLI, risk rengi, issue şablonları.
+        kapandı. Açık kalan 7'nin gerekçesi kutuların yanında. ~~Üçü kullanıcı
+        kararı bekliyor: `__version__` / CLI, risk rengi, issue şablonları.~~
+        *2026-11-22:* üçünün sahibi **Faz 7** (kullanıcı kararı, 2026-11-10);
+        sahipler kutuların yanında.
       - **Sahipsiz KNOWN-DEBT satırları.**
         - Tablolarda sahibi de tetikleyicisi de olmayan açık satır kalmadı.
-        - Düzyazıdaki sahipsiz kayıtlardan kurala uyanlar sahiplendi. Kurala
-          uymayan 9 kayda sahip yazılmadı; kullanıcı kararı bekliyor.
+        - Düzyazıdaki sahipsiz kayıtlardan kurala uyanlar sahiplendi. ~~Kurala
+          uymayan 9 kayda sahip yazılmadı; kullanıcı kararı bekliyor.~~
+          *2026-11-22:* kurala uymayan 9 kaydın sahibini kullanıcı
+          2026-11-10'da verdi; sahipler `KNOWN-DEBT.md`'de kayıtların
+          yanında:
+          - **Faz 7:** `calculate_risk_score`'un kullanılmayan parametresi.
+          - **6E:** başarısız sonuç yazımının gösterilmemesi (6E-2, karar 1a,
+            2026-11-22); sıfır-skor guard'ı ve `_days_since`'in naive saati
+            (6E-3a, karar 2a, 2026-11-22).
+          - **v1.1:** istisna metinlerinin çevrilmemesi, kör nokta tazelik
+            penceresi, `/blind-spots` `params`'ı, `classify_bugs` kalıcılığı.
+          - **Açık soru Q-A'ya bağlı:** iki sürecin aynı ChromaDB dizinini
+            paylaşması.
       - **İfade taraması.** Depo genelinde "sahipsiz", "no phase owns" ve
         işaretsiz "Trigger:" arandı. Tek işaretsiz "Trigger:"
         `.streamlit/config.toml`'da; sahibi `KNOWN-DEBT.md`'deki gömülü CSS
@@ -934,6 +953,23 @@ arasına girdi; sıra 6D-3b → 6D-7 → 6E → Faz 7 (kullanıcı kararı).
       (biri yalnız yeni katalog anahtarı yüzünden), bu PR'la yeşil; üçü
       regresyon. PR10'un öteki üç açık satırı v1.1 (karar 2a).
 
+*6E-2'nin kalanı (kullanıcı kararı 1a, 2026-11-22).* 6E-2 aşağıdaki beş kutu
+kanıtla kapanınca kapanır (K-E8). Kaynak: `KNOWN-DEBT.md`, "6E keşfinde
+bulunan küçük test boşlukları" ve "Failed result writes are logged, not
+surfaced". Sıfır-skor guard'ı ve `_days_since` 6E-3a'da (karar 2a).
+
+- [ ] `api.py`'nin kalan HTTP testleri: `/analyze`, webhook, `/patterns`,
+      duplicates ve `/blind-spots`'un 500 dışındaki yolları, ve testi
+      olmayan sekiz uç.
+- [ ] `adapters/results_repository.py` testleri: var olan dosyanın
+      okunması, karantina, `upsert_result`, `append_webhook_result`,
+      `save_defect_density`, `_write_json`.
+- [ ] `ui/results.py` testleri (`display_analysis_result`).
+- [ ] `cli.py` testleri (bugünkü `main()`; `dra --version` Faz 7).
+- [ ] Başarısız sonuç yazımının gösterilmemesi: önce `xfail(strict)` ve
+      `KNOWN-DEBT.md` kaydı, sonra ayrı PR'da düzeltme (K-E3). Düzeltme bir
+      HTTP ucunun yanıtını değiştirirse önce kullanıcı kararı.
+
 #### Doğrulama soruları
 
 Kalıcı bir liste: kullanıcı ekledikçe büyür. Cevaplanan soru silinmez;
@@ -980,11 +1016,11 @@ Soruların toplandığı başlıklar (aynı gün):
 Bekleyenler:
 
 - [ ] "5. Ölçek ve dayanıklılık" başlığı — önerildi, kullanıcı kararı
-      bekliyor. *2026-11-13:* 6E keşif raporunun bu başlıktaki ilk iki
+      bekliyor (açık soru Q-A, K-E1). *2026-11-13:* 6E keşif raporunun bu başlıktaki ilk iki
       maddesi (10.000 kayıt sınırı, sayfa hatası) 6E-2 PR5'le cevaplandı;
       `KNOWN-DEBT.md`, "`JiraClient` kusurları".
 - [ ] Elle etiketlenmiş bir "altın veri seti" — kullanıcı: sonra
-      konuşulacak.
+      konuşulacak (açık soru Q-B, K-E2).
 
 ### Faz 7 — Vitrin (yarım gün)
 - [ ] README sıfırdan: tek cümlelik tanım, GIF/ekran görüntüsü, tek satır kurulum, gerçek rozetler
