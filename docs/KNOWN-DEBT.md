@@ -142,7 +142,40 @@ alınmıştı: ölç ve düzelt). Önce K-E3(a) kalıbıyla `xfail(strict)` test
 kayıt, sonra ayrı PR'da düzeltme. Düzeltme `/analyze` ya da webhook'un
 yanıtını değiştirirse kalıcı api.py kuralı geçerli: önce kullanıcı kararı.
 Aynı yolun test boşluğu: aşağıda, "6E keşfinde bulunan küçük test
-boşlukları", `results_repository` satırı.
+boşlukları", `results_repository` satırı (6E-2 PR12'de kapandı).
+
+*Ölçüldü ve belgelendi (6E-2 PR12, 2026-11-22, `b7713e0` koduyla; dosyaları
+yazılamayan bir depoyla — üst dizin bir dosya, `mkdir` `OSError` verir):*
+`POST /analyze`, `POST /analyze/bulk` ve `POST /webhook/jira` 200 ve tam
+sonuç dönüyor; yanıtta kaydedilmiş bir sonuçtan hiçbir fark yok (bulk
+kaydedilemeyen sonucu `analyzed` sayıyor). Analiz sayfası (tekli ve toplu)
+sonucu gösteriyor; ne `st.error` ne `st.warning` var. Sonuç diskte yok,
+yalnız günlükte bir `ERROR` ve bir `WARNING` var. `save_defect_density`'nin
+dönüşü hiç denetlenmiyor (yalnız `ERROR`).
+
+Aynı ölçümde ikinci bir yüz (PLAN DIŞI): `_write_json` hedef dosyayı
+doğrudan `"w"` ile açıyor. Yazım yarıda kalırsa (disk dolu) dosya kesik
+kalıyor; sonraki okuma kesik dosyayı karantinaya alıyor ve karantinadaki
+kopya da kesik. Yani yazımdan önce diskte olan geçmiş **kalıcı olarak**
+kayboluyor — "Impact"teki "sessiz veri kaybı" yalnız yeni sonucu değil, eski
+geçmişi de kapsıyor. `jira_client._write_json_atomically` (6E-2 PR5) aynı
+sorunu `bugs.json` için geçici dosya + `os.replace` ile çözmüştü.
+
+`xfail(strict)` testleri (K-E3(a)); savlar tasarımdan bağımsız:
+
+- `tests/test_failed_result_writes.py::test_a_caller_can_tell_an_unsaved_result_from_a_saved_one`
+  — `[analyze]`, `[analyze-bulk]`, `[webhook]`: çağıran kaydedilmemiş sonucu
+  kaydedilmişten durum, gövde ya da başlıkla ayırabilmeli;
+- `tests/test_dashboard_pages.py::test_a_single_analysis_that_was_not_saved_says_so`
+  ve `::test_a_bulk_analysis_whose_results_were_not_saved_says_so`: sayfa bir
+  hata ya da uyarı göstermeli;
+- `tests/test_failed_result_writes.py::test_a_write_that_fails_part_way_keeps_the_history_it_replaces`:
+  yarıda kalan yazım önceki geçmişi korumalı.
+
+Düzeltme **6E-2'nin ikinci PR'ı** (kullanıcı kararı (a), 2026-11-22).
+Başarısızlığın kullanıcıya hangi biçimde gösterileceği o PR'dan önce
+kullanıcı kararıdır; HTTP yanıtına dokunan her seçenek kalıcı api.py
+kuralına bağlı.
 
 ---
 
@@ -3669,7 +3702,7 @@ bitince kapanır (ROADMAP, 6E kapsamının açık kutuları).
 |---|---|
 | `api.py`'nin HTTP davranışı test edilmiyor. Kapsam ölçümünde %0'dı: 137 satırın hiçbiri çalışmadı, çünkü testler modülü hiç import etmiyor. fastapi .venv'de kurulu (0.143.0) ve `TestClient` `tests/test_api_auth.py`'de kullanılıyor; engel, `api.py`'nin modül seviyesinde servis kurması. Ayrıntı: "`GET /blind-spots` sözleşmesi" bölümünün "Kalan borç"u. *Kısmen (2026-11-13, 6E-2 PR5):* ilk HTTP testi `tests/test_api_refresh.py`, yalnız `POST /refresh` (2 test; 6E-2 PR6'da 3); engel `monkeypatch` ile `api.analyzer` ve `dependency_overrides` ile aşıldı. Öteki 13 uç açık. *6E-2 PR7 (2026-11-17):* `POST /analyze`, `POST /webhook/jira`, `GET /patterns`, `GET /patterns/{bug_key}/duplicates` ve `GET /blind-spots`'un yalnız 500 dalları `tests/test_api_error_responses.py`'de (6 vaka). Bu beş ucun öteki yolları ve kalan sekiz uç açık | **6E-2** (test borcu; K-E9 kuralı; K-E5; paket: kullanıcı kararı 1a, 2026-11-22) |
 | ~~`ui/service.call()`'ın hata dalları (`RateLimitError`, `LLMError`, `BugNotFoundError`, `ValueError`, genel `Exception`) hiç çalışmıyor: `ui/service.py:81–92`, 12 satır. 6E-2'nin 3. PR'ı (`OSError` hata sınırı, K-E4) bu fonksiyona bir dal ekleyecek~~ — **Kapandı (6E-2 PR3, 2026-11-11):** `tests/test_ui_service_call.py` her dalı ayrı sınıyor (`1b25521`): başarı, `RateLimitError`, `LLMError`, `BugNotFoundError`, `ValueError`, genel `Exception` ve yeni `OSError` dalı (iki istisnayla); hangi mesaj anahtarının gösterildiğini, dönüşün `None` olduğunu ve günlüğe yazan iki dalda ayrıntının günlükte kaldığını | ~~**6E** (test borcu; en geç 6E-2'nin 3. PR'ıyla birlikte değerlendirilir)~~ |
-| `adapters/results_repository.py`'nin satır kapsamı %47.8, dal kapsamı %25'ti. Çalışmayan kısımlar:<br>• var olan bir dosyanın okunması: `_read_json`'ın `try` bloğu, bozuk JSON'da `_quarantine` ve `OSError` dalı;<br>• `upsert_result`, `append_webhook_result` ve `save_defect_density`;<br>• `_write_json`'ın tamamı.<br>Testler yalnız "dosya yok" yolundan geçiyor. "Failed result writes are logged, not surfaced" kaydının davranışı bu yolda | **6E-2** (test borcu; K-E9 kuralı; paket: kullanıcı kararı 1a, 2026-11-22) |
+| ~~`adapters/results_repository.py`'nin satır kapsamı %47.8, dal kapsamı %25'ti. Çalışmayan kısımlar:<br>• var olan bir dosyanın okunması: `_read_json`'ın `try` bloğu, bozuk JSON'da `_quarantine` ve `OSError` dalı;<br>• `upsert_result`, `append_webhook_result` ve `save_defect_density`;<br>• `_write_json`'ın tamamı.<br>Testler yalnız "dosya yok" yolundan geçiyor. "Failed result writes are logged, not surfaced" kaydının davranışı bu yolda~~ — **Kapandı (6E-2 PR12, 2026-11-22):** `tests/test_results_repository.py` (13 test, `28f2633`) her okuma ve yazma yolunu sınıyor: eksik ve biçimi yanlış dosya, bozuk JSON'un bayt bayt karantinası, taşınamayan karantina, okunamayan dosya, `upsert_result`'ın değiştirme ve ekleme kuralı, webhook geçmişi, yoğunluk haritası, eksik üst dizin, UTF-8 biçimi, başarısız yazımın `False` dönüşü, varsayılan yollar. Kapsam (tam süit, dal açık): `b7713e0`'da satır 32/67 (%47.8), dal 1/4 (%25); bu PR'la 67/67 ve 4/4 (%100). 17 mutasyonun 17'si hedef testini kırmızıya çevirdi. Başarısız yazımın kendisi yukarıdaki kayıtta `xfail(strict)` | ~~**6E-2** (test borcu; K-E9 kuralı; paket: kullanıcı kararı 1a, 2026-11-22)~~ |
 | `ui/results.py`'nin satır kapsamı %12.9'du (`display_analysis_result`: 31 satırdan 27'si, 14 dalın hepsi çalışmıyor) | **6E-2** (test borcu; K-E9 kuralı; paket: kullanıcı kararı 1a, 2026-11-22) |
 | `cli.py` %0'dı: `main()` hiç çağrılmıyor; `tests/test_entry_points.py` dosyayı yalnız statik okuyor. `dra --version` Faz 7'de eklenecek (kullanıcı kararı, 2026-11-10); bu satır bugünkü `main()`'in testi | **6E-2** (test borcu; K-E9 kuralı; paket: kullanıcı kararı 1a, 2026-11-22) |
 
