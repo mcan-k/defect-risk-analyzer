@@ -45,6 +45,7 @@ import pytest
 from streamlit.testing.v1 import AppTest
 
 from defect_risk_analyzer import config
+from defect_risk_analyzer.adapters.results_repository import ResultsRepository
 from defect_risk_analyzer.adapters.secrets import SecretReadError
 from defect_risk_analyzer.services import analysis_service as analysis_service_module
 from defect_risk_analyzer.ui import shell
@@ -2112,3 +2113,88 @@ def test_a_readable_store_keeps_the_pr8_button(restorable_env, monkeypatch):
     assert _api_key_in_env_file() == ""
     assert any("API key" in s for s in successes), successes
     assert _on_screen("settings.apikey.plaintext") not in [w.value for w in at.warning]
+
+
+# ---------------------------------------------------------------------------
+# 6E-2 PR12 — an analysis that was not saved (measured, documented, not fixed)
+# ---------------------------------------------------------------------------
+# `_write_json` catches the OSError, logs it and returns False; the service logs
+# a WARNING and returns the result as if it had been saved. Measured at b7713e0
+# with a repository whose files cannot be written: the page shows the result
+# and nothing else — no st.error, no st.warning — and the result is not on disk.
+# The user has spent LLM quota on a result that is gone after a reload, and the
+# page gave them no way to know. xfail(strict) under K-E3; the fix, and which
+# form the message takes, is 6E-2's next PR.
+#
+# The assertion is design-neutral on purpose: an st.error (the call() OSError
+# branch, if the write raised) and an st.warning (if the result carried a flag)
+# both satisfy it.
+
+_UNSAVED_REASON = (
+    "Bilinen kusur: kaydedilemeyen analiz sonucu yalnız günlüğe gidiyor "
+    "(KNOWN-DEBT.md, 'Failed result writes are logged, not surfaced'; "
+    "6E-2 PR12'de ölçüldü, düzeltme 6E-2'nin ikinci PR'ı)"
+)
+
+
+class _CountingLLM:
+    """A provider that always answers; counts calls so the test knows the
+    analysis really ran before it looks at what the page said."""
+
+    def __init__(self):
+        self.calls = 0
+
+    def analyze(self, system_prompt, user_prompt):
+        self.calls += 1
+        return {
+            "reasoning": "stub reasoning",
+            "affected_modules": ["Authentication"],
+            "test_scenarios": [],
+            "recommended_actions": [],
+        }
+
+
+def _unsaved_analysis_page(monkeypatch, tmp_path):
+    """The analysis page over a repository that cannot write (its files' parent
+    is a regular file, so mkdir raises) and a stub LLM."""
+    blocker = tmp_path / "blocker"
+    blocker.write_text("a file, not a directory", encoding="utf-8")
+    repository = ResultsRepository(
+        results_file=blocker / "analysis_results.json",
+        webhook_results_file=blocker / "webhook_results.json",
+        defect_density_file=blocker / "defect_density.json",
+    )
+    llm = _CountingLLM()
+    monkeypatch.setattr(analysis_service_module, "ResultsRepository", lambda: repository)
+    monkeypatch.setattr(analysis_service_module, "create_llm_provider", lambda: llm)
+    return _open("pages/analiz.py"), repository, llm
+
+
+@pytest.mark.xfail(strict=True, reason=_UNSAVED_REASON)
+def test_a_single_analysis_that_was_not_saved_says_so(monkeypatch, tmp_path):
+    at, repository, llm = _unsaved_analysis_page(monkeypatch, tmp_path)
+    _type(at, _TR["common.bug_key"], "AP-101")
+
+    _button(at, _TR["analysis.run"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert llm.calls == 1, "precondition: the analysis ran"
+    assert repository.load_results() == [], "precondition: nothing was saved"
+    told = [e.value for e in at.error] + [w.value for w in at.warning]
+    assert told, "the result was not saved and the page said nothing"
+
+
+@pytest.mark.xfail(strict=True, reason=_UNSAVED_REASON)
+def test_a_bulk_analysis_whose_results_were_not_saved_says_so(monkeypatch, tmp_path):
+    at, repository, llm = _unsaved_analysis_page(monkeypatch, tmp_path)
+    found = [box for box in at.multiselect if box.label == _TR["analysis.bulk.select"]]
+    assert found, f"multiselect missing: {[box.label for box in at.multiselect]}"
+    found[0].set_value(["AP-101", "AP-102"])
+
+    _button(at, _TR["analysis.bulk.run"]).click().run()
+
+    assert not at.exception, [f"{e.value}" for e in at.exception]
+    assert llm.calls == 2, "precondition: both analyses ran"
+    assert repository.load_results() == [], "precondition: nothing was saved"
+    told = [e.value for e in at.error] + [w.value for w in at.warning]
+    assert told, "neither result was saved and the page said nothing"
