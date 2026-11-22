@@ -3,6 +3,9 @@
 Deliberate trade-offs accepted during refactoring, recorded so they are not
 mistaken for oversights. Each entry names the phase that will address it.
 
+Sahipleri ve öncelikleri belirleyen kullanıcı kararları tek yerde,
+tarihleriyle: [Kararlar](DECISIONS.md).
+
 ---
 
 ## De-anonimleştirme yalnız `reasoning` alanına uygulanıyor
@@ -105,6 +108,10 @@ sarmalayıcının `core.scoring`'e yaptığı delegasyon.
 **Planned fix (Phase 4):** karar ver. Modül ağırlığı isteniyorsa formüle ekle,
 istenmiyorsa parametreyi ve tüm çağrı yerlerini birlikte temizle.
 
+*Sahip (kullanıcı kararı, 2026-11-10; depoya 2026-11-22'de yazıldı):* **Faz 7**
+(temizlik). Faz 4 kapandı ve karar verilmedi; yukarıdaki iki seçenek Faz 7'de
+seçilir.
+
 ---
 
 ## Failed result writes are logged, not surfaced
@@ -129,6 +136,13 @@ kaydı kalıyor.
 **Planned fix (Phase 3):** testler geldikten sonra sonuç sözlüğüne `persisted`
 alanı ekle ya da yazma hatasını fırlat; UI kullanıcıya "sonuç kaydedilemedi"
 uyarısı göstersin.
+
+*Sahip:* **6E-2** (kullanıcı kararı 1a, 2026-11-22; 2026-11-10'da 6E'ye
+alınmıştı: ölç ve düzelt). Önce K-E3(a) kalıbıyla `xfail(strict)` testi ve bu
+kayıt, sonra ayrı PR'da düzeltme. Düzeltme `/analyze` ya da webhook'un
+yanıtını değiştirirse kalıcı api.py kuralı geçerli: önce kullanıcı kararı.
+Aynı yolun test boşluğu: aşağıda, "6E keşfinde bulunan küçük test
+boşlukları", `results_repository` satırı.
 
 ---
 
@@ -239,6 +253,7 @@ Faz 6A'nın giriş noktası bekçisi bu iki aracı incelemiyor: `chroma_cleanup`
 | `chroma_cleanup` bugün zararsız ama yapısal olarak değil: `vector_store`'dan yalnız iki modül sabiti alıyor ve iki koleksiyonu da koruyor. "Şu anki koleksiyon"u sormaya başlarsa `USE_MOCK_DATA`'yı `init()`'siz okur ve default `False` → `COLLECTION_LIVE` görür. ChromaDB yolu (`CHROMA_DB_DIR`) import sabiti olduğu için yanlış yol riski yok — ölçüldü | ~~**6E**~~ **Faz 7'nin temizlik kuyruğu** (kullanıcı kararı, 2026-10-11: geliştirici araçlarının kusurları), tetikleyici: **`chroma_cleanup` mevcut koleksiyonu sormaya başladığında ya da Faz 7 başladığında** |
 | `make_baseline.py:120` `config.get_risk_level` çağırıyor; `config.py`'de böyle bir fonksiyon yok (`core/scoring.py`'de var). Dosya kendi docstring'inde (20-23) dalın çalışamaz olduğunu yazıyor — belgelenmiş ölü dal, ama yine de mayın | ~~**6E**~~ **Faz 7'nin temizlik kuyruğu** (kullanıcı kararı, 2026-10-11; aşağıdaki satırla tek sahip), tetikleyici: **`make_baseline` bir daha çalıştırıldığında ya da Faz 7 başladığında** |
 | Aynı ölü dalın ikinci kusuru: `make_baseline.py:120` `from defect_risk_analyzer.risk_analyzer import RiskAnalyzer` — modül Faz 2'de silindi (`2a52585`). Dal `_run_mode_a` (:113); dosyanın docstring'i (:30–33) dalın bugünkü ağaçta çalışamayacağını yazıyor ve `_find_scoring_module()` (:91) her zaman `core.scoring`'i bulduğu için dala girilmiyor. Bu kusur 2026-10-11'e kadar depoda değil, yalnız oturum hafızasında kayıtlıydı. Yan not, ölçüldü: üstteki satır 2026-08-26'da (`603ac50`) yazıldığında `config.get_risk_level` :120'deydi ve docstring cümlesi :20–23'teydi; bugün :136 ve :30–33 — hücre tarihli olduğu için düzeltilmedi | **Faz 7'nin temizlik kuyruğu** (kullanıcı kararı, 2026-10-11; üstteki satırla tek sahip), tetikleyici: **`make_baseline` bir daha çalıştırıldığında ya da Faz 7 başladığında** |
+| `tests/tools/` araçlarının testi yok. 6E keşfinin kapsam ölçümünde (2026-11-09, `0d4e3c6`) `chroma_contract_probe.py`, `make_baseline.py` ve `module_map_report.py` %0. Aynı ölçümde `core_boundary_check.py` de %0 göründü, ama o alt süreçte koşuyor; ölçümün kör noktası | **Faz 7'nin temizlik kuyruğu** (denetleyici, 2026-11-11, kullanıcının 2026-10-11 kararının uygulanması: geliştirici araçlarının kusurları Faz 7; depoya 2026-11-22'de yazıldı) |
 
 ---
 
@@ -364,6 +379,11 @@ senkronizasyonunu tek taraftan yapın.
 senkronizasyon gerekir. Varsayılan kurulum tek servis çalıştırdığı ve kalan
 etki tek turluk bayatlamaya indiği için önceliklendirilmedi; bir faza
 bağlanmadı.
+
+*Sahip (kullanıcı kararı, 2026-11-10; depoya 2026-11-22'de yazıldı):* açık
+soru **Q-A**'ya bağlı (K-E1, "5. Ölçek ve dayanıklılık" başlığı). Başlık
+kabul edilirse 6E-3e'de; Q-A henüz karar bekliyor (bkz.
+[Kararlar](DECISIONS.md#açık-sorular)).
 
 ---
 
@@ -526,11 +546,16 @@ route API anahtarı bağımlılığı taşıyor). Sözleşme servis seviyesinde 
 *6E taraması (2026-11-10):* bu "kalan borç"un sahibi yazılmamıştı.
 - **HTTP davranışının testi: sahibi 6E** (test borcu; K-E9 kuralı). 6E
   keşfinin kapsam ölçümünde (2026-11-09) `api.py`'nin hiçbir satırı
-  çalışmıyordu. 6E-2'ye mi alınacağı K-E5 kararına bağlı.
+  çalışmıyordu. ~~6E-2'ye mi alınacağı K-E5 kararına bağlı.~~ *Bayat
+  (2026-11-22):* K-E5(a) 2026-11-11'de verildi, api.py "küçük boşluklar"
+  arasında sahipli kaldı; kalan HTTP testleri **6E-2**'de (kullanıcı kararı
+  1a, 2026-11-22). Satırı: "6E keşfinde bulunan küçük test boşlukları".
 - `TestClient` artık pakette kullanılıyor (`tests/test_api_auth.py`), ama
   `api.py`'nin kendisine değil.
-- `params`'ın ayrımlı birliğe çevrilmesine sahip yazılmadı. Kurala tek
-  başına uymuyor; kullanıcı kararı bekliyor.
+- ~~`params`'ın ayrımlı birliğe çevrilmesine sahip yazılmadı. Kurala tek
+  başına uymuyor; kullanıcı kararı bekliyor.~~ *Sahip (kullanıcı kararı,
+  2026-11-10; depoya 2026-11-22'de yazıldı):* `params`'ın ayrımlı birliğe
+  çevrilmesi **v1.1**.
 
 **Faz 5C eki:** aynı boşluk `GET /patterns`'te de vardı ve aynı şekilde
 kapatıldı — `PatternResponse` + `response_model=`, dolu payload'la round-trip
@@ -747,6 +772,10 @@ OpenAI'nin "rate limit" asimetrisi metin eşleşmesiyle birlikte kalktı (bkz.
 bölümün borcunu ne küçültüyor ne büyütüyor — öteki beş dalın `{detail}`'i hâlâ
 çevrilmemiş.
 
+*Sahip (kullanıcı kararı, 2026-11-10; depoya 2026-11-22'de yazıldı):*
+**v1.1**. Yukarıdaki "Faz 6" planı gerçekleşmedi; Faz 6 bu iş yapılmadan
+kapandı.
+
 ---
 
 ## Aktif dil bir modül global'i — çok oturumlu kullanımda yarışıyor
@@ -860,6 +889,10 @@ varsayımsal olmaktan çıkar.
 **Planned fix:** guard `score > best_score` yerine "modül adlandırıldı mı"
 sorusunu ayrı tutmalı — `best_module is None or score > best_score`. Faz 6.
 
+*Sahip:* **6E-3a** (deterministik doğruluk; kullanıcı kararı 2a, 2026-11-22;
+2026-11-10'da 6E'ye alınmıştı). Yukarıdaki "Faz 6" bayat: Faz 6 bu iş
+yapılmadan kapandı.
+
 ---
 
 ## `_days_since` naive bir referans saatini sessizce 0'a çeviriyor
@@ -884,6 +917,10 @@ tam olarak bu hataydı. Test aware bir saat kuruyor ve tuzağı ayrıca pinliyor
 **Planned fix:** `_days_since`'in `except` bloğu ayrıştırma hatasıyla
 karşılaştırma hatasını ayırmalı; ikincisi yutulmamalı. Faz 5A davranış
 değiştirmediği için yalnızca görünür kılındı. Faz 6.
+
+*Sahip:* **6E-3a** (deterministik doğruluk; kullanıcı kararı 2a, 2026-11-22;
+2026-11-10'da 6E'ye alınmıştı). Yukarıdaki "Faz 6" bayat: Faz 6 bu iş
+yapılmadan kapandı.
 
 ---
 
@@ -913,6 +950,9 @@ değiştirildiğinde görünür bir diff üretecek.
 
 **Planned fix:** `analyzed_at` üzerinden bir tazelik penceresi; ayrıca modül adı
 eşleşmesi normalize edilmeli. Faz 6.
+
+*Sahip (kullanıcı kararı, 2026-11-10; depoya 2026-11-22'de yazıldı):*
+**v1.1**. Yukarıdaki "Faz 6" bayat: Faz 6 bu iş yapılmadan kapandı.
 
 ---
 
@@ -959,8 +999,9 @@ testleri `pattern_detector` ile birlikte.
 - ~~**Anahtar mantığı testlerinin sahibi 6E (6E-2b)** (test borcu; K-E9
   kuralı).~~ `pattern_detector`'ın testi 5C'den beri var. **Kapandı (6E-2b,
   `7193e03`, 2026-11-11).**
-- Kalıcılık kararına sahip yazılmadı. Bir tasarım kararı ve kurala tek
-  başına uymuyor; kullanıcı kararı bekliyor.
+- ~~Kalıcılık kararına sahip yazılmadı. Bir tasarım kararı ve kurala tek
+  başına uymuyor; kullanıcı kararı bekliyor.~~ *Sahip (kullanıcı kararı,
+  2026-11-10; depoya 2026-11-22'de yazıldı):* kalıcılık kararı **v1.1**.
 
 ---
 
@@ -3618,16 +3659,19 @@ Kullanıcı kararıyla (K-E5, 2026-11-11) JiraClient testleri 6E-2'nin 2.
 PR'ına alındı ve yazıldı (`faa0901`; `jira_client.py` satır ve dalda %100;
 yukarıdaki "`JiraClient` kusurları" bölümü). Aşağıdakiler ise o PR'ların
 dışında kalan boşluklar; her biri
-bir test borcu. Sahipler K-E9 kuralıyla yazıldı (test borcu → 6E). Hangi
-6E paketinde kapanacakları 6E-5'e kadar belirlenir.
+bir test borcu. Sahipler K-E9 kuralıyla yazıldı (test borcu → 6E). ~~Hangi
+6E paketinde kapanacakları 6E-5'e kadar belirlenir.~~ *Paket (kullanıcı
+kararı 1a, 2026-11-22):* aşağıdaki dört açık satır **6E-2**'de kapanır;
+6E-2, bunlar ve "Failed result writes are logged, not surfaced" kaydı
+bitince kapanır (ROADMAP, 6E kapsamının açık kutuları).
 
 | Borç | İşaret |
 |---|---|
-| `api.py`'nin HTTP davranışı test edilmiyor. Kapsam ölçümünde %0'dı: 137 satırın hiçbiri çalışmadı, çünkü testler modülü hiç import etmiyor. fastapi .venv'de kurulu (0.143.0) ve `TestClient` `tests/test_api_auth.py`'de kullanılıyor; engel, `api.py`'nin modül seviyesinde servis kurması. Ayrıntı: "`GET /blind-spots` sözleşmesi" bölümünün "Kalan borç"u. *Kısmen (2026-11-13, 6E-2 PR5):* ilk HTTP testi `tests/test_api_refresh.py`, yalnız `POST /refresh` (2 test; 6E-2 PR6'da 3); engel `monkeypatch` ile `api.analyzer` ve `dependency_overrides` ile aşıldı. Öteki 13 uç açık. *6E-2 PR7 (2026-11-17):* `POST /analyze`, `POST /webhook/jira`, `GET /patterns`, `GET /patterns/{bug_key}/duplicates` ve `GET /blind-spots`'un yalnız 500 dalları `tests/test_api_error_responses.py`'de (6 vaka). Bu beş ucun öteki yolları ve kalan sekiz uç açık | **6E** (test borcu; K-E9 kuralı; K-E5) |
+| `api.py`'nin HTTP davranışı test edilmiyor. Kapsam ölçümünde %0'dı: 137 satırın hiçbiri çalışmadı, çünkü testler modülü hiç import etmiyor. fastapi .venv'de kurulu (0.143.0) ve `TestClient` `tests/test_api_auth.py`'de kullanılıyor; engel, `api.py`'nin modül seviyesinde servis kurması. Ayrıntı: "`GET /blind-spots` sözleşmesi" bölümünün "Kalan borç"u. *Kısmen (2026-11-13, 6E-2 PR5):* ilk HTTP testi `tests/test_api_refresh.py`, yalnız `POST /refresh` (2 test; 6E-2 PR6'da 3); engel `monkeypatch` ile `api.analyzer` ve `dependency_overrides` ile aşıldı. Öteki 13 uç açık. *6E-2 PR7 (2026-11-17):* `POST /analyze`, `POST /webhook/jira`, `GET /patterns`, `GET /patterns/{bug_key}/duplicates` ve `GET /blind-spots`'un yalnız 500 dalları `tests/test_api_error_responses.py`'de (6 vaka). Bu beş ucun öteki yolları ve kalan sekiz uç açık | **6E-2** (test borcu; K-E9 kuralı; K-E5; paket: kullanıcı kararı 1a, 2026-11-22) |
 | ~~`ui/service.call()`'ın hata dalları (`RateLimitError`, `LLMError`, `BugNotFoundError`, `ValueError`, genel `Exception`) hiç çalışmıyor: `ui/service.py:81–92`, 12 satır. 6E-2'nin 3. PR'ı (`OSError` hata sınırı, K-E4) bu fonksiyona bir dal ekleyecek~~ — **Kapandı (6E-2 PR3, 2026-11-11):** `tests/test_ui_service_call.py` her dalı ayrı sınıyor (`1b25521`): başarı, `RateLimitError`, `LLMError`, `BugNotFoundError`, `ValueError`, genel `Exception` ve yeni `OSError` dalı (iki istisnayla); hangi mesaj anahtarının gösterildiğini, dönüşün `None` olduğunu ve günlüğe yazan iki dalda ayrıntının günlükte kaldığını | ~~**6E** (test borcu; en geç 6E-2'nin 3. PR'ıyla birlikte değerlendirilir)~~ |
-| `adapters/results_repository.py`'nin satır kapsamı %47.8, dal kapsamı %25'ti. Çalışmayan kısımlar:<br>• var olan bir dosyanın okunması: `_read_json`'ın `try` bloğu, bozuk JSON'da `_quarantine` ve `OSError` dalı;<br>• `upsert_result`, `append_webhook_result` ve `save_defect_density`;<br>• `_write_json`'ın tamamı.<br>Testler yalnız "dosya yok" yolundan geçiyor. "Failed result writes are logged, not surfaced" kaydının davranışı bu yolda | **6E** (test borcu; K-E9 kuralı) |
-| `ui/results.py`'nin satır kapsamı %12.9'du (`display_analysis_result`: 31 satırdan 27'si, 14 dalın hepsi çalışmıyor) | **6E** (test borcu; K-E9 kuralı) |
-| `cli.py` %0'dı: `main()` hiç çağrılmıyor; `tests/test_entry_points.py` dosyayı yalnız statik okuyor. `dra --version` Faz 7'de eklenecek (kullanıcı kararı, 2026-11-10); bu satır bugünkü `main()`'in testi | **6E** (test borcu; K-E9 kuralı) |
+| `adapters/results_repository.py`'nin satır kapsamı %47.8, dal kapsamı %25'ti. Çalışmayan kısımlar:<br>• var olan bir dosyanın okunması: `_read_json`'ın `try` bloğu, bozuk JSON'da `_quarantine` ve `OSError` dalı;<br>• `upsert_result`, `append_webhook_result` ve `save_defect_density`;<br>• `_write_json`'ın tamamı.<br>Testler yalnız "dosya yok" yolundan geçiyor. "Failed result writes are logged, not surfaced" kaydının davranışı bu yolda | **6E-2** (test borcu; K-E9 kuralı; paket: kullanıcı kararı 1a, 2026-11-22) |
+| `ui/results.py`'nin satır kapsamı %12.9'du (`display_analysis_result`: 31 satırdan 27'si, 14 dalın hepsi çalışmıyor) | **6E-2** (test borcu; K-E9 kuralı; paket: kullanıcı kararı 1a, 2026-11-22) |
+| `cli.py` %0'dı: `main()` hiç çağrılmıyor; `tests/test_entry_points.py` dosyayı yalnız statik okuyor. `dra --version` Faz 7'de eklenecek (kullanıcı kararı, 2026-11-10); bu satır bugünkü `main()`'in testi | **6E-2** (test borcu; K-E9 kuralı; paket: kullanıcı kararı 1a, 2026-11-22) |
 
 ---
 
@@ -3690,7 +3734,8 @@ PR10'un öteki üç açık satırı v1.1'e bağlandı (kullanıcı kararı 2a, 2
 `POST /refresh`'in `detail`'i 2026-11-17 kararıyla sabitlendi (yukarıda,
 "`JiraClient` kusurları"). Aynı karar başka bir ucun yanıtını değiştirmiyor
 (kalıcı kural: bir HTTP ucunun yanıtı değişecekse önce karar). Bu PR'da
-yalnız listelendi; sahipler K-E9 önerisi, kullanıcı onayı bekliyor.
+yalnız listelendi; ~~sahipler K-E9 önerisi, kullanıcı onayı bekliyor.~~
+*Bayat (2026-11-22):* sahipleri hemen aşağıdaki 2026-11-17 kararları verdi.
 
 *Kararlar (kullanıcı, 2026-11-17):* 3a — `LLMError` ve genel `Exception`
 dalları `/refresh` kararının genişletilmesiyle düzeltilir (durum kodu aynı,
@@ -3714,3 +3759,4 @@ kendi girdisini geri veriyor.
 | `jira_client.py`'nin tavan `WARNING` satırı hâlâ "Narrow the JQL." diyor; arayüz metni 6E-2 PR5 EK-1'de (B(a), 2026-11-13) JQL tavsiyesinden arındırıldı, çünkü JQL kullanıcıya açık değil | **Faz 7** (temizlik) |
 | `ui/shell.py` `sidebar.sync.truncated`'a `count=` geçiriyor; metinde yer tutucu yok, değer kullanılmıyor | **Faz 7** (temizlik) |
 | `sidebar.sync.truncated` metninde öteki kenar çubuğu uyarılarındaki "⚠️ " öneki yok (ör. `sidebar.no_bugs`, `sidebar.jira.unconfigured`) | **Faz 7** (temizlik) |
+| `config.py`'nin `save_settings`'i (`ensure_api_key` de `save_secret` üzerinden bu yoldan kaydediyor) depo yazmayı kabul edip değeri geri okuyamadığında "Could not store %s in the credential store; falling back to .env." `WARNING`'ini yazıyor (`config.py:593–599`; `%s` anahtar adı). Bu durumda depo yazmayı reddetmedi; metin nedeni yanlış söylüyor. API key için Ayarlar'daki düz metin uyarısı 6E-2 PR11'de eklendi; bu satır yalnız günlük metni | **Faz 7** (temizlik; kullanıcı kararı, 2026-11-22; K-E9 emsali yukarıdaki "Narrow the JQL." satırı) |
